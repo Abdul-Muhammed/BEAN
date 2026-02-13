@@ -1,0 +1,28 @@
+{
+  "cli": {
+    "version": ">= 16.28.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "production": {
+      "autoIncrement": true,
+      "node": "20.18.0",
+      "env": {
+        "NPM_CONFIG_UNSAFE_PERM": "true",
+        "EXPO_IMAGE_UTILS_NO_SHARP": "1",
+        "TMPDIR": "/tmp",
+        "XDG_CACHE_HOME": "/tmp/cache"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
