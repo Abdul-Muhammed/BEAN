@@ -20,7 +20,6 @@ import { useUserProfile } from '../../hooks/useUserProfile';
 import ProfileTabs from '../../components/ProfileTabs';
 import StatCard from '../../components/StatCard';
 import HorizontalRatingDistribution from '../../components/HorizontalRatingDistribution';
-import ActivityCard from '../../components/ActivityCard';
 import StarRating from '../../components/StarRating';
 import { UserReview } from '../../data/mockData';
 
@@ -183,19 +182,6 @@ export default function ProfileScreen() {
         <HorizontalRatingDistribution reviews={userReviews} />
       </View>
 
-      {/* Recent Activity Section */}
-      <View style={styles.recentActivitySection}>
-        <Text style={styles.sectionTitle}>Recent Activity</Text>
-        {userReviews.slice(0, 3).map((review) => (
-          <ActivityCard
-            key={review.id}
-            review={review}
-            userName={userName}
-            userImage={user?.imageUrl}
-            onPress={() => router.push(`/cafe/${review.cafeId}`)}
-          />
-        ))}
-      </View>
     </ScrollView>
   );
 
@@ -212,9 +198,14 @@ export default function ProfileScreen() {
             // Extract just the day number from date (e.g., "6 October" -> "6")
             const dayNumber = review.date.match(/\d+/)?.[0] || review.date;
             return (
-              <View key={review.id} style={styles.diaryEntry}>
+              <TouchableOpacity
+                key={review.id}
+                style={styles.diaryEntry}
+                onPress={() => router.push(`/cafe/${review.cafeId}`)}
+              >
                 <View style={styles.diaryEntryLeft}>
-                  <Text style={styles.diaryCafeName}>{dayNumber} {review.cafeName}</Text>
+                  <Text style={styles.diaryDayNumber}>{dayNumber}</Text>
+                  <Text style={styles.diaryCafeName}>{review.cafeName}</Text>
                 </View>
                 <View style={styles.diaryEntryRight}>
                   <StarRating rating={review.rating} size={16} />
@@ -222,7 +213,7 @@ export default function ProfileScreen() {
                     <Heart size={16} color="#FF3B30" fill="#FF3B30" style={styles.heartIcon} />
                   )}
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -328,9 +319,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Lato-Bold',
     color: '#4CAF50',
   },
-  recentActivitySection: {
-    paddingHorizontal: 20,
-  },
   diaryContent: {
     paddingBottom: 100,
   },
@@ -354,11 +342,20 @@ const styles = StyleSheet.create({
   },
   diaryEntryLeft: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  diaryDayNumber: {
+    fontSize: 16,
+    fontFamily: 'Lato-Regular',
+    color: '#1C1C1E',
+    width: 32,
   },
   diaryCafeName: {
     fontSize: 16,
     fontFamily: 'Lato-Regular',
     color: '#1C1C1E',
+    flex: 1,
   },
   diaryEntryRight: {
     flexDirection: 'row',

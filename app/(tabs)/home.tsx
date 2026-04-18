@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   StatusBar,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -18,32 +19,59 @@ import {
   Wifi, 
   Bookmark,
   ChevronRight,
-  Plus
+  Plus,
+  X,
+  Car,
 } from 'lucide-react-native';
 import { 
   Input, 
   InputField, 
   InputSlot, 
   InputIcon,
-  Button,
-  ButtonText,
   Badge,
   BadgeText,
   HStack,
-  VStack
 } from '@gluestack-ui/themed';
 import { useReviews } from '../../context/ReviewContext';
-import { searchCafesByText, convertPlaceToCafe } from '../../services/googlePlaces';
+import { searchCafesByText, searchCafesNearby, convertPlaceToCafe } from '../../services/googlePlaces';
+import { useUserProfile } from '../../hooks/useUserProfile';
 
 type FilterType = 'all' | 'open' | 'topRated' | 'wifi' | 'parking';
 
 export default function HomeScreen() {
-  const { cafes, recentActivity, addCafe, toggleBookmark, isBookmarked, loading } = useReviews();
+  const { cafes, addCafe, toggleBookmark, isBookmarked } = useReviews();
+  const { profile } = useUserProfile();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [isLoadingNearby, setIsLoadingNearby] = useState(false);
+  const [nearbyError, setNearbyError] = useState<string | null>(null);
+  const hasLoadedNearby = useRef(false);
+
+  useEffect(() => {
+    if (hasLoadedNearby.current) return;
+    if (!profile?.location_address) return;
+
+    const loadNearbyCafes = async () => {
+      setIsLoadingNearby(true);
+      setNearbyError(null);
+      try {
+        const results = await searchCafesNearby(profile.location_address!);
+        const converted = await Promise.all(
+          results.slice(0, 15).map(place => convertPlaceToCafe(place))
+        );
+        converted.forEach(cafe => addCafe(cafe));
+        hasLoadedNearby.current = true;
+      } catch (error) {
+        setNearbyError('Unable to load nearby cafes.');
+      }
+      setIsLoadingNearby(false);
+    };
+
+    loadNearbyCafes();
+  }, [profile?.location_address]);
 
   const handleCafeClick = (cafe: any) => {
     addCafe(cafe);
@@ -51,9 +79,7 @@ export default function HomeScreen() {
   };
 
   const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      return;
-    }
+    if (!searchQuery.trim()) return;
 
     setIsSearching(true);
     try {
@@ -75,17 +101,49 @@ export default function HomeScreen() {
     setSearchQuery('');
   };
 
-  const filterCafes = (cafes: any[], filter: FilterType) => {
-    if (filter === 'all') return cafes;
-    if (filter === 'topRated') return cafes.filter(cafe => cafe.rating >= 4.5);
-    if (filter === 'wifi') return cafes;
-    if (filter === 'parking') return cafes;
-    if (filter === 'open') return cafes;
-    return cafes;
+  const filterCafes = (allCafes: any[], filter: FilterType) => {
+    if (filter === 'all') return allCafes;
+    if (filter === 'topRated') return allCafes.filter(cafe => cafe.rating >= 4.5);
+    if (filter === 'wifi') return allCafes.filter(cafe => cafe.amenities?.includes('Has WiFi'));
+    if (filter === 'parking') return allCafes.filter(cafe => cafe.amenities?.includes('Parking'));
+    if (filter === 'open') return allCafes.filter(cafe => cafe.hours?.openNow === true);
+    return allCafes;
   };
 
   const filteredCafes = filterCafes(cafes, activeFilter);
-  const displayCafes = showSearchResults ? searchResults : filteredCafes.slice(0, 3);
+  const displayCafes = showSearchResults ? searchResults : filteredCafes.slice(0, 10);
+
+  const renderAmenityTags = (cafe: any) => {
+    const tags: { label: string; icon: any; bgColor: string; textColor: string; iconColor: string }[] = [];
+
+    if (cafe.amenities?.includes('Has WiFi')) {
+      tags.push({ label: 'WiFi', icon: Wifi, bgColor: '#E3F2FD', textColor: '#007AFF', iconColor: '#007AFF' });
+    }
+    if (cafe.amenities?.includes('Top Rated') || cafe.rating >= 4.5) {
+      tags.push({ label: 'Top', icon: Star, bgColor: '#FFF8E1', textColor: '#D4AF37', iconColor: '#D4AF37' });
+    }
+    if (cafe.amenities?.includes('Parking')) {
+      tags.push({ label: 'Parking', icon: Car, bgColor: '#E8F5E9', textColor: '#4CAF50', iconColor: '#4CAF50' });
+    }
+
+    const extraCount = (cafe.amenities?.length || 0) - tags.length;
+
+    return (
+      <View style={styles.cafeTagsWrapper}>
+        {tags.map((tag, i) => (
+          <Badge key={i} style={[styles.amenityTag, { backgroundColor: tag.bgColor }]}>  
+            <tag.icon size={12} color={tag.iconColor} style={styles.tagIcon} />
+            <BadgeText style={[styles.amenityTagText, { color: tag.textColor }]}>{tag.label}</BadgeText>
+          </Badge>
+        ))}
+        {extraCount > 0 && (
+          <Badge style={styles.countTag}>
+            <BadgeText style={styles.countTagText}>+{extraCount}</BadgeText>
+          </Badge>
+        )}
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -111,12 +169,12 @@ export default function HomeScreen() {
               returnKeyType="search"
               style={styles.searchField}
             />
+            {searchQuery.length > 0 && (
+              <InputSlot style={styles.clearSlot} onPress={clearSearch}>
+                <X size={18} color="#8E8E93" />
+              </InputSlot>
+            )}
           </Input>
-          {showSearchResults && (
-            <TouchableOpacity onPress={clearSearch} style={styles.clearSearchButton}>
-              <Text style={styles.clearSearchText}>Clear</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
         {/* Explore Section */}
@@ -124,25 +182,25 @@ export default function HomeScreen() {
           <Text style={styles.sectionTitle}>Explore</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
             <HStack space="sm" style={styles.filterContainer}>
-              <TouchableOpacity onPress={() => setActiveFilter('open')}>
+              <TouchableOpacity onPress={() => setActiveFilter(activeFilter === 'open' ? 'all' : 'open')}>
                 <Badge style={[styles.filterBadge, activeFilter === 'open' && styles.activeFilter]}>
                   <MapPin size={14} color={activeFilter === 'open' ? '#FFFFFF' : '#666'} style={styles.badgeIcon} />
                   <BadgeText style={activeFilter === 'open' ? styles.activeFilterText : styles.filterText}>Open Now</BadgeText>
                 </Badge>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setActiveFilter('topRated')}>
+              <TouchableOpacity onPress={() => setActiveFilter(activeFilter === 'topRated' ? 'all' : 'topRated')}>
                 <Badge style={[styles.filterBadge, activeFilter === 'topRated' && styles.activeFilter]}>
                   <Star size={14} color={activeFilter === 'topRated' ? '#FFFFFF' : '#666'} style={styles.badgeIcon} />
                   <BadgeText style={activeFilter === 'topRated' ? styles.activeFilterText : styles.filterText}>Top Rated</BadgeText>
                 </Badge>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setActiveFilter('wifi')}>
+              <TouchableOpacity onPress={() => setActiveFilter(activeFilter === 'wifi' ? 'all' : 'wifi')}>
                 <Badge style={[styles.filterBadge, activeFilter === 'wifi' && styles.activeFilter]}>
                   <Wifi size={14} color={activeFilter === 'wifi' ? '#FFFFFF' : '#666'} style={styles.badgeIcon} />
                   <BadgeText style={activeFilter === 'wifi' ? styles.activeFilterText : styles.filterText}>Has WiFi</BadgeText>
                 </Badge>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setActiveFilter('parking')}>
+              <TouchableOpacity onPress={() => setActiveFilter(activeFilter === 'parking' ? 'all' : 'parking')}>
                 <Badge style={[styles.filterBadge, activeFilter === 'parking' && styles.activeFilter]}>
                   <Plus size={14} color={activeFilter === 'parking' ? '#FFFFFF' : '#666'} style={styles.badgeIcon} />
                   <BadgeText style={activeFilter === 'parking' ? styles.activeFilterText : styles.filterText}>Has Parking</BadgeText>
@@ -160,6 +218,25 @@ export default function HomeScreen() {
               <ChevronRight size={20} color="#8E8E93" />
             </TouchableOpacity>
           </View>
+
+          {isLoadingNearby && displayCafes.length === 0 && (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#1C1C1E" />
+              <Text style={styles.loadingText}>Finding cafes near you...</Text>
+            </View>
+          )}
+
+          {nearbyError && displayCafes.length === 0 && (
+            <View style={styles.loadingContainer}>
+              <Text style={styles.errorText}>{nearbyError}</Text>
+            </View>
+          )}
+
+          {!isLoadingNearby && !nearbyError && displayCafes.length === 0 && !showSearchResults && (
+            <View style={styles.loadingContainer}>
+              <Text style={styles.emptyText}>No cafes found nearby. Try searching above.</Text>
+            </View>
+          )}
           
           {displayCafes.map((cafe) => (
             <View key={cafe.id} style={styles.cafeCard}>
@@ -172,7 +249,7 @@ export default function HomeScreen() {
                 </View>
                 <View style={styles.cafeContent}>
                   <View style={styles.cafeHeader}>
-                    <Text style={styles.cafeName}>{cafe.name}</Text>
+                    <Text style={styles.cafeName} numberOfLines={1}>{cafe.name}</Text>
                     <TouchableOpacity
                       style={styles.bookmarkButton}
                       onPress={(e) => {
@@ -187,28 +264,16 @@ export default function HomeScreen() {
                       />
                     </TouchableOpacity>
                   </View>
-                <View style={styles.cafeLocation}>
-                  <MapPin size={14} color="#8E8E93" />
-                  <Text style={styles.locationText}>Auckland • 2km</Text>
-                </View>
-                <View style={styles.cafeFooter}>
-                  <View style={styles.cafeTagsWrapper}>
-                    <Badge style={styles.wifiTag}>
-                      <Wifi size={12} color="#007AFF" style={styles.tagIcon} />
-                      <BadgeText style={styles.wifiTagText}>WiFi</BadgeText>
-                    </Badge>
-                    <Badge style={styles.ratedTag}>
-                      <Star size={12} color="#D4AF37" style={styles.tagIcon} />
-                      <BadgeText style={styles.ratedTagText}>Top</BadgeText>
-                    </Badge>
-                    <Badge style={styles.countTag}>
-                      <BadgeText style={styles.countTagText}>+2</BadgeText>
-                    </Badge>
+                  <View style={styles.cafeLocation}>
+                    <MapPin size={14} color="#8E8E93" />
+                    <Text style={styles.locationText} numberOfLines={1}>{cafe.location}</Text>
                   </View>
-                  <View style={styles.ratingContainer}>
-                    <Star size={16} color="#4CAF50" fill="#4CAF50" />
-                    <Text style={styles.ratingText}>{cafe.rating.toFixed(1)}</Text>
-                  </View>
+                  <View style={styles.cafeFooter}>
+                    {renderAmenityTags(cafe)}
+                    <View style={styles.ratingContainer}>
+                      <Star size={16} color="#4CAF50" fill="#4CAF50" />
+                      <Text style={styles.ratingText}>{cafe.rating.toFixed(1)}</Text>
+                    </View>
                   </View>
                 </View>
               </TouchableOpacity>
@@ -216,67 +281,6 @@ export default function HomeScreen() {
           ))}
         </View>
 
-        {/* Recent Activity Section */}
-        {recentActivity.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Recent Activity</Text>
-
-            {recentActivity.map((activity) => (
-              <TouchableOpacity
-                key={activity.id}
-                style={styles.activityCard}
-                onPress={() => router.push(`/cafe/${activity.cafeId}`)}
-              >
-                <View style={styles.activityHeader}>
-                  <Image
-                    source={{ uri: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2' }}
-                    style={styles.userAvatar}
-                  />
-                  <View style={styles.activityInfo}>
-                    <Text style={styles.userName}>You</Text>
-                    <Text style={styles.activityMeta}>{activity.cafeName} • {activity.date}</Text>
-                  </View>
-                  <TouchableOpacity style={styles.bookmarkButton}>
-                    <Bookmark size={20} color="#8E8E93" />
-                  </TouchableOpacity>
-                </View>
-
-                {activity.text && (
-                  <Text style={styles.activityText} numberOfLines={2}>{activity.text}</Text>
-                )}
-
-                <View style={styles.activityTags}>
-                  <HStack space="xs">
-                    {activity.attributes && activity.attributes.slice(0, 2).map((tag, index) => (
-                      <Badge key={index} style={styles.activityTag}>
-                        <BadgeText style={styles.activityTagText}>{tag}</BadgeText>
-                      </Badge>
-                    ))}
-                    {activity.attributes && activity.attributes.length > 2 && (
-                      <Badge style={styles.countTag}>
-                        <BadgeText style={styles.countTagText}>+{activity.attributes.length - 2}</BadgeText>
-                      </Badge>
-                    )}
-                  </HStack>
-                  <View style={styles.starsContainer}>
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <Star
-                        key={star}
-                        size={16}
-                        color={star <= activity.rating ? '#4CAF50' : '#E5E5EA'}
-                        fill={star <= activity.rating ? '#4CAF50' : 'transparent'}
-                      />
-                    ))}
-                  </View>
-                </View>
-
-                {activity.photos && activity.photos.length > 0 && (
-                  <Image source={{ uri: activity.photos[0] }} style={styles.activityImage} />
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -309,21 +313,14 @@ const styles = StyleSheet.create({
   searchSlot: {
     paddingLeft: 16,
   },
+  clearSlot: {
+    paddingRight: 12,
+  },
   searchField: {
     fontSize: 16,
     fontFamily: 'Lato-Regular',
     color: '#1C1C1E',
     paddingLeft: 8,
-  },
-  clearSearchButton: {
-    marginLeft: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  clearSearchText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#D4AF37',
   },
   section: {
     marginBottom: 24,
@@ -375,6 +372,30 @@ const styles = StyleSheet.create({
     fontFamily: 'Lato-Regular',
     color: '#FFFFFF',
   },
+  loadingContainer: {
+    paddingVertical: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontFamily: 'Lato-Regular',
+    color: '#8E8E93',
+    marginTop: 12,
+  },
+  errorText: {
+    fontSize: 16,
+    fontFamily: 'Lato-Regular',
+    color: '#FF3B30',
+    textAlign: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    fontFamily: 'Lato-Regular',
+    color: '#8E8E93',
+    textAlign: 'center',
+  },
   cafeCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -384,10 +405,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#1C1C1E',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
@@ -433,6 +451,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Lato-Regular',
     color: '#8E8E93',
     marginLeft: 4,
+    flex: 1,
   },
   cafeFooter: {
     flexDirection: 'row',
@@ -447,21 +466,16 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
-  wifiTag: {
-    backgroundColor: '#E3F2FD',
+  amenityTag: {
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 4,
     flexDirection: 'row',
     alignItems: 'center',
   },
-  ratedTag: {
-    backgroundColor: '#FFF8E1',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
+  amenityTagText: {
+    fontSize: 12,
+    fontFamily: 'Lato-Regular',
   },
   countTag: {
     backgroundColor: '#F5F5F5',
@@ -471,16 +485,6 @@ const styles = StyleSheet.create({
   },
   tagIcon: {
     marginRight: 4,
-  },
-  wifiTagText: {
-    fontSize: 12,
-    fontFamily: 'Lato-Regular',
-    color: '#007AFF',
-  },
-  ratedTagText: {
-    fontSize: 12,
-    fontFamily: 'Lato-Regular',
-    color: '#D4AF37',
   },
   countTagText: {
     fontSize: 12,
@@ -496,78 +500,5 @@ const styles = StyleSheet.create({
     fontFamily: 'Lato-Bold',
     color: '#4CAF50',
     marginLeft: 4,
-  },
-  activityCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    marginHorizontal: 20,
-    marginBottom: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  activityHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  userAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 12,
-  },
-  activityInfo: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 16,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: '#1C1C1E',
-    marginBottom: 2,
-  },
-  activityMeta: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
-  },
-  activityText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#666',
-    marginBottom: 12,
-    lineHeight: 20,
-  },
-  activityTags: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  activityTag: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  activityTagText: {
-    fontSize: 12,
-    fontFamily: 'Lato-Regular',
-    color: '#666',
-  },
-  starsContainer: {
-    flexDirection: 'row',
-    gap: 2,
-  },
-  activityImage: {
-    width: '100%',
-    height: 120,
-    borderRadius: 12,
   },
 });

@@ -8,7 +8,9 @@
     "build:web": "expo export --platform web",
     "lint": "expo lint",
     "eas-build-pre-install": "node eas-build-pre-install.js",
-    "postinstall": "node eas-build-pre-install.js"
+    "postinstall": "node eas-build-pre-install.js",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@clerk/clerk-expo": "^2.19.22",
@@ -22,7 +24,7 @@
     "@react-navigation/bottom-tabs": "^7.2.0",
     "@react-navigation/native": "^7.0.14",
     "@supabase/supabase-js": "^2.81.1",
-    "expo": "~54.0.32",
+    "expo": "~54.0.33",
     "expo-application": "~7.0.8",
     "expo-auth-session": "~7.0.10",
     "expo-blur": "~15.0.7",
@@ -35,7 +37,7 @@
     "expo-linear-gradient": "~15.0.7",
     "expo-linking": "~8.0.8",
     "expo-location": "~19.0.8",
-    "expo-router": "~6.0.22",
+    "expo-router": "~6.0.23",
     "expo-secure-store": "~15.0.8",
     "expo-splash-screen": "~31.0.10",
     "expo-status-bar": "~3.0.8",
@@ -62,6 +64,7 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~19.1.10",
+    "@types/react-native": "^0.72.8",
     "typescript": "~5.9.2"
   }
 }
