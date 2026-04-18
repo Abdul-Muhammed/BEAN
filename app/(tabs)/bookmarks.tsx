@@ -9,10 +9,10 @@ import {
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bookmark, MapPin, Star, Wifi } from 'lucide-react-native';
+import { Bookmark, MapPin, Star, Wifi, Car } from 'lucide-react-native';
 import { useReviews } from '../../context/ReviewContext';
 import { useRouter } from 'expo-router';
-import { Badge, BadgeText, HStack } from '@gluestack-ui/themed';
+import { Badge, BadgeText } from '@gluestack-ui/themed';
 
 export default function BookmarksScreen() {
   const { bookmarkedCafes, toggleBookmark, isBookmarked } = useReviews();
@@ -71,14 +71,24 @@ export default function BookmarksScreen() {
                   </View>
                   <View style={styles.cafeFooter}>
                     <View style={styles.cafeTagsWrapper}>
-                      <Badge style={styles.wifiTag}>
-                        <Wifi size={12} color="#007AFF" style={styles.tagIcon} />
-                        <BadgeText style={styles.wifiTagText}>WiFi</BadgeText>
-                      </Badge>
-                      <Badge style={styles.ratedTag}>
-                        <Star size={12} color="#D4AF37" style={styles.tagIcon} />
-                        <BadgeText style={styles.ratedTagText}>Top</BadgeText>
-                      </Badge>
+                      {cafe.amenities?.includes('Has WiFi') && (
+                        <Badge style={styles.wifiTag}>
+                          <Wifi size={12} color="#007AFF" style={styles.tagIcon} />
+                          <BadgeText style={styles.wifiTagText}>WiFi</BadgeText>
+                        </Badge>
+                      )}
+                      {(cafe.amenities?.includes('Top Rated') || cafe.rating >= 4.5) && (
+                        <Badge style={styles.ratedTag}>
+                          <Star size={12} color="#D4AF37" style={styles.tagIcon} />
+                          <BadgeText style={styles.ratedTagText}>Top</BadgeText>
+                        </Badge>
+                      )}
+                      {cafe.amenities?.includes('Parking') && (
+                        <Badge style={styles.parkingTag}>
+                          <Car size={12} color="#4CAF50" style={styles.tagIcon} />
+                          <BadgeText style={styles.parkingTagText}>Parking</BadgeText>
+                        </Badge>
+                      )}
                     </View>
                     <View style={styles.ratingContainer}>
                       <Star size={16} color="#4CAF50" fill="#4CAF50" />
@@ -238,6 +248,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Lato-Regular',
     color: '#D4AF37',
+  },
+  parkingTag: {
+    backgroundColor: '#E8F5E9',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#A5D6A7',
+  },
+  parkingTagText: {
+    fontSize: 12,
+    fontFamily: 'Lato-Regular',
+    color: '#4CAF50',
   },
   tagIcon: {
     marginRight: 4,

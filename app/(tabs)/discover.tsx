@@ -13,7 +13,6 @@ import { Search, MapPin, Star, Wifi } from 'lucide-react-native';
 import { WebView } from 'react-native-webview';
 import MapCafeCard from '../../components/MapCafeCard';
 import { useReviews } from '../../context/ReviewContext';
-import { cafes as originalCafes } from '../../data/mockData';
 
 // Default Auckland coordinates
 const DEFAULT_LATITUDE = -36.8485;
@@ -27,13 +26,7 @@ export default function DiscoverScreen() {
     hasWifi: false,
   });
 
-  // Only show original local cafes (first 5-6), not searched cafes
-  const localCafes = useMemo(() => {
-    // Get IDs of original local cafes (first 6)
-    const originalCafeIds = originalCafes.slice(0, 6).map(c => c.id);
-    // Filter to only show cafes that are in the original list
-    return cafes.filter(cafe => originalCafeIds.includes(cafe.id));
-  }, [cafes]);
+  const localCafes = useMemo(() => cafes, [cafes]);
 
   // Filter local cafes based on filters
   const filteredCafes = localCafes.filter((cafe) => {
@@ -185,7 +178,7 @@ export default function DiscoverScreen() {
           data={filteredCafes}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <MapCafeCard cafe={item} distance="2km" />
+            <MapCafeCard cafe={item} />
           )}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}

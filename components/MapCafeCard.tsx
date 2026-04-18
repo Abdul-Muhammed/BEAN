@@ -7,10 +7,9 @@ import { useReviews } from '../context/ReviewContext';
 
 interface MapCafeCardProps {
   cafe: Cafe;
-  distance?: string; // e.g., "2km"
 }
 
-export default function MapCafeCard({ cafe, distance = '2km' }: MapCafeCardProps) {
+export default function MapCafeCard({ cafe }: MapCafeCardProps) {
   const { toggleBookmark, isBookmarked } = useReviews();
 
   const handlePress = () => {
@@ -61,7 +60,7 @@ export default function MapCafeCard({ cafe, distance = '2km' }: MapCafeCardProps
 
         <View style={styles.locationRow}>
           <MapPin size={14} color="#8E8E93" />
-          <Text style={styles.locationText}>{location} • {distance}</Text>
+          <Text style={styles.locationText} numberOfLines={1}>{location}</Text>
         </View>
 
         <View style={styles.footer}>

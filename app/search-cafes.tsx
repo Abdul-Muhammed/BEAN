@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ArrowLeft, Search } from 'lucide-react-native';
+import { ArrowLeft, Search, X } from 'lucide-react-native';
 import { searchCafesByText, convertPlaceToCafe } from '../services/googlePlaces';
 import { useReviews } from '../context/ReviewContext';
 
@@ -80,6 +80,14 @@ export default function SearchCafesScreen() {
             autoFocus
             returnKeyType="search"
           />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              style={styles.clearButton}
+              onPress={() => { setSearchQuery(''); setSearchResults([]); }}
+            >
+              <X size={18} color="#8E8E93" />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -160,6 +168,10 @@ const styles = StyleSheet.create({
     fontFamily: 'Lato-Regular',
     color: '#1C1C1E',
     paddingVertical: 12,
+  },
+  clearButton: {
+    padding: 4,
+    marginLeft: 8,
   },
   listContent: {
     paddingVertical: 8,

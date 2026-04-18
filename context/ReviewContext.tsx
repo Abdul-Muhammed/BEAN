@@ -1,11 +1,10 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { useUser } from '@clerk/clerk-expo';
-import { cafes as initialCafes, userReviews as initialUserReviews, Cafe, UserReview, Review } from '../data/mockData';
+import { Cafe, UserReview, Review } from '../data/mockData';
 
 interface ReviewContextType {
   cafes: Cafe[];
   userReviews: UserReview[];
-  recentActivity: UserReview[];
   bookmarkedCafes: Cafe[];
   addReview: (cafeId: string, rating: number, text: string, attributes?: string[], photos?: string[]) => void;
   addCafe: (cafe: Cafe) => void;
@@ -19,8 +18,8 @@ interface ReviewContextType {
 const ReviewContext = createContext<ReviewContextType | undefined>(undefined);
 
 export function ReviewProvider({ children }: { children: ReactNode }) {
-  const [cafes, setCafes] = useState<Cafe[]>(initialCafes.slice(0, 10));
-  const [userReviews, setUserReviews] = useState<UserReview[]>(initialUserReviews);
+  const [cafes, setCafes] = useState<Cafe[]>([]);
+  const [userReviews, setUserReviews] = useState<UserReview[]>([]);
   const [bookmarkedCafeIds, setBookmarkedCafeIds] = useState<string[]>([]);
   const [favoritedCafeIds, setFavoritedCafeIds] = useState<string[]>([]);
   const { user } = useUser();
@@ -135,7 +134,6 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
     <ReviewContext.Provider value={{
       cafes,
       userReviews,
-      recentActivity: userReviews,
       bookmarkedCafes,
       addReview,
       addCafe,
