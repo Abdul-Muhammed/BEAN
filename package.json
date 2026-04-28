@@ -20,7 +20,9 @@
     "@gluestack-style/react": "^1.0.57",
     "@gluestack-ui/config": "^1.1.20",
     "@gluestack-ui/themed": "^1.1.73",
+    "@gorhom/bottom-sheet": "^5.2.10",
     "@lucide/lab": "^0.1.2",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/bottom-tabs": "^7.2.0",
     "@react-navigation/native": "^7.0.14",
     "@supabase/supabase-js": "^2.81.1",
@@ -65,6 +67,8 @@
     "@babel/core": "^7.25.2",
     "@types/react": "~19.1.10",
     "@types/react-native": "^0.72.8",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"
   }
 }

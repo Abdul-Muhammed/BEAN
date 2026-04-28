@@ -27,6 +27,7 @@ export interface Review {
   userImage: string;
   rating: number;
   text: string;
+  orderedItem?: string;
   date: string;
   attributes?: string[];
   photos?: string[];
@@ -37,9 +38,11 @@ export interface UserReview {
   cafeImage: string;
   cafeName: string;
   cafeId: string;
+  cafePlaceId?: string;
   rating: number;
   date: string;
   text: string;
+  orderedItem?: string;
   attributes?: string[];
   photos?: string[];
 }

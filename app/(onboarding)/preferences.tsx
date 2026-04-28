@@ -49,7 +49,7 @@ export default function PreferencesScreen() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-  const { username, location } = useLocalSearchParams();
+  const { username, location, latitude, longitude } = useLocalSearchParams();
   const { user } = useUser();
 
   const toggleCategory = (categoryId: string) => {
@@ -87,6 +87,9 @@ export default function PreferencesScreen() {
         },
       });
 
+      const parsedLat = latitude ? parseFloat(latitude as string) : NaN;
+      const parsedLng = longitude ? parseFloat(longitude as string) : NaN;
+
       const updatedProfile = await createOrUpdateProfile({
         userId: user.id,
         username: trimmedUsername,
@@ -95,6 +98,8 @@ export default function PreferencesScreen() {
         email: user.primaryEmailAddress?.emailAddress || '',
         profileImageUrl: user.imageUrl,
         location: location as string,
+        latitude: Number.isFinite(parsedLat) ? parsedLat : null,
+        longitude: Number.isFinite(parsedLng) ? parsedLng : null,
         preferences: selectedCategories,
         onboardingCompleted: true,
       });

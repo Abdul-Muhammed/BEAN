@@ -32,8 +32,14 @@ import {
   BadgeText,
   HStack,
 } from '@gluestack-ui/themed';
+import * as Location from 'expo-location';
 import { useReviews } from '../../context/ReviewContext';
-import { searchCafesByText, searchCafesNearby, convertPlaceToCafe } from '../../services/googlePlaces';
+import {
+  searchCafesByText,
+  searchCafesNearby,
+  searchCafesNearbyByCoords,
+  convertPlaceToCafe,
+} from '../../services/googlePlaces';
 import { useUserProfile } from '../../hooks/useUserProfile';
 
 type FilterType = 'all' | 'open' | 'topRated' | 'wifi' | 'parking';
@@ -52,13 +58,42 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (hasLoadedNearby.current) return;
-    if (!profile?.location_address) return;
+    const hasCoords =
+      typeof profile?.location_latitude === 'number' &&
+      typeof profile?.location_longitude === 'number';
+    if (!hasCoords && !profile?.location_address) return;
+
+    const resolveCoords = async (): Promise<{ lat: number; lng: number } | null> => {
+      if (hasCoords) {
+        return {
+          lat: profile!.location_latitude as number,
+          lng: profile!.location_longitude as number,
+        };
+      }
+      // Fallback for profiles created before coordinates were persisted:
+      // ask the device for its current location instead of using Google's
+      // Geocoding API (which often returns REQUEST_DENIED if it isn't
+      // enabled on the project).
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') return null;
+        const pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        return { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      } catch {
+        return null;
+      }
+    };
 
     const loadNearbyCafes = async () => {
       setIsLoadingNearby(true);
       setNearbyError(null);
       try {
-        const results = await searchCafesNearby(profile.location_address!);
+        const coords = await resolveCoords();
+        const results = coords
+          ? await searchCafesNearbyByCoords(coords.lat, coords.lng)
+          : await searchCafesNearby(profile!.location_address!);
         const converted = await Promise.all(
           results.slice(0, 15).map(place => convertPlaceToCafe(place))
         );
@@ -71,7 +106,7 @@ export default function HomeScreen() {
     };
 
     loadNearbyCafes();
-  }, [profile?.location_address]);
+  }, [profile?.location_address, profile?.location_latitude, profile?.location_longitude]);
 
   const handleCafeClick = (cafe: any) => {
     addCafe(cafe);

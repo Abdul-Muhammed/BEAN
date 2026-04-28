@@ -10,6 +10,8 @@ export interface UserProfile {
   last_name: string | null;
   email: string;
   location_address: string | null;
+  location_latitude: number | null;
+  location_longitude: number | null;
   preferences: any;
   profile_image_url: string | null;
   onboarding_completed: boolean;

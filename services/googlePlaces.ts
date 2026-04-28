@@ -148,6 +148,90 @@ export async function updateCafeWithRealImage(cafe: any) {
   return cafe; // Return original if no photo found
 }
 
+// Strip a comma-separated address down to a more reliably geocodable form
+// by removing leading street number and de-duplicating tokens (e.g.
+// "Auckland, Auckland" -> "Auckland"). Falls back gracefully if the input
+// doesn't match expected patterns.
+function simplifyAddress(address: string): string | null {
+  if (!address) return null;
+
+  const parts = address
+    .split(',')
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+
+  if (parts.length === 0) return null;
+
+  // Drop the very first part if it looks like just a street number (e.g. "35").
+  const filtered = parts.filter((p, idx) => !(idx === 0 && /^\d+\w?$/.test(p)));
+
+  // De-duplicate consecutive/repeating tokens, case-insensitive.
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  for (const part of filtered) {
+    const key = part.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(part);
+    }
+  }
+
+  // Prefer the suburb/city/country tail (last 3 parts max) for a more
+  // reliable geocode hit than a full street address.
+  const tail = deduped.slice(-3);
+  return tail.join(', ');
+}
+
+// Search cafes around an explicit coordinate. Skips the Geocoding API
+// entirely, which avoids `REQUEST_DENIED` failures when the project's
+// Geocoding API isn't enabled but Places is.
+export async function searchCafesNearbyByCoords(
+  lat: number,
+  lng: number,
+  radius: number = 5000
+): Promise<PlaceDetails[]> {
+  if (Platform.OS === 'web') {
+    console.warn('Google Places API is not available on web platform due to CORS restrictions');
+    return [];
+  }
+
+  if (!GOOGLE_PLACES_API_KEY) {
+    console.warn('Google Places API key not found');
+    return [];
+  }
+
+  try {
+    const placesResponse = await fetch(
+      `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=cafe&key=${GOOGLE_PLACES_API_KEY}`
+    );
+
+    const placesData = await placesResponse.json();
+
+    if (placesData.status === 'OVER_QUERY_LIMIT') {
+      console.warn('Google Places API quota exceeded');
+      return [];
+    }
+
+    if (placesData.status === 'REQUEST_DENIED') {
+      console.warn(
+        'Google Places Nearby Search returned REQUEST_DENIED. Check that the Places API is enabled, billing is active, and the API key restrictions allow requests from this app. Details:',
+        placesData.error_message || '(no error_message)'
+      );
+      return [];
+    }
+
+    if (placesData.status !== 'OK' && placesData.status !== 'ZERO_RESULTS') {
+      console.warn('Google Places API error:', placesData.status, placesData.error_message);
+      return [];
+    }
+
+    return placesData.results || [];
+  } catch (error) {
+    console.error('Error searching cafes nearby by coords:', error);
+    return [];
+  }
+}
+
 // Search for cafes in a specific location
 export async function searchCafesNearby(location: string, radius: number = 5000): Promise<PlaceDetails[]> {
   if (Platform.OS === 'web') {
@@ -161,38 +245,52 @@ export async function searchCafesNearby(location: string, radius: number = 5000)
   }
 
   try {
-    // First, geocode the location to get coordinates
-    const geocodeResponse = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(location)}&key=${GOOGLE_PLACES_API_KEY}`
-    );
-    
-    const geocodeData = await geocodeResponse.json();
-    
+    // First, geocode the location to get coordinates.
+    // Bias to NZ since the app is launched in New Zealand; this avoids
+    // ambiguous global matches when addresses contain duplicated tokens
+    // (e.g. "Auckland, Auckland, New Zealand").
+    const geocodeAttempt = async (address: string) => {
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
+          address
+        )}&region=nz&components=country:NZ&key=${GOOGLE_PLACES_API_KEY}`
+      );
+      return response.json();
+    };
+
+    let geocodeData = await geocodeAttempt(location);
+
+    if (geocodeData.status === 'REQUEST_DENIED') {
+      console.warn(
+        'Geocoding API returned REQUEST_DENIED. The Places API key likely does not have the Geocoding API enabled. Details:',
+        geocodeData.error_message || '(no error_message)'
+      );
+      return [];
+    }
+
+    // Fallback: if the full address fails (often because of duplicated
+    // suburb/city tokens), retry with a simplified version that drops
+    // any duplicate parts and street number.
     if (geocodeData.status !== 'OK' || !geocodeData.results.length) {
-      console.warn('Could not geocode location:', location);
+      const simplified = simplifyAddress(location);
+      if (simplified && simplified !== location) {
+        console.warn(
+          `Geocode failed for "${location}" (${geocodeData.status}); retrying with "${simplified}"`
+        );
+        geocodeData = await geocodeAttempt(simplified);
+      }
+    }
+
+    if (geocodeData.status !== 'OK' || !geocodeData.results.length) {
+      console.warn(
+        `Could not geocode location: ${location} (status: ${geocodeData.status})`
+      );
       return [];
     }
-    
+
     const { lat, lng } = geocodeData.results[0].geometry.location;
-    
-    // Search for cafes near the coordinates
-    const placesResponse = await fetch(
-      `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=cafe&key=${GOOGLE_PLACES_API_KEY}`
-    );
-    
-    const placesData = await placesResponse.json();
-    
-    if (placesData.status === 'OVER_QUERY_LIMIT') {
-      console.warn('Google Places API quota exceeded');
-      return [];
-    }
-    
-    if (placesData.status !== 'OK') {
-      console.warn('Google Places API error:', placesData.status);
-      return [];
-    }
-    
-    return placesData.results || [];
+
+    return searchCafesNearbyByCoords(lat, lng, radius);
   } catch (error) {
     console.error('Error searching cafes nearby:', error);
     return [];
@@ -458,6 +556,12 @@ export async function enrichCafeWithDetails(placeId: string): Promise<any | null
   const amenities = determineAmenities(types, placeDetails.rating);
 
   return {
+    name: placeDetails.name || undefined,
+    location: placeDetails.formatted_address || undefined,
+    description: `A popular cafe located at ${placeDetails.formatted_address || 'this area'}. ${
+      placeDetails.rating ? `Rated ${placeDetails.rating} stars by Google users.` : ''
+    }`,
+    image: photos[0] || undefined,
     phone: placeDetails.formatted_phone_number || undefined,
     hours: hours || undefined,
     amenities: amenities.length > 0 ? amenities : undefined,

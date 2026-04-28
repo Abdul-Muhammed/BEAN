@@ -15,7 +15,7 @@ import { useRouter } from 'expo-router';
 import { Badge, BadgeText } from '@gluestack-ui/themed';
 
 export default function BookmarksScreen() {
-  const { bookmarkedCafes, toggleBookmark, isBookmarked } = useReviews();
+  const { bookmarkedCafes, toggleBookmark, isBookmarked, addCafe } = useReviews();
   const router = useRouter();
 
   return (
@@ -43,7 +43,10 @@ export default function BookmarksScreen() {
             <View key={cafe.id} style={styles.cafeCard}>
               <TouchableOpacity
                 style={styles.cafeCardContent}
-                onPress={() => router.push(`/cafe/${cafe.id}`)}
+                onPress={() => {
+                  addCafe(cafe);
+                  router.push(`/cafe/${cafe.id}`);
+                }}
               >
                 <View style={styles.cafeImageContainer}>
                   <Image source={{ uri: cafe.image }} style={styles.cafeImage} />

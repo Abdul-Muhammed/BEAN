@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -12,42 +12,46 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import {
-  X,
-  Star,
-  Camera,
-  ChevronDown,
-  Search,
-} from 'lucide-react-native';
-import { useReviews } from '../../context/ReviewContext';
-import { searchCafesByText, convertPlaceToCafe } from '../../services/googlePlaces';
+import { X, Star, Camera, ChevronDown, Check } from 'lucide-react-native';
+import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
 import * as ImagePicker from 'expo-image-picker';
+import { useReviews } from '../../context/ReviewContext';
 
 const ATTRIBUTES = [
-  { id: 'wifi', label: 'WiFi' },
+  { id: 'wifi', label: 'Has WiFi' },
   { id: 'ambient', label: 'Ambient' },
+  { id: 'friendly-staff', label: 'Friendly Staff' },
   { id: 'ethical', label: 'Ethical' },
-  { id: 'cozy', label: 'Cozy' },
-  { id: 'spacious', label: 'Spacious' },
   { id: 'quiet', label: 'Quiet' },
-  { id: 'outdoor', label: 'Outdoor Seating' },
-  { id: 'parking', label: 'Parking' },
+  { id: 'fast-service', label: 'Fast Service' },
 ];
+
+const sectionEntering = FadeInUp.springify().duration(250);
+const sectionLayout = Layout.springify().duration(250);
+
+function AnimatedSection({ children }: { children: React.ReactNode }) {
+  return (
+    <Animated.View entering={sectionEntering} layout={sectionLayout} style={styles.field}>
+      {children}
+    </Animated.View>
+  );
+}
 
 export default function AddReviewScreen() {
   const { addReview } = useReviews();
   const params = useLocalSearchParams();
+  const scrollRef = useRef<ScrollView>(null);
   const [selectedCafe, setSelectedCafe] = useState<any>(null);
-  const [showCafeSearch, setShowCafeSearch] = useState(false);
-  const [cafeSearchQuery, setCafeSearchQuery] = useState('');
-  const [cafeSearchResults, setSearchResults] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [rating, setRating] = useState(0);
+  const [orderedItem, setOrderedItem] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedAttributes, setSelectedAttributes] = useState<string[]>([]);
   const [photos, setPhotos] = useState<string[]>([]);
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [likesCompleted, setLikesCompleted] = useState(false);
+  const [notesCompleted, setNotesCompleted] = useState(false);
+  const [photosCompleted, setPhotosCompleted] = useState(false);
 
   useEffect(() => {
     if (params.cafeId && params.cafeName) {
@@ -69,35 +73,44 @@ export default function AddReviewScreen() {
     }
   }, [params.selectedCafeId, params.selectedCafeName, params.selectedCafeImage]);
 
-  const handleCafeSearch = async () => {
-    if (!cafeSearchQuery.trim()) return;
+  const showOrderSection = rating > 0;
+  const showLikesSection = orderedItem.trim().length > 0;
+  const showNotesSection = showLikesSection && likesCompleted;
+  const showPhotoSection = showNotesSection && (notes.trim().length > 0 || notesCompleted);
+  const showSubmitButton = showPhotoSection && (photos.length > 0 || photosCompleted);
+  const canSubmit = Boolean(selectedCafe && rating > 0 && orderedItem.trim().length > 0);
 
-    setIsSearching(true);
-    try {
-      const results = await searchCafesByText(cafeSearchQuery);
-      const convertedCafes = await Promise.all(
-        results.slice(0, 10).map(place => convertPlaceToCafe(place))
-      );
-      setSearchResults(convertedCafes);
-    } catch (error) {
-      Alert.alert('Search Error', 'Failed to search for cafes. Please try again.');
-    }
-    setIsSearching(false);
-  };
+  const visibleStepCount = [
+    showOrderSection,
+    showLikesSection,
+    showNotesSection,
+    showPhotoSection,
+    showSubmitButton,
+  ].filter(Boolean).length;
 
-  const selectCafe = (cafe: any) => {
-    setSelectedCafe(cafe);
-    setShowCafeSearch(false);
-    setCafeSearchQuery('');
-    setSearchResults([]);
-  };
+  useEffect(() => {
+    if (visibleStepCount === 0) return;
+
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 120);
+
+    return () => clearTimeout(timer);
+  }, [visibleStepCount]);
 
   const toggleAttribute = (attributeId: string) => {
-    setSelectedAttributes(prev =>
-      prev.includes(attributeId)
-        ? prev.filter(id => id !== attributeId)
-        : [...prev, attributeId]
-    );
+    setSelectedAttributes((prev) => {
+      if (prev.includes(attributeId)) {
+        return prev.filter((id) => id !== attributeId);
+      }
+
+      if (prev.length >= 3) {
+        return prev;
+      }
+
+      setLikesCompleted(true);
+      return [...prev, attributeId];
+    });
   };
 
   const pickImage = async () => {
@@ -108,16 +121,37 @@ export default function AddReviewScreen() {
     });
 
     if (!result.canceled) {
-      const newPhotos = result.assets.map(asset => asset.uri);
-      setPhotos(prev => [...prev, ...newPhotos].slice(0, 5));
+      const newPhotos = result.assets.map((asset) => asset.uri);
+      setPhotos((prev) => [...prev, ...newPhotos].slice(0, 5));
+      setPhotosCompleted(true);
     }
   };
 
   const removePhoto = (index: number) => {
-    setPhotos(prev => prev.filter((_, i) => i !== index));
+    setPhotos((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = () => {
+  const handleNotesChange = (text: string) => {
+    setNotes(text);
+    if (text.trim().length > 0) {
+      setNotesCompleted(true);
+    }
+  };
+
+  const resetForm = () => {
+    setSelectedCafe(null);
+    setRating(0);
+    setOrderedItem('');
+    setNotes('');
+    setSelectedAttributes([]);
+    setPhotos([]);
+    setLikesCompleted(false);
+    setNotesCompleted(false);
+    setPhotosCompleted(false);
+    setDate(new Date());
+  };
+
+  const handleSubmit = async () => {
     if (!selectedCafe) {
       Alert.alert('Missing Information', 'Please select a cafe');
       return;
@@ -126,16 +160,22 @@ export default function AddReviewScreen() {
       Alert.alert('Missing Information', 'Please add a rating');
       return;
     }
+    if (orderedItem.trim().length === 0) {
+      Alert.alert('Missing Information', 'Please add what you ordered');
+      return;
+    }
 
-    addReview(selectedCafe.id, rating, notes, selectedAttributes, photos);
+    await addReview({
+      cafeId: selectedCafe.id,
+      rating,
+      text: notes.trim(),
+      orderedItem: orderedItem.trim(),
+      attributes: selectedAttributes,
+      photos,
+    });
     Alert.alert('Success', 'Your review has been added!');
 
-    setSelectedCafe(null);
-    setRating(0);
-    setNotes('');
-    setSelectedAttributes([]);
-    setPhotos([]);
-
+    resetForm();
     router.push('/(tabs)/home');
   };
 
@@ -152,34 +192,36 @@ export default function AddReviewScreen() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.field}>
-          <Text style={styles.label}>Cafe visited *</Text>
+        <View style={styles.contextCard}>
+          <Text style={styles.contextLabel}>Cafe visited</Text>
           <TouchableOpacity
             style={styles.dropdown}
             onPress={() => router.push('/search-cafes')}
+            activeOpacity={0.85}
           >
             <Text style={selectedCafe ? styles.dropdownText : styles.dropdownPlaceholder}>
               {selectedCafe ? selectedCafe.name : 'Search for a cafe'}
             </Text>
             <ChevronDown size={20} color="#8E8E93" />
           </TouchableOpacity>
-        </View>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Date</Text>
+          <Text style={[styles.contextLabel, styles.dateLabel]}>Date</Text>
           <TouchableOpacity
             style={styles.dateDisplay}
             onPress={() => setShowDatePicker(!showDatePicker)}
+            activeOpacity={0.85}
           >
             <Text style={styles.dateText}>
               {date.toLocaleDateString('en-US', {
                 year: 'numeric',
                 month: 'long',
-                day: 'numeric'
+                day: 'numeric',
               })}
             </Text>
             <ChevronDown size={20} color="#8E8E93" />
@@ -224,91 +266,159 @@ export default function AddReviewScreen() {
           )}
         </View>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Rating *</Text>
+        <AnimatedSection>
+          <Text style={styles.stepEyebrow}>Rating</Text>
+          <Text style={styles.stepTitle}>How was your experience?</Text>
           <View style={styles.starsContainer}>
             {[1, 2, 3, 4, 5].map((star) => (
               <TouchableOpacity
                 key={star}
                 onPress={() => setRating(star)}
                 style={styles.starButton}
+                activeOpacity={0.8}
               >
                 <Star
-                  size={40}
-                  color={star <= rating ? '#4CAF50' : '#E5E5EA'}
-                  fill={star <= rating ? '#4CAF50' : 'transparent'}
+                  size={42}
+                  color={star <= rating ? '#D4AF37' : '#E5E5EA'}
+                  fill={star <= rating ? '#D4AF37' : 'transparent'}
                   strokeWidth={2}
                 />
               </TouchableOpacity>
             ))}
           </View>
-        </View>
+        </AnimatedSection>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>What did you like?</Text>
-          <View style={styles.attributesContainer}>
-            {ATTRIBUTES.map((attr) => (
-              <TouchableOpacity
-                key={attr.id}
-                style={[
-                  styles.attributeButton,
-                  selectedAttributes.includes(attr.id) && styles.attributeButtonActive
-                ]}
-                onPress={() => toggleAttribute(attr.id)}
-              >
-                <Text
-                  style={[
-                    styles.attributeText,
-                    selectedAttributes.includes(attr.id) && styles.attributeTextActive
-                  ]}
-                >
-                  {attr.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+        {showOrderSection && (
+          <AnimatedSection>
+            <Text style={styles.stepEyebrow}>What Did You Order?</Text>
+            <TextInput
+              style={styles.singleLineInput}
+              placeholder="Flat white, almond croissant..."
+              placeholderTextColor="#9A9A9F"
+              value={orderedItem}
+              onChangeText={setOrderedItem}
+              returnKeyType="done"
+            />
+          </AnimatedSection>
+        )}
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Notes (optional)</Text>
-          <TextInput
-            style={styles.notesInput}
-            placeholder="Share your experience..."
-            placeholderTextColor="#8E8E93"
-            value={notes}
-            onChangeText={setNotes}
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-          />
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Photos (optional)</Text>
-          <View style={styles.photosContainer}>
-            {photos.map((photo, index) => (
-              <View key={index} style={styles.photoWrapper}>
-                <Image source={{ uri: photo }} style={styles.photoPreview} />
-                <TouchableOpacity
-                  style={styles.removePhotoButton}
-                  onPress={() => removePhoto(index)}
-                >
-                  <X size={16} color="#FFFFFF" />
-                </TouchableOpacity>
+        {showLikesSection && (
+          <AnimatedSection>
+            <View style={styles.stepHeaderRow}>
+              <View>
+                <Text style={styles.stepEyebrow}>What Did You Like?</Text>
+                <Text style={styles.stepHint}>Choose up to 3</Text>
               </View>
-            ))}
-            {photos.length < 5 && (
-              <TouchableOpacity style={styles.addPhotoButton} onPress={pickImage}>
-                <Camera size={24} color="#8E8E93" />
-                <Text style={styles.addPhotoText}>Add Photo</Text>
+              <TouchableOpacity onPress={() => setLikesCompleted(true)} style={styles.skipButton}>
+                <Text style={styles.skipButtonText}>Skip</Text>
               </TouchableOpacity>
-            )}
-          </View>
-        </View>
+            </View>
 
-        <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-          <Text style={styles.submitButtonText}>Submit Review</Text>
-        </TouchableOpacity>
+            <View style={styles.attributesContainer}>
+              {ATTRIBUTES.map((attr) => {
+                const isSelected = selectedAttributes.includes(attr.id);
+                const isDisabled = !isSelected && selectedAttributes.length >= 3;
+
+                return (
+                  <TouchableOpacity
+                    key={attr.id}
+                    style={[
+                      styles.attributeButton,
+                      isSelected && styles.attributeButtonActive,
+                      isDisabled && styles.attributeButtonDisabled,
+                    ]}
+                    onPress={() => toggleAttribute(attr.id)}
+                    disabled={isDisabled}
+                    activeOpacity={0.8}
+                  >
+                    {isSelected && <Check size={14} color="#FFFFFF" />}
+                    <Text
+                      style={[
+                        styles.attributeText,
+                        isSelected && styles.attributeTextActive,
+                        isDisabled && styles.attributeTextDisabled,
+                      ]}
+                    >
+                      {attr.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </AnimatedSection>
+        )}
+
+        {showNotesSection && (
+          <AnimatedSection>
+            <View style={styles.stepHeaderRow}>
+              <View>
+                <Text style={styles.stepEyebrow}>Notes</Text>
+                <Text style={styles.stepHint}>Optional</Text>
+              </View>
+              <TouchableOpacity onPress={() => setNotesCompleted(true)} style={styles.skipButton}>
+                <Text style={styles.skipButtonText}>Skip</Text>
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={styles.notesInput}
+              placeholder="Anything memorable about the visit?"
+              placeholderTextColor="#9A9A9F"
+              value={notes}
+              onChangeText={handleNotesChange}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+          </AnimatedSection>
+        )}
+
+        {showPhotoSection && (
+          <AnimatedSection>
+            <View style={styles.stepHeaderRow}>
+              <View>
+                <Text style={styles.stepEyebrow}>Upload Photo</Text>
+                <Text style={styles.stepHint}>Optional</Text>
+              </View>
+              <TouchableOpacity onPress={() => setPhotosCompleted(true)} style={styles.skipButton}>
+                <Text style={styles.skipButtonText}>Skip</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.photosContainer}>
+              {photos.map((photo, index) => (
+                <View key={`${photo}-${index}`} style={styles.photoWrapper}>
+                  <Image source={{ uri: photo }} style={styles.photoPreview} />
+                  <TouchableOpacity
+                    style={styles.removePhotoButton}
+                    onPress={() => removePhoto(index)}
+                  >
+                    <X size={16} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {photos.length < 5 && (
+                <TouchableOpacity style={styles.addPhotoButton} onPress={pickImage}>
+                  <Camera size={26} color="#8E8E93" />
+                  <Text style={styles.addPhotoText}>Add Photo</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </AnimatedSection>
+        )}
+
+        {showSubmitButton && (
+          <Animated.View entering={sectionEntering} layout={sectionLayout}>
+            <TouchableOpacity
+              style={[styles.submitButton, !canSubmit && styles.submitButtonDisabled]}
+              onPress={handleSubmit}
+              disabled={!canSubmit}
+              activeOpacity={0.9}
+            >
+              <Text style={[styles.submitButtonText, !canSubmit && styles.submitButtonTextDisabled]}>
+                Continue
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -326,7 +436,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: '#F4F1EA',
   },
   closeButton: {
     width: 40,
@@ -344,29 +454,84 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
-    paddingBottom: 100,
+    paddingBottom: 110,
+  },
+  contextCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: '#F2EEE6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.04,
+    shadowRadius: 16,
+    elevation: 1,
+  },
+  contextLabel: {
+    fontSize: 12,
+    fontFamily: 'Lato-Bold',
+    color: '#8E8E93',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    marginBottom: 8,
+  },
+  dateLabel: {
+    marginTop: 16,
   },
   field: {
-    marginBottom: 24,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#F2EEE6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.05,
+    shadowRadius: 18,
+    elevation: 1,
   },
-  label: {
-    fontSize: 16,
+  stepHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 16,
+    marginBottom: 16,
+  },
+  stepEyebrow: {
+    fontSize: 13,
     fontFamily: 'Lato-Bold',
-    color: '#1C1C1E',
+    color: '#A37D19',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
     marginBottom: 8,
+  },
+  stepTitle: {
+    fontSize: 24,
+    fontFamily: 'OtomanopeeOne-Regular',
+    color: '#1C1C1E',
+    lineHeight: 32,
+    marginBottom: 18,
+  },
+  stepHint: {
+    fontSize: 14,
+    fontFamily: 'Lato-Regular',
+    color: '#8E8E93',
   },
   dropdown: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#F2F2F7',
-    borderRadius: 12,
+    backgroundColor: '#F7F3EC',
+    borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 16,
   },
   dropdownText: {
     fontSize: 16,
-    fontFamily: 'Lato-Regular',
+    fontFamily: 'Lato-Bold',
     color: '#1C1C1E',
     flex: 1,
   },
@@ -376,61 +541,12 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     flex: 1,
   },
-  searchContainer: {
-    marginBottom: 24,
-  },
-  searchInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F2F2F7',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    fontFamily: 'Lato-Regular',
-    color: '#1C1C1E',
-    paddingVertical: 16,
-  },
-  searchResults: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginTop: 8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  searchResultItem: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  searchResultName: {
-    fontSize: 16,
-    fontFamily: 'Lato-Bold',
-    color: '#1C1C1E',
-    marginBottom: 4,
-  },
-  searchResultAddress: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
-  },
   dateDisplay: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#F2F2F7',
-    borderRadius: 12,
+    backgroundColor: '#F7F3EC',
+    borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 16,
   },
@@ -442,21 +558,15 @@ const styles = StyleSheet.create({
   },
   datePickerContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginTop: 8,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    borderRadius: 18,
+    marginTop: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#F2EEE6',
   },
   dateInput: {
-    backgroundColor: '#F2F2F7',
-    borderRadius: 12,
+    backgroundColor: '#F7F3EC',
+    borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
@@ -470,8 +580,8 @@ const styles = StyleSheet.create({
   },
   dateQuickButton: {
     flex: 1,
-    backgroundColor: '#4CAF50',
-    borderRadius: 8,
+    backgroundColor: '#1C1C1E',
+    borderRadius: 12,
     paddingVertical: 10,
     alignItems: 'center',
   },
@@ -482,46 +592,76 @@ const styles = StyleSheet.create({
   },
   starsContainer: {
     flexDirection: 'row',
-    gap: 8,
+    justifyContent: 'space-between',
   },
   starButton: {
-    padding: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 3,
+  },
+  singleLineInput: {
+    backgroundColor: '#F7F3EC',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    fontSize: 17,
+    fontFamily: 'Lato-Regular',
+    color: '#1C1C1E',
+  },
+  skipButton: {
+    backgroundColor: '#F7F3EC',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  skipButtonText: {
+    fontSize: 13,
+    fontFamily: 'Lato-Bold',
+    color: '#6B6257',
   },
   attributesContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 10,
   },
   attributeButton: {
-    backgroundColor: '#F2F2F7',
-    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F7F3EC',
+    borderRadius: 999,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 11,
     borderWidth: 1,
-    borderColor: '#F2F2F7',
+    borderColor: '#F2EEE6',
   },
   attributeButtonActive: {
-    backgroundColor: '#E8F5E9',
-    borderColor: '#4CAF50',
+    backgroundColor: '#1C1C1E',
+    borderColor: '#1C1C1E',
+  },
+  attributeButtonDisabled: {
+    opacity: 0.45,
   },
   attributeText: {
     fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#666',
+    fontFamily: 'Lato-Bold',
+    color: '#4B4741',
   },
   attributeTextActive: {
-    color: '#4CAF50',
-    fontFamily: 'Lato-Bold',
+    color: '#FFFFFF',
+  },
+  attributeTextDisabled: {
+    color: '#8E8E93',
   },
   notesInput: {
-    backgroundColor: '#F2F2F7',
-    borderRadius: 12,
+    backgroundColor: '#F7F3EC',
+    borderRadius: 18,
     paddingHorizontal: 16,
     paddingVertical: 16,
     fontSize: 16,
     fontFamily: 'Lato-Regular',
     color: '#1C1C1E',
-    minHeight: 120,
+    minHeight: 124,
+    lineHeight: 22,
   },
   photosContainer: {
     flexDirection: 'row',
@@ -532,9 +672,9 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   photoPreview: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
+    width: 86,
+    height: 86,
+    borderRadius: 18,
   },
   removePhotoButton: {
     position: 'absolute',
@@ -548,31 +688,45 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addPhotoButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#E5E5EA',
+    width: 112,
+    height: 86,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E5DED2',
     borderStyle: 'dashed',
+    backgroundColor: '#FBF8F2',
     alignItems: 'center',
     justifyContent: 'center',
   },
   addPhotoText: {
-    fontSize: 10,
-    fontFamily: 'Lato-Regular',
+    fontSize: 12,
+    fontFamily: 'Lato-Bold',
     color: '#8E8E93',
-    marginTop: 4,
+    marginTop: 6,
   },
   submitButton: {
-    backgroundColor: '#4CAF50',
-    borderRadius: 12,
-    paddingVertical: 16,
+    backgroundColor: '#1C1C1E',
+    borderRadius: 20,
+    paddingVertical: 18,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    elevation: 2,
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#E5E5EA',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   submitButtonText: {
     fontSize: 16,
     fontFamily: 'Lato-Bold',
     color: '#FFFFFF',
+  },
+  submitButtonTextDisabled: {
+    color: '#8E8E93',
   },
 });

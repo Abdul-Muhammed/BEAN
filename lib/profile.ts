@@ -8,6 +8,8 @@ export interface CreateProfileParams {
   email: string;
   profileImageUrl?: string | null;
   location?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   preferences?: string[];
   onboardingCompleted?: boolean;
 }
@@ -21,6 +23,8 @@ export async function createOrUpdateProfile(params: CreateProfileParams) {
     email,
     profileImageUrl,
     location,
+    latitude,
+    longitude,
     preferences = [],
     onboardingCompleted = false,
   } = params;
@@ -65,6 +69,11 @@ export async function createOrUpdateProfile(params: CreateProfileParams) {
       updated_at: new Date().toISOString(),
     };
 
+    if (typeof latitude === 'number' && typeof longitude === 'number') {
+      updateData.location_latitude = latitude;
+      updateData.location_longitude = longitude;
+    }
+
     // Update username if provided and valid
     if (usernameProvided && trimmedUsername && trimmedUsername.length >= 4) {
       updateData.username = trimmedUsername;
@@ -106,6 +115,8 @@ export async function createOrUpdateProfile(params: CreateProfileParams) {
       last_name: lastName || null,
       email,
       location_address: location || null,
+      location_latitude: typeof latitude === 'number' ? latitude : null,
+      location_longitude: typeof longitude === 'number' ? longitude : null,
       preferences: preferences || [],
       profile_image_url: profileImageUrl || null,
       onboarding_completed: onboardingCompleted,
