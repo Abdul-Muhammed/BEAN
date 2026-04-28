@@ -44,8 +44,11 @@ export default function AddReviewScreen() {
       return;
     }
 
-    // Add the review to the app state
-    addReview(id as string, rating, reviewText.trim());
+    addReview({
+      cafeId: id as string,
+      rating,
+      text: reviewText.trim(),
+    });
 
     router.back();
     

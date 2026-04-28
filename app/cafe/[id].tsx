@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -23,13 +23,11 @@ import {
   ExternalLink,
   Star,
   Wifi,
-  X
 } from 'lucide-react-native';
-import StarRating from '../../components/StarRating';
 import ReviewCard from '../../components/ReviewCard';
 import CafeDetailSkeleton from '../../components/CafeDetailSkeleton';
 import PhotoGallery from '../../components/PhotoGallery';
-import RatingDistribution from '../../components/RatingDistribution';
+import RatingHistogram from '../../components/RatingHistogram';
 import { useReviews } from '../../context/ReviewContext';
 import { enrichCafeWithDetails } from '../../services/googlePlaces';
 
@@ -38,27 +36,40 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 export default function CafeDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const { cafes, toggleFavorite, isFavorited, toggleBookmark, isBookmarked, addCafe } = useReviews();
+  const { cafes, toggleFavorite, isFavorited, toggleBookmark, isBookmarked, addCafe, getCafeById } = useReviews();
   const [isLoading, setIsLoading] = useState(true);
-  const [isEnriching, setIsEnriching] = useState(false);
   const [showPhotoGallery, setShowPhotoGallery] = useState(false);
+  const enrichedPlaceIds = useRef<Set<string>>(new Set());
+  const cafeId = Array.isArray(id) ? id[0] : id;
 
-  // Find cafe in context - this will update reactively when context changes
-  const cafe = cafes.find(c => c.id === id);
+  // Resolve live cafes first, then Supabase-backed saved/diary snapshots after a cold start.
+  const cafe = cafeId ? getCafeById(cafeId) : undefined;
 
   useEffect(() => {
     // If cafe is found, stop loading quickly
     if (cafe) {
       setIsLoading(false);
+
+      if (!cafes.some((c) => c.id === cafe.id)) {
+        addCafe(cafe);
+      }
       
       // Lazy load Place Details if cafe has place_id and hasn't been enriched yet
-      if (cafe.place_id && (!cafe.phone || !cafe.hours || !cafe.photos || cafe.photos.length <= 1)) {
-        setIsEnriching(true);
+      if (
+        cafe.place_id &&
+        !enrichedPlaceIds.current.has(cafe.place_id) &&
+        (!cafe.phone || !cafe.hours || !cafe.photos || cafe.photos.length <= 1)
+      ) {
+        enrichedPlaceIds.current.add(cafe.place_id);
         enrichCafeWithDetails(cafe.place_id).then((enrichedData) => {
           if (enrichedData) {
             // Update cafe in context with enriched data
             const updatedCafe = {
               ...cafe,
+              name: enrichedData.name || cafe.name,
+              location: enrichedData.location || cafe.location,
+              description: enrichedData.description || cafe.description,
+              image: enrichedData.image || cafe.image,
               phone: enrichedData.phone || cafe.phone,
               hours: enrichedData.hours || cafe.hours,
               amenities: enrichedData.amenities || cafe.amenities,
@@ -67,10 +78,8 @@ export default function CafeDetailScreen() {
             };
             addCafe(updatedCafe);
           }
-          setIsEnriching(false);
         }).catch((error) => {
           console.error('Error enriching cafe details:', error);
-          setIsEnriching(false);
         });
       }
       return;
@@ -83,7 +92,7 @@ export default function CafeDetailScreen() {
     }, 1000);
     
     return () => clearTimeout(timer);
-  }, [cafe, id, cafes.length]);
+  }, [cafe, cafeId, cafes, addCafe]);
 
   // Show skeleton while loading or if cafe not found after timeout
   if (isLoading) {
@@ -233,13 +242,10 @@ export default function CafeDetailScreen() {
 
           {/* Ratings Section */}
           <View style={styles.ratingsSection}>
-            <View style={styles.ratingsHeader}>
-              <Text style={styles.sectionTitle}>Ratings</Text>
-              <Text style={styles.overallRating}>★ {cafe.rating.toFixed(1)}</Text>
-            </View>
-
-            {/* Rating Distribution */}
-            <RatingDistribution reviews={cafe.reviews} averageRating={cafe.rating} />
+            <RatingHistogram
+              ratings={cafe.reviews.map((r) => r.rating)}
+              averageRating={cafe.rating}
+            />
 
             {/* Stat Cards */}
             <View style={styles.statCards}>
@@ -459,21 +465,10 @@ const styles = StyleSheet.create({
   ratingsSection: {
     marginBottom: 32,
   },
-  ratingsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
   sectionTitle: {
     fontSize: 20,
     fontFamily: 'OtomanopeeOne-Regular',
     color: '#1C1C1E',
-  },
-  overallRating: {
-    fontSize: 18,
-    fontFamily: 'Lato-Bold',
-    color: '#4CAF50',
   },
   statCards: {
     flexDirection: 'row',

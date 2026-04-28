@@ -25,9 +25,12 @@ export type Database = {
           first_name: string | null;
           last_name: string | null;
           email: string;
-          location: string | null;
+          location_address: string | null;
+          location_latitude: number | null;
+          location_longitude: number | null;
           preferences: string[] | null;
           profile_image_url: string | null;
+          onboarding_completed: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -38,9 +41,12 @@ export type Database = {
           first_name?: string | null;
           last_name?: string | null;
           email: string;
-          location?: string | null;
+          location_address?: string | null;
+          location_latitude?: number | null;
+          location_longitude?: number | null;
           preferences?: string[] | null;
           profile_image_url?: string | null;
+          onboarding_completed?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -51,11 +57,113 @@ export type Database = {
           first_name?: string | null;
           last_name?: string | null;
           email?: string;
-          location?: string | null;
+          location_address?: string | null;
+          location_latitude?: number | null;
+          location_longitude?: number | null;
           preferences?: string[] | null;
           profile_image_url?: string | null;
+          onboarding_completed?: boolean;
           created_at?: string;
           updated_at?: string;
+        };
+      };
+      reviews: {
+        Row: {
+          id: string;
+          clerk_user_id: string;
+          cafe_id: string;
+          cafe_place_id: string | null;
+          cafe_name: string;
+          cafe_image: string | null;
+          rating: number;
+          text: string | null;
+          ordered_item: string | null;
+          attributes: string[] | null;
+          photos: string[] | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          clerk_user_id: string;
+          cafe_id: string;
+          cafe_place_id?: string | null;
+          cafe_name: string;
+          cafe_image?: string | null;
+          rating: number;
+          text?: string | null;
+          ordered_item?: string | null;
+          attributes?: string[] | null;
+          photos?: string[] | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          clerk_user_id?: string;
+          cafe_id?: string;
+          cafe_place_id?: string | null;
+          cafe_name?: string;
+          cafe_image?: string | null;
+          rating?: number;
+          text?: string | null;
+          ordered_item?: string | null;
+          attributes?: string[] | null;
+          photos?: string[] | null;
+          created_at?: string;
+        };
+      };
+      bookmarks: {
+        Row: {
+          id: string;
+          clerk_user_id: string;
+          cafe_id: string;
+          cafe_place_id: string | null;
+          cafe_name: string;
+          cafe_image: string | null;
+          cafe_location: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          clerk_user_id: string;
+          cafe_id: string;
+          cafe_place_id?: string | null;
+          cafe_name: string;
+          cafe_image?: string | null;
+          cafe_location?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          clerk_user_id?: string;
+          cafe_id?: string;
+          cafe_place_id?: string | null;
+          cafe_name?: string;
+          cafe_image?: string | null;
+          cafe_location?: string | null;
+          created_at?: string;
+        };
+      };
+      favorites: {
+        Row: {
+          id: string;
+          clerk_user_id: string;
+          cafe_id: string;
+          cafe_place_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          clerk_user_id: string;
+          cafe_id: string;
+          cafe_place_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          clerk_user_id?: string;
+          cafe_id?: string;
+          cafe_place_id?: string | null;
+          created_at?: string;
         };
       };
     };

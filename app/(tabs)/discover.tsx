@@ -1,16 +1,16 @@
-import React, { useState, useMemo } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   StatusBar,
   TouchableOpacity,
-  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Search, MapPin, Star, Wifi } from 'lucide-react-native';
 import { WebView } from 'react-native-webview';
+import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import MapCafeCard from '../../components/MapCafeCard';
 import { useReviews } from '../../context/ReviewContext';
 
@@ -20,6 +20,8 @@ const DEFAULT_LONGITUDE = 174.7633;
 
 export default function DiscoverScreen() {
   const { cafes } = useReviews();
+  const bottomSheetRef = useRef<BottomSheet>(null);
+  const [sheetIndex, setSheetIndex] = useState(1);
   const [filters, setFilters] = useState({
     openNow: false,
     topRated: false,
@@ -27,6 +29,7 @@ export default function DiscoverScreen() {
   });
 
   const localCafes = useMemo(() => cafes, [cafes]);
+  const snapPoints = useMemo(() => ['15%', '30%', '80%'], []);
 
   // Filter local cafes based on filters
   const filteredCafes = localCafes.filter((cafe) => {
@@ -85,6 +88,30 @@ export default function DiscoverScreen() {
       [filterName]: !prev[filterName],
     }));
   };
+
+  const handleSheetHeaderPress = useCallback(() => {
+    const nextIndex = sheetIndex === 2 ? 1 : 2;
+    bottomSheetRef.current?.snapToIndex(nextIndex);
+  }, [sheetIndex]);
+
+  const renderSheetHandle = useCallback(
+    () => (
+      <TouchableOpacity
+        style={styles.sheetHeader}
+        activeOpacity={0.85}
+        onPress={handleSheetHeaderPress}
+      >
+        <View style={styles.dragHandle} />
+        <View style={styles.sheetTitleRow}>
+          <Text style={styles.sheetTitle}>Recent Cafes</Text>
+          <Text style={styles.sheetSubtitle}>
+            {filteredCafes.length} {filteredCafes.length === 1 ? 'cafe' : 'cafes'} nearby
+          </Text>
+        </View>
+      </TouchableOpacity>
+    ),
+    [filteredCafes.length, handleSheetHeaderPress]
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -169,12 +196,17 @@ export default function DiscoverScreen() {
         </View>
       </View>
 
-      {/* Simple Bottom List (no bottom sheet for now) */}
-      <View style={styles.listContainer}>
-        <Text style={styles.listTitle}>
-          {filteredCafes.length} {filteredCafes.length === 1 ? 'Cafe' : 'Cafes'}
-        </Text>
-        <FlatList
+      <BottomSheet
+        ref={bottomSheetRef}
+        index={1}
+        snapPoints={snapPoints}
+        onChange={setSheetIndex}
+        handleComponent={renderSheetHandle}
+        backgroundStyle={styles.sheetBackground}
+        style={styles.bottomSheet}
+        enablePanDownToClose={false}
+      >
+        <BottomSheetFlatList
           data={filteredCafes}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
@@ -182,8 +214,14 @@ export default function DiscoverScreen() {
           )}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>No cafes found</Text>
+              <Text style={styles.emptyText}>Try adjusting your filters.</Text>
+            </View>
+          }
         />
-      </View>
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -194,7 +232,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEFEFE',
   },
   mapContainer: {
-    height: 300,
+    flex: 1,
     position: 'relative',
   },
   map: {
@@ -265,18 +303,72 @@ const styles = StyleSheet.create({
   filterButtonTextActive: {
     color: '#FFFFFF',
   },
-  listContainer: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 16,
+  bottomSheet: {
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: -6,
+    },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 12,
   },
-  listTitle: {
+  sheetBackground: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  sheetHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 14,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  dragHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: '#D1D1D6',
+    alignSelf: 'center',
+    marginBottom: 14,
+  },
+  sheetTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  sheetTitle: {
     fontSize: 20,
     fontFamily: 'OtomanopeeOne-Regular',
     color: '#1C1C1E',
-    marginBottom: 16,
+  },
+  sheetSubtitle: {
+    fontSize: 13,
+    fontFamily: 'Lato-Regular',
+    color: '#8E8E93',
   },
   listContent: {
-    paddingBottom: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 120,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 20,
+  },
+  emptyTitle: {
+    fontSize: 17,
+    fontFamily: 'Lato-Bold',
+    color: '#1C1C1E',
+    marginBottom: 6,
+  },
+  emptyText: {
+    fontSize: 14,
+    fontFamily: 'Lato-Regular',
+    color: '#8E8E93',
+    textAlign: 'center',
   },
 });

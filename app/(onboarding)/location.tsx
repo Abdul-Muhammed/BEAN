@@ -148,9 +148,11 @@ export default function LocationScreen() {
     if (address.trim()) {
       router.push({
         pathname: '/(onboarding)/preferences',
-        params: { 
+        params: {
           username: username as string,
-          location: address.trim()
+          location: address.trim(),
+          latitude: String(mapLocation.latitude),
+          longitude: String(mapLocation.longitude),
         }
       });
     }
