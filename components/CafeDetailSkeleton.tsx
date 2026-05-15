@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
+import { colors } from '@/constants/theme';
 
 export default function CafeDetailSkeleton() {
   const shimmerAnim = useRef(new Animated.Value(0)).current;
@@ -56,7 +57,7 @@ export default function CafeDetailSkeleton() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FEFEFE',
+    backgroundColor: colors.background,
   },
   imageSkeleton: {
     width: '100%',

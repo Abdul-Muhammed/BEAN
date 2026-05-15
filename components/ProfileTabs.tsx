@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { colors } from '@/constants/theme';
 
 interface ProfileTabsProps {
   activeTab: 'profile' | 'diary';
@@ -19,7 +20,7 @@ export default function ProfileTabs({ activeTab, onTabChange }: ProfileTabsProps
         </Text>
         {activeTab === 'profile' && <View style={styles.underline} />}
       </TouchableOpacity>
-      
+
       <TouchableOpacity
         style={styles.tab}
         onPress={() => onTabChange('diary')}
@@ -42,7 +43,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
-    backgroundColor: '#FEFEFE',
+    backgroundColor: colors.background,
   },
   tab: {
     flex: 1,
@@ -69,4 +70,3 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
   },
 });
-

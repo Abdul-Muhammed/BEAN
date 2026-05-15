@@ -20,6 +20,7 @@ import { GluestackUIProvider } from '@gluestack-ui/themed';
 import config from '@/gluestack-ui.config';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { colors } from '@/constants/theme';
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -79,7 +80,7 @@ export default function RootLayout() {
 
   if (!publishableKey) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FEFEFE', padding: 20 }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, padding: 20 }}>
         <Text style={{ color: '#D32F2F', fontSize: 16, textAlign: 'center' }}>
           Missing Clerk Publishable Key. Environment variables may not be configured for this build.
         </Text>

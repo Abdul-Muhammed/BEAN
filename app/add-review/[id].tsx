@@ -15,6 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import StarRating from '../../components/StarRating';
 import { useReviews } from '../../context/ReviewContext';
+import { colors } from '@/constants/theme';
 
 export default function AddReviewScreen() {
   const { id } = useLocalSearchParams();
@@ -58,7 +59,7 @@ export default function AddReviewScreen() {
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FEFEFE" />
+        <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
         
         <View style={styles.header}>
           <TouchableOpacity
@@ -124,7 +125,7 @@ export default function AddReviewScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FEFEFE',
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',

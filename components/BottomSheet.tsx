@@ -15,6 +15,7 @@ import Animated, {
   withSpring,
   runOnJS,
 } from 'react-native-reanimated';
+import { colors } from '@/constants/theme';
 
 // Get screen height dynamically to avoid module-level initialization issues
 const getScreenHeight = () => Dimensions.get('window').height;
@@ -33,15 +34,18 @@ export default function BottomSheet({
   onPositionChange,
 }: BottomSheetProps) {
   const SCREEN_HEIGHT = getScreenHeight();
-  
+
   // Store snap positions as constants for worklet access
-  const snaps = snapPositions || [80, SCREEN_HEIGHT * 0.5, SCREEN_HEIGHT * 0.9];
-  
+  const snaps = React.useMemo(
+    () => snapPositions || [80, SCREEN_HEIGHT * 0.5, SCREEN_HEIGHT * 0.9],
+    [SCREEN_HEIGHT, snapPositions]
+  );
+
   // translateY represents how much the sheet is pulled up from bottom
   // Higher values = sheet is higher up (more visible)
   const translateY = useSharedValue(SCREEN_HEIGHT - snaps[defaultPosition]);
   const context = useSharedValue({ y: 0 });
-  
+
   // Store min/max in shared values for worklet access
   const minHeight = useSharedValue(SCREEN_HEIGHT - Math.max(...snaps));
   const maxHeight = useSharedValue(SCREEN_HEIGHT - Math.min(...snaps));
@@ -49,7 +53,7 @@ export default function BottomSheet({
   React.useEffect(() => {
     minHeight.value = SCREEN_HEIGHT - Math.max(...snaps);
     maxHeight.value = SCREEN_HEIGHT - Math.min(...snaps);
-  }, [snaps]);
+  }, [SCREEN_HEIGHT, maxHeight, minHeight, snaps]);
 
   const clamp = (value: number, min: number, max: number) => {
     'worklet';
@@ -70,7 +74,7 @@ export default function BottomSheet({
       'worklet';
       const currentY = translateY.value;
       const currentHeight = SCREEN_HEIGHT - currentY;
-      
+
       // Find nearest snap position (worklet can access snaps from closure if it's a constant)
       let nearest = snaps[0];
       let minDistance = Math.abs(currentHeight - snaps[0]);
@@ -81,13 +85,13 @@ export default function BottomSheet({
           nearest = snaps[i];
         }
       }
-      
+
       const nearestSnap = SCREEN_HEIGHT - nearest;
       translateY.value = withSpring(nearestSnap, {
         damping: 20,
         stiffness: 90,
       });
-      
+
       if (onPositionChange) {
         const heightFromBottom = SCREEN_HEIGHT - nearestSnap;
         const findIndex = () => {
@@ -120,7 +124,7 @@ export default function BottomSheet({
       bottom: 0,
       left: 0,
       right: 0,
-      backgroundColor: '#FEFEFE',
+      backgroundColor: colors.background,
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
       shadowColor: '#000',
@@ -184,7 +188,7 @@ export default function BottomSheet({
         <Animated.View style={[styles.bottomSheet, animatedStyle]}>
           {/* Drag Handle */}
           <View style={styles.dragHandle} />
-          
+
           {/* Content */}
           <View style={styles.content}>
             {children}

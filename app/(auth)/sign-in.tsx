@@ -12,13 +12,14 @@ import {
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Link, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useSignIn, useOAuth } from '@clerk/clerk-expo';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import { createOrUpdateProfile } from '../../lib/profile';
+import { colors } from '@/constants/theme';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -72,7 +73,7 @@ export default function SignInScreen() {
 
   const onGoogleSignIn = async () => {
     try {
-      const { createdSessionId, signUp, signIn: oAuthSignIn } = await startOAuthFlow({
+      const { createdSessionId, signUp } = await startOAuthFlow({
         redirectUrl: Linking.createURL('/'),
       });
 
@@ -112,7 +113,7 @@ export default function SignInScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FEFEFE" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -204,7 +205,7 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FEFEFE',
+    backgroundColor: colors.background,
   },
   keyboardView: {
     flex: 1,
@@ -249,7 +250,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   input: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
@@ -262,7 +263,7 @@ const styles = StyleSheet.create({
   passwordContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
@@ -288,7 +289,7 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
   },
   googleButton: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 8,
     paddingVertical: 16,
     alignItems: 'center',

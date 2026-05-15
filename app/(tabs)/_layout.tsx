@@ -1,6 +1,7 @@
-import { Tabs } from 'expo-router';
+import { Tabs, router } from 'expo-router';
 import { Home, Search, Plus, Bookmark, User } from 'lucide-react-native';
 import { View, StyleSheet } from 'react-native';
+import { colors } from '@/constants/theme';
 
 const styles = StyleSheet.create({
   addButtonContainer: {
@@ -25,6 +26,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 8,
   },
+  hiddenTabBar: {
+    display: 'none',
+  },
 });
 
 export default function TabLayout() {
@@ -33,15 +37,15 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#FEFEFE',
+          backgroundColor: colors.background,
           borderTopWidth: 1,
-          borderTopColor: '#F0F0F0',
+          borderTopColor: colors.border,
           paddingBottom: 8,
           paddingTop: 8,
           height: 80,
         },
-        tabBarActiveTintColor: '#D4AF37',
-        tabBarInactiveTintColor: '#8E8E93',
+        tabBarActiveTintColor: colors.gold,
+        tabBarInactiveTintColor: colors.mutedText,
         tabBarLabelStyle: {
           fontSize: 12,
           fontFamily: 'Lato-Regular',
@@ -73,12 +77,22 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="add-review"
+        listeners={{
+          tabPress: (event) => {
+            event.preventDefault();
+            router.push({
+              pathname: '/search-cafes',
+              params: { mode: 'review' },
+            });
+          },
+        }}
         options={{
           title: '',
-          tabBarIcon: ({ focused }) => (
+          tabBarStyle: styles.hiddenTabBar,
+          tabBarIcon: () => (
             <View style={styles.addButtonContainer}>
               <View style={styles.addButton}>
-                <Plus size={28} color="#FFFFFF" strokeWidth={3} />
+                <Plus size={28} color={colors.white} strokeWidth={3} />
               </View>
             </View>
           ),

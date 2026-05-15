@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { Review } from '../data/mockData';
 import StarRating from './StarRating';
+import { colors } from '@/constants/theme';
 
 interface ReviewCardProps {
   review: Review;
@@ -25,7 +26,7 @@ export default function ReviewCard({ review }: ReviewCardProps) {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,

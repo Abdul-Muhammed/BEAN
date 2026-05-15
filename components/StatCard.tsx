@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LucideIcon } from 'lucide-react-native';
+import { colors } from '@/constants/theme';
 
 interface StatCardProps {
   icon: LucideIcon;
@@ -22,7 +23,7 @@ export default function StatCard({ icon: Icon, label, value, iconColor = '#1C1C1
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
@@ -43,4 +44,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-

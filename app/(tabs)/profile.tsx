@@ -23,6 +23,7 @@ import RatingHistogram from '../../components/RatingHistogram';
 import StarRating from '../../components/StarRating';
 import BeanLogo from '../../components/BeanLogo';
 import { UserReview } from '../../data/mockData';
+import { colors } from '@/constants/theme';
 
 const MONTH_ABBR: Record<string, string> = {
   January: 'JAN',
@@ -40,7 +41,7 @@ const MONTH_ABBR: Record<string, string> = {
 };
 
 export default function ProfileScreen() {
-  const { userReviews, bookmarkedCafes, isFavorited, getCafeById, addCafe } = useReviews();
+  const { userReviews, bookmarkedCafes, isFavorited } = useReviews();
   const { user } = useUser();
   const { signOut } = useAuth();
   const router = useRouter();
@@ -215,7 +216,12 @@ export default function ProfileScreen() {
                 key={review.id}
                 style={styles.activityCard}
                 activeOpacity={0.85}
-                onPress={() => router.push(`/cafe/${review.cafeId}`)}
+                onPress={() =>
+                  router.push({
+                    pathname: '/diary/[id]',
+                    params: { id: review.id },
+                  })
+                }
               >
                 {review.cafeImage ? (
                   <Image source={{ uri: review.cafeImage }} style={styles.activityThumb} />
@@ -292,13 +298,12 @@ export default function ProfileScreen() {
                   key={review.id}
                   style={styles.diaryCard}
                   activeOpacity={0.85}
-                    onPress={() => {
-                      const cafe = getCafeById(review.cafeId);
-                      if (cafe) {
-                        addCafe(cafe);
-                      }
-                      router.push(`/cafe/${review.cafeId}`);
-                    }}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/diary/[id]',
+                      params: { id: review.id },
+                    })
+                  }
                 >
                   <View style={styles.diaryDateBlock}>
                     <Text style={styles.diaryDateDay}>{dayNumber}</Text>
@@ -350,7 +355,7 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FEFEFE" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
       
       {/* Tab Navigation */}
       <ProfileTabs activeTab={activeTab} onTabChange={setActiveTab} />
@@ -364,7 +369,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FEFEFE',
+    backgroundColor: colors.background,
   },
   scrollView: {
     flex: 1,
@@ -441,7 +446,7 @@ const styles = StyleSheet.create({
   activityCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 12,
     borderWidth: 1,
@@ -500,7 +505,7 @@ const styles = StyleSheet.create({
   activityEmpty: {
     marginTop: 16,
     padding: 24,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#F0F0F0',
@@ -554,7 +559,7 @@ const styles = StyleSheet.create({
   diaryCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 12,
     marginBottom: 10,

@@ -13,6 +13,7 @@ import { Bookmark, MapPin, Star, Wifi, Car } from 'lucide-react-native';
 import { useReviews } from '../../context/ReviewContext';
 import { useRouter } from 'expo-router';
 import { Badge, BadgeText } from '@gluestack-ui/themed';
+import { colors } from '@/constants/theme';
 
 export default function BookmarksScreen() {
   const { bookmarkedCafes, toggleBookmark, isBookmarked, addCafe } = useReviews();
@@ -20,7 +21,7 @@ export default function BookmarksScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FEFEFE" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Saved</Text>
@@ -111,7 +112,7 @@ export default function BookmarksScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FEFEFE',
+    backgroundColor: colors.background,
   },
   header: {
     paddingHorizontal: 20,
@@ -155,7 +156,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   cafeCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     marginHorizontal: 20,
     marginBottom: 16,
