@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { colors } from '@/constants/theme';
 
 interface Props {
   children: ReactNode;
@@ -73,7 +74,7 @@ export class ErrorBoundary extends Component<Props, State> {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FEFEFE',
+    backgroundColor: colors.background,
     paddingTop: 80,
   },
   content: {

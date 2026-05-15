@@ -13,6 +13,7 @@ import { WebView } from 'react-native-webview';
 import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import MapCafeCard from '../../components/MapCafeCard';
 import { useReviews } from '../../context/ReviewContext';
+import { colors } from '@/constants/theme';
 
 // Default Auckland coordinates
 const DEFAULT_LATITUDE = -36.8485;
@@ -115,7 +116,7 @@ export default function DiscoverScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FEFEFE" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
       {/* Map */}
       <View style={styles.mapContainer}>
@@ -229,7 +230,7 @@ export default function DiscoverScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FEFEFE',
+    backgroundColor: colors.background,
   },
   mapContainer: {
     flex: 1,
@@ -245,7 +246,7 @@ const styles = StyleSheet.create({
     right: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -278,7 +279,7 @@ const styles = StyleSheet.create({
   filterButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -314,7 +315,7 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   sheetBackground: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
   },
@@ -322,7 +323,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 14,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
   },

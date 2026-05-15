@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { MapPin } from 'lucide-react-native';
 import StarRating from './StarRating';
 import { Cafe } from '../data/mockData';
+import { colors } from '@/constants/theme';
 
 interface CafeCardProps {
   cafe: Cafe;
@@ -64,7 +65,7 @@ export default function CafeCard({ cafe }: CafeCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     marginBottom: 20,
     shadowColor: '#000',

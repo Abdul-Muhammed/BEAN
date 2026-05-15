@@ -17,6 +17,35 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 export type Database = {
   public: {
     Tables: {
+      cafe_categories: {
+        Row: {
+          id: string;
+          label: string;
+          icon_svg_xml: string;
+          display_order: number;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          label: string;
+          icon_svg_xml: string;
+          display_order?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          label?: string;
+          icon_svg_xml?: string;
+          display_order?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       profiles: {
         Row: {
           id: string;

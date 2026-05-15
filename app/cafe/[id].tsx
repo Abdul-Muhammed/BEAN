@@ -30,6 +30,7 @@ import PhotoGallery from '../../components/PhotoGallery';
 import RatingHistogram from '../../components/RatingHistogram';
 import { useReviews } from '../../context/ReviewContext';
 import { enrichCafeWithDetails } from '../../services/googlePlaces';
+import { colors } from '@/constants/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -102,7 +103,7 @@ export default function CafeDetailScreen() {
   if (!cafe) {
     // Cafe not found - could show error or redirect
     return (
-      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FEFEFE' }}>
+      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
         <Text style={{ fontSize: 16, fontFamily: 'Lato-Regular', color: '#8E8E93' }}>
           Cafe not found
         </Text>
@@ -341,7 +342,7 @@ export default function CafeDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FEFEFE',
+    backgroundColor: colors.background,
   },
   scrollView: {
     flex: 1,
@@ -363,7 +364,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -379,7 +380,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -477,7 +478,7 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: '#E5E5EA',
     borderRadius: 12,
@@ -529,7 +530,7 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     padding: 20,
-    backgroundColor: '#FEFEFE',
+    backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: '#E5E5EA',
     gap: 12,
@@ -543,7 +544,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   saveButton: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: '#E5E5EA',
     flexDirection: 'row',

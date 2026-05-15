@@ -10,12 +10,12 @@ import {
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { SvgXml } from 'react-native-svg';
-import { Redirect } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { getErrorLog } from './_layout';
+import { colors } from '@/constants/theme';
 
 const logoSvg = `<svg width="320" height="93" viewBox="0 0 320 93" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M23.3184 0C35.2763 1.86026e-05 44.5639 1.79347 51.1807 5.38086C57.7974 8.96827 61.1055 14.0707 61.1055 20.6875C61.1054 29.1378 55.3654 35.7145 43.8857 40.418C50.662 42.2515 56.0837 45.3211 60.1494 49.626C64.215 53.9308 66.2471 58.794 66.2471 64.2148C66.247 69.556 64.1747 74.3393 60.0293 78.5645C55.9636 82.7896 50.3033 86.0977 43.0488 88.4893C35.874 90.8809 27.5828 92.0771 18.1758 92.0771C15.7046 92.0771 12.9943 91.9569 10.0449 91.7178C7.09527 91.5583 4.10554 91.2795 1.07617 90.8809C0.996456 89.0473 0.916629 86.1775 0.836914 82.2715C0.757196 78.2856 0.677374 73.6618 0.597656 68.4004C0.517937 63.0592 0.438117 57.3988 0.358398 51.4199C0.27868 45.441 0.198859 39.4219 0.119141 33.3633C0.119141 27.3045 0.0797204 21.5241 0 16.0234V1.55469C4.30475 1.07638 8.41023 0.717678 12.3164 0.478516C16.3024 0.159634 19.9701 0 23.3184 0ZM53.2129 52.6152C39.0228 52.9341 22.979 53.8512 13.0938 54.6484C13.0938 58.9531 13.7718 62.9395 15.127 66.6064C16.4821 70.2732 18.2759 73.223 20.5078 75.4551C22.8196 77.6871 25.4105 78.8036 28.2803 78.8037C31.3892 78.8037 34.4186 77.5678 37.3682 75.0967C40.3974 72.7051 44.1844 62.8798 46.3369 58.8936C48.4894 54.9875 52.6548 57.0795 53.2129 52.6152ZM12.8545 10.7627C13.1055 22.0396 13.5454 31.6061 14.1729 39.4619C17.5608 39.4619 20.6979 38.9236 23.584 37.8467C26.4702 36.7697 28.7911 35.3432 30.5479 33.5693C32.3046 31.7321 33.1836 29.6733 33.1836 27.3926C33.1835 24.9219 32.2105 22.5149 30.2656 20.1709C28.3833 17.7635 25.8735 15.7037 22.7363 13.9932C19.6621 12.2828 16.3679 11.2061 12.8545 10.7627Z" fill="#0F1312"/>
@@ -100,11 +100,11 @@ export default function WelcomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FEFEFE" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
       {/* Debug Modal - long press logo to open */}
       <Modal visible={showDebug} animationType="slide" transparent={false}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#FEFEFE' }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
           <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 20 }}>
             <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 4 }}>Debug Info</Text>
             <Text style={{ fontSize: 13, color: '#555', marginBottom: 16 }}>
@@ -167,7 +167,7 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FEFEFE',
+    backgroundColor: colors.background,
   },
   content: {
     flex: 1,
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   signInButton: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     paddingVertical: 18,
     alignItems: 'center',

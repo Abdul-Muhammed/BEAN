@@ -7,8 +7,6 @@ import {
   TouchableOpacity,
   StatusBar,
   Alert,
-  Dimensions,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -16,6 +14,7 @@ import { ArrowLeft, MapPin } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import * as Location from 'expo-location';
 import { WebView } from 'react-native-webview';
+import { colors } from '@/constants/theme';
 
 const beanLogoSvg = `<svg width="48" height="81" viewBox="0 0 48 81" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M25.6136 68.523C19.0159 70.9613 11.8444 72.1805 4.09929 72.1805C2.665 54.3953 1.01555 25.5303 0.441833 0C8.47384 1.004 4.70884 8.49815 11.7368 12.3707C18.9083 16.2433 36.5859 23.0561 40.8888 28.5064C45.335 33.8133 47.5582 39.2636 47.5582 44.8573C47.5582 50.0207 45.5502 54.6822 41.5342 58.8416C37.5182 62.8576 32.2113 66.0847 25.6136 68.523Z" fill="#0F1312"/>
@@ -28,8 +27,6 @@ const beanLogoSvg = `<svg width="48" height="81" viewBox="0 0 48 81" fill="none"
 <path d="M26.169 9.78076C26.1961 9.78136 26.2861 9.79243 26.3652 9.8317C26.4392 9.86842 26.4731 9.95128 26.4969 10.0291C26.5308 10.1402 26.504 10.2149 26.4622 10.3157C26.4357 10.3797 26.3837 10.4139 26.3059 10.4657C26.2222 10.5215 26.1315 10.519 26.0673 10.5051C25.9959 10.4897 25.9741 10.4153 25.945 10.3402C25.8793 10.1709 25.9279 9.9039 25.9571 9.85234C25.9827 9.83506 26.0139 9.82496 26.0444 9.82121C26.0587 9.82009 26.0708 9.82058 26.0849 9.82741" stroke="#0F1312" stroke-width="1.20301" stroke-linecap="round"/>
 </svg>`;
 
-const { width, height } = Dimensions.get('window');
-
 // Default to Auckland CBD coordinates
 const DEFAULT_LATITUDE = -36.8485;
 const DEFAULT_LONGITUDE = 174.7633;
@@ -41,7 +38,6 @@ export default function LocationScreen() {
     latitude: DEFAULT_LATITUDE,
     longitude: DEFAULT_LONGITUDE,
   });
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const router = useRouter();
   const { username } = useLocalSearchParams();
 
@@ -115,7 +111,6 @@ export default function LocationScreen() {
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
           };
-          setUserLocation(coords);
           setMapLocation({
             latitude: coords.latitude,
             longitude: coords.longitude,
@@ -135,7 +130,7 @@ export default function LocationScreen() {
             setAddress(formattedAddress);
           }
         }
-      } catch (error) {
+      } catch {
         // Silently fail - will use default location
         console.log('Could not get initial location, using default');
       }
@@ -184,7 +179,6 @@ export default function LocationScreen() {
         longitude: location.coords.longitude,
       };
       
-      setUserLocation(coords);
       setMapLocation({
         latitude: coords.latitude,
         longitude: coords.longitude,
@@ -205,7 +199,7 @@ export default function LocationScreen() {
         
         setAddress(formattedAddress);
       }
-    } catch (error) {
+    } catch {
       Alert.alert(
         'Location Error',
         'Unable to get your current location. Please enter your address manually.'
@@ -221,7 +215,7 @@ export default function LocationScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FEFEFE" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
       <View style={styles.header}>
         <TouchableOpacity
@@ -304,7 +298,7 @@ export default function LocationScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FEFEFE',
+    backgroundColor: colors.background,
   },
   header: {
     paddingHorizontal: 20,
@@ -348,7 +342,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   input: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
@@ -388,7 +382,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -404,7 +398,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     paddingVertical: 16,
     marginBottom: 32,

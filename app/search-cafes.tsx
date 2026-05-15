@@ -10,12 +10,13 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Search, X, Clock, MapPin } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { searchCafesByText, convertPlaceToCafe } from '../services/googlePlaces';
 import { useReviews } from '../context/ReviewContext';
 import BeanLogo from '../components/BeanLogo';
+import { colors } from '@/constants/theme';
 
 const RECENT_SEARCHES_KEY = '@bean/recent_searches';
 const MAX_RECENT_SEARCHES = 8;
@@ -33,6 +34,8 @@ interface RecentSearch {
 
 export default function SearchCafesScreen() {
   const { addCafe } = useReviews();
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const isReviewMode = mode === 'review';
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -122,7 +125,7 @@ export default function SearchCafesScreen() {
           results.slice(0, 20).map((place) => convertPlaceToCafe(place))
         );
         setSearchResults(convertedCafes);
-      } catch (error) {
+      } catch {
         Alert.alert('Search Error', 'Failed to search for cafes. Please try again.');
       }
       setIsSearching(false);
@@ -132,6 +135,17 @@ export default function SearchCafesScreen() {
   const selectCafe = (cafe: any) => {
     addCafe(cafe);
     addToRecent(cafe);
+    if (isReviewMode) {
+      router.push({
+        pathname: '/(tabs)/add-review',
+        params: {
+          cafeId: cafe.id,
+          cafeName: cafe.name,
+          cafeImage: cafe.image || '',
+        },
+      });
+      return;
+    }
     router.push(`/cafe/${cafe.id}`);
   };
 
@@ -148,6 +162,17 @@ export default function SearchCafesScreen() {
       place_id: entry.place_id || entry.id,
       photos: [entry.image || DEFAULT_CAFE_IMAGE],
     });
+    if (isReviewMode) {
+      router.push({
+        pathname: '/(tabs)/add-review',
+        params: {
+          cafeId: entry.id,
+          cafeName: entry.name,
+          cafeImage: entry.image || '',
+        },
+      });
+      return;
+    }
     router.push(`/cafe/${entry.id}`);
   };
 
@@ -157,7 +182,7 @@ export default function SearchCafesScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FEFEFE" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
@@ -280,7 +305,7 @@ export default function SearchCafesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FEFEFE',
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',

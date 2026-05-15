@@ -41,6 +41,7 @@ import {
   convertPlaceToCafe,
 } from '../../services/googlePlaces';
 import { useUserProfile } from '../../hooks/useUserProfile';
+import { colors } from '@/constants/theme';
 
 type FilterType = 'all' | 'open' | 'topRated' | 'wifi' | 'parking';
 
@@ -55,19 +56,22 @@ export default function HomeScreen() {
   const [isLoadingNearby, setIsLoadingNearby] = useState(false);
   const [nearbyError, setNearbyError] = useState<string | null>(null);
   const hasLoadedNearby = useRef(false);
+  const profileLatitude = profile?.location_latitude;
+  const profileLongitude = profile?.location_longitude;
+  const profileLocationAddress = profile?.location_address;
 
   useEffect(() => {
     if (hasLoadedNearby.current) return;
     const hasCoords =
-      typeof profile?.location_latitude === 'number' &&
-      typeof profile?.location_longitude === 'number';
-    if (!hasCoords && !profile?.location_address) return;
+      typeof profileLatitude === 'number' &&
+      typeof profileLongitude === 'number';
+    if (!hasCoords && !profileLocationAddress) return;
 
     const resolveCoords = async (): Promise<{ lat: number; lng: number } | null> => {
       if (hasCoords) {
         return {
-          lat: profile!.location_latitude as number,
-          lng: profile!.location_longitude as number,
+          lat: profileLatitude as number,
+          lng: profileLongitude as number,
         };
       }
       // Fallback for profiles created before coordinates were persisted:
@@ -93,20 +97,20 @@ export default function HomeScreen() {
         const coords = await resolveCoords();
         const results = coords
           ? await searchCafesNearbyByCoords(coords.lat, coords.lng)
-          : await searchCafesNearby(profile!.location_address!);
+          : await searchCafesNearby(profileLocationAddress!);
         const converted = await Promise.all(
           results.slice(0, 15).map(place => convertPlaceToCafe(place))
         );
         converted.forEach(cafe => addCafe(cafe));
         hasLoadedNearby.current = true;
-      } catch (error) {
+      } catch {
         setNearbyError('Unable to load nearby cafes.');
       }
       setIsLoadingNearby(false);
     };
 
     loadNearbyCafes();
-  }, [profile?.location_address, profile?.location_latitude, profile?.location_longitude]);
+  }, [addCafe, profileLatitude, profileLocationAddress, profileLongitude]);
 
   const handleCafeClick = (cafe: any) => {
     addCafe(cafe);
@@ -124,7 +128,7 @@ export default function HomeScreen() {
       );
       setSearchResults(convertedCafes);
       setShowSearchResults(true);
-    } catch (error) {
+    } catch {
       Alert.alert('Search Error', 'Failed to search for cafes. Please try again.');
     }
     setIsSearching(false);
@@ -182,7 +186,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FEFEFE" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
       
       <ScrollView
         style={styles.scrollView}
@@ -204,7 +208,11 @@ export default function HomeScreen() {
               returnKeyType="search"
               style={styles.searchField}
             />
-            {searchQuery.length > 0 && (
+            {isSearching ? (
+              <InputSlot style={styles.clearSlot}>
+                <ActivityIndicator size="small" color="#8E8E93" />
+              </InputSlot>
+            ) : searchQuery.length > 0 && (
               <InputSlot style={styles.clearSlot} onPress={clearSearch}>
                 <X size={18} color="#8E8E93" />
               </InputSlot>
@@ -324,7 +332,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FEFEFE',
+    backgroundColor: colors.background,
   },
   scrollView: {
     flex: 1,
@@ -381,7 +389,7 @@ const styles = StyleSheet.create({
     paddingRight: 20,
   },
   filterBadge: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: '#E5E5EA',
     borderRadius: 20,
@@ -432,7 +440,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   cafeCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     marginHorizontal: 20,
     marginBottom: 16,

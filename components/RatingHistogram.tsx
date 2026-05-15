@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Star } from 'lucide-react-native';
+import { colors } from '@/constants/theme';
 
 interface RatingHistogramProps {
   ratings: number[];
@@ -92,7 +93,7 @@ export default function RatingHistogram({
 const styles = StyleSheet.create({
   card: {
     padding: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#F0F0F0',

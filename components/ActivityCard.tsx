@@ -3,6 +3,7 @@ import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
 import { Bookmark } from 'lucide-react-native';
 import StarRating from './StarRating';
 import { UserReview } from '../data/mockData';
+import { colors } from '@/constants/theme';
 
 interface ActivityCardProps {
   review: UserReview;
@@ -18,8 +19,8 @@ export default function ActivityCard({ review, userName, userImage, onPress }: A
   const remainingCount = Math.max(0, attributes.length - 2);
 
   return (
-    <TouchableOpacity 
-      style={styles.container} 
+    <TouchableOpacity
+      style={styles.container}
       onPress={onPress}
       activeOpacity={0.9}
     >
@@ -67,8 +68,8 @@ export default function ActivityCard({ review, userName, userImage, onPress }: A
 
       {/* Cafe Image */}
       {review.cafeImage && (
-        <Image 
-          source={{ uri: review.cafeImage }} 
+        <Image
+          source={{ uri: review.cafeImage }}
           style={styles.cafeImage}
           resizeMode="cover"
         />
@@ -79,7 +80,7 @@ export default function ActivityCard({ review, userName, userImage, onPress }: A
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
@@ -159,4 +160,3 @@ const styles = StyleSheet.create({
     backgroundColor: '#E5E5EA',
   },
 });
-

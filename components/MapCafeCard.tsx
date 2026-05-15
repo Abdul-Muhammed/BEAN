@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { MapPin, Bookmark, Star, Wifi } from 'lucide-react-native';
 import { Cafe } from '../data/mockData';
 import { useReviews } from '../context/ReviewContext';
+import { colors } from '@/constants/theme';
 
 interface MapCafeCardProps {
   cafe: Cafe;
@@ -92,7 +93,7 @@ export default function MapCafeCard({ cafe }: MapCafeCardProps) {
 const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     marginBottom: 12,
     overflow: 'hidden',
