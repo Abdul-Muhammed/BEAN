@@ -25,6 +25,11 @@ import BeanLogo from '../../components/BeanLogo';
 import { UserReview } from '../../data/mockData';
 import { colors } from '@/constants/theme';
 
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
 const MONTH_ABBR: Record<string, string> = {
   January: 'JAN',
   February: 'FEB',
@@ -39,6 +44,16 @@ const MONTH_ABBR: Record<string, string> = {
   November: 'NOV',
   December: 'DEC',
 };
+
+function parseVisitDate(visitDate?: string): { day: number; month: string } | null {
+  if (!visitDate) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(visitDate);
+  if (!match) return null;
+  const [, , m, d] = match;
+  const monthIndex = Number(m) - 1;
+  if (monthIndex < 0 || monthIndex > 11) return null;
+  return { day: Number(d), month: MONTH_NAMES[monthIndex] };
+}
 
 export default function ProfileScreen() {
   const { userReviews, bookmarkedCafes, isFavorited } = useReviews();
@@ -91,30 +106,23 @@ export default function ProfileScreen() {
   const profileImageUrl = profile?.profile_image_url || user?.imageUrl;
   const userName = user?.fullName || user?.firstName || 'User';
 
-  // Group reviews by month for Diary tab
+  // Group reviews by month for Diary tab. Prefer the user-picked
+  // `visitDate` when present; fall back to the older parsed `date` string.
   const reviewsByMonth = useMemo(() => {
     const grouped: { [key: string]: UserReview[] } = {};
-    
-    userReviews.forEach(review => {
-      // Parse date like "6 October" or "29 September"
-      const dateMatch = review.date.match(/(\d+)\s+(\w+)/);
-      if (dateMatch) {
-        const month = dateMatch[2];
-        if (!grouped[month]) {
-          grouped[month] = [];
-        }
-        grouped[month].push(review);
-      } else {
-        // Fallback for dates that don't match pattern
-        if (!grouped['Other']) {
-          grouped['Other'] = [];
-        }
-        grouped['Other'].push(review);
+
+    userReviews.forEach((review) => {
+      const fromVisit = parseVisitDate(review.visitDate);
+      let month: string | null = fromVisit?.month || null;
+      if (!month) {
+        const dateMatch = review.date.match(/(\d+)\s+(\w+)/);
+        month = dateMatch ? dateMatch[2] : 'Other';
       }
+      if (!grouped[month]) grouped[month] = [];
+      grouped[month].push(review);
     });
 
-    // Sort months (most recent first) and sort reviews within each month
-    const monthOrder = ['October', 'September', 'August', 'July', 'June', 'May', 'April', 'March', 'February', 'January', 'Other'];
+    const monthOrder = [...MONTH_NAMES, 'Other'];
     const sortedMonths = Object.keys(grouped).sort((a, b) => {
       const aIndex = monthOrder.indexOf(a);
       const bIndex = monthOrder.indexOf(b);
@@ -124,14 +132,15 @@ export default function ProfileScreen() {
       return aIndex - bIndex;
     });
 
-    return sortedMonths.map(month => ({
+    const dayOf = (review: UserReview): number => {
+      const fromVisit = parseVisitDate(review.visitDate);
+      if (fromVisit) return fromVisit.day;
+      return parseInt(review.date.match(/\d+/)?.[0] || '0', 10);
+    };
+
+    return sortedMonths.map((month) => ({
       month,
-      reviews: grouped[month].sort((a, b) => {
-        // Sort by date number (extract number from date string)
-        const aNum = parseInt(a.date.match(/\d+/)?.[0] || '0');
-        const bNum = parseInt(b.date.match(/\d+/)?.[0] || '0');
-        return bNum - aNum; // Descending (newest first)
-      })
+      reviews: grouped[month].sort((a, b) => dayOf(b) - dayOf(a)),
     }));
   }, [userReviews]);
 
@@ -290,8 +299,13 @@ export default function ProfileScreen() {
             </View>
             {item.reviews.map((review) => {
               const isFav = isFavorited(review.cafeId);
-              const dayNumber = review.date.match(/\d+/)?.[0] || review.date;
-              const monthName = review.date.match(/[A-Za-z]+/)?.[0] || '';
+              const fromVisit = parseVisitDate(review.visitDate);
+              const dayNumber = fromVisit
+                ? String(fromVisit.day)
+                : review.date.match(/\d+/)?.[0] || review.date;
+              const monthName = fromVisit
+                ? fromVisit.month
+                : review.date.match(/[A-Za-z]+/)?.[0] || '';
               const monthAbbr = MONTH_ABBR[monthName] || monthName.slice(0, 3).toUpperCase();
               return (
                 <TouchableOpacity

@@ -10,6 +10,14 @@ interface AddReviewInput {
   orderedItem?: string;
   attributes?: string[];
   photos?: string[];
+  visitDate?: Date;
+}
+
+function formatDateOnly(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 interface ReviewContextType {
@@ -48,6 +56,14 @@ interface StoredBookmark {
 
 function formatReviewDate(iso: string | null | undefined): string {
   if (!iso) return 'Just now';
+  // Bare 'YYYY-MM-DD' (e.g. from visit_date) should display as the literal
+  // date the user picked, not be shifted by the local timezone.
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (dateOnlyMatch) {
+    const [, y, m, d] = dateOnlyMatch;
+    const month = MONTH_NAMES[Number(m) - 1];
+    return `${Number(d)} ${month}`;
+  }
   const d = new Date(iso);
   if (isNaN(d.getTime())) return 'Just now';
   return `${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
@@ -111,14 +127,18 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
             cafePlaceId: row.cafe_place_id || undefined,
             cafeName: row.cafe_name,
             cafeImage: row.cafe_image || '',
-            rating: row.rating,
+            rating: typeof row.rating === 'string' ? parseFloat(row.rating) : row.rating,
             text: row.text || '',
             orderedItem: row.ordered_item || undefined,
-            date: formatReviewDate(row.created_at),
+            date: formatReviewDate(row.visit_date || row.created_at),
+            visitDate: row.visit_date || undefined,
             attributes: row.attributes || undefined,
             photos: row.photos || undefined,
           }));
-          setUserReviews(mapped);
+          const deduped = Array.from(
+            new Map(mapped.map((r) => [r.id, r])).values()
+          );
+          setUserReviews(deduped);
         }
 
         if (bookmarksRes.error) {
@@ -370,7 +390,15 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
     .filter((c): c is Cafe => c !== null);
 
   const addReview = useCallback(
-    async ({ cafeId, rating, text, orderedItem, attributes, photos }: AddReviewInput) => {
+    async ({
+      cafeId,
+      rating,
+      text,
+      orderedItem,
+      attributes,
+      photos,
+      visitDate,
+    }: AddReviewInput) => {
       const cafe = cafes.find((c) => c.id === cafeId);
       if (!cafe) {
         console.warn('Cannot add review for unknown cafe', cafeId);
@@ -382,6 +410,11 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
       }
 
       const tempId = `temp_${Date.now()}`;
+      const visitDateString = visitDate ? formatDateOnly(visitDate) : null;
+      const optimisticDisplayDate = visitDateString
+        ? formatReviewDate(visitDateString)
+        : 'Just now';
+
       const newReview: Review = {
         id: tempId,
         userName: user?.fullName || 'User',
@@ -391,7 +424,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         rating,
         text,
         orderedItem,
-        date: 'Just now',
+        date: optimisticDisplayDate,
         attributes,
         photos,
       };
@@ -403,7 +436,8 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         cafeId: cafe.id,
         cafePlaceId: cafe.place_id,
         rating,
-        date: 'Just now',
+        date: optimisticDisplayDate,
+        visitDate: visitDateString || undefined,
         text,
         orderedItem,
         attributes,
@@ -413,7 +447,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
       setCafes((prevCafes) =>
         prevCafes.map((c) => {
           if (c.id !== cafeId) return c;
-          const updatedReviews = [...c.reviews, newReview];
+          const updatedReviews = [...c.reviews.filter((r) => r.id !== tempId), newReview];
           const newRating =
             updatedReviews.reduce((sum, r) => sum + r.rating, 0) / updatedReviews.length;
           return {
@@ -423,7 +457,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
           };
         })
       );
-      setUserReviews((prev) => [newUserReview, ...prev]);
+      setUserReviews((prev) => [newUserReview, ...prev.filter((r) => r.id !== tempId)]);
 
       const { data, error } = await supabase
         .from('reviews')
@@ -438,6 +472,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
           ordered_item: orderedItem || null,
           attributes: attributes || [],
           photos: photos || [],
+          visit_date: visitDateString,
         })
         .select()
         .single();
@@ -463,25 +498,51 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
       }
 
       if (data) {
-        setUserReviews((prev) =>
-          prev.map((r) =>
-            r.id === tempId
-              ? {
-                  ...r,
-                  id: data.id,
-                  date: formatReviewDate(data.created_at),
-                }
-              : r
-          )
+        const persistedRating =
+          typeof data.rating === 'string' ? parseFloat(data.rating) : data.rating;
+        const persistedVisitDate: string | undefined =
+          data.visit_date || visitDateString || undefined;
+        const persistedDisplayDate = formatReviewDate(
+          data.visit_date || data.created_at
         );
+
+        setUserReviews((prev) => {
+          const filtered = prev.filter(
+            (r) => r.id !== tempId && r.id !== data.id
+          );
+          return [
+            {
+              ...newUserReview,
+              id: data.id,
+              rating: persistedRating,
+              date: persistedDisplayDate,
+              visitDate: persistedVisitDate,
+            },
+            ...filtered,
+          ];
+        });
+
         setCafes((prevCafes) =>
           prevCafes.map((c) => {
             if (c.id !== cafeId) return c;
+            const filtered = c.reviews.filter(
+              (r) => r.id !== tempId && r.id !== data.id
+            );
+            const updated = [
+              ...filtered,
+              {
+                ...newReview,
+                id: data.id,
+                rating: persistedRating,
+                date: persistedDisplayDate,
+              },
+            ];
+            const avg =
+              updated.reduce((sum, r) => sum + r.rating, 0) / updated.length;
             return {
               ...c,
-              reviews: c.reviews.map((r) =>
-                r.id === tempId ? { ...r, id: data.id, date: formatReviewDate(data.created_at) } : r
-              ),
+              reviews: updated,
+              rating: Math.round(avg * 10) / 10,
             };
           })
         );

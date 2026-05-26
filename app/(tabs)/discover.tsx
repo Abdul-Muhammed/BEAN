@@ -135,7 +135,7 @@ export default function DiscoverScreen() {
           activeOpacity={0.7}
         >
           <Search size={20} color="#8E8E93" style={styles.searchIcon} />
-          <Text style={styles.searchPlaceholder}>Q Search Cafes</Text>
+          <Text style={styles.searchPlaceholder}>Search Cafes</Text>
         </TouchableOpacity>
 
         {/* Filter Buttons */}

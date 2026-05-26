@@ -12,11 +12,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { X, Star, Camera, ChevronDown, Check } from 'lucide-react-native';
+import { X, Camera, ChevronDown, ChevronUp, Check } from 'lucide-react-native';
 import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
 import * as ImagePicker from 'expo-image-picker';
 import { useReviews } from '../../context/ReviewContext';
 import { colors } from '@/constants/theme';
+import InlineDatePicker from '@/components/InlineDatePicker';
+import SwipeableStarRating from '@/components/SwipeableStarRating';
 
 type ReviewStep = 'order' | 'likes' | 'notes' | 'photos';
 
@@ -71,6 +73,7 @@ export default function AddReviewScreen() {
   const [likesCompleted, setLikesCompleted] = useState(false);
   const [notesCompleted, setNotesCompleted] = useState(false);
   const [photosCompleted, setPhotosCompleted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (params.cafeId && params.cafeName) {
@@ -94,11 +97,16 @@ export default function AddReviewScreen() {
 
   const orderCompleted = orderedItem.trim().length > 0;
   const notesStepCompleted = notes.trim().length > 0 || notesCompleted;
-  const showOrderSection = rating > 0;
-  const showLikesSection = orderCompleted;
-  const showNotesSection = likesCompleted;
-  const showPhotoSection = notesStepCompleted;
-  const canSubmit = Boolean(selectedCafe && rating > 0 && orderCompleted);
+  const sectionsRevealed = rating > 0;
+  const showOrderSection = sectionsRevealed;
+  const showLikesSection = sectionsRevealed;
+  const showNotesSection = sectionsRevealed;
+  const showPhotoSection = sectionsRevealed;
+  const canSubmit = Boolean(selectedCafe && rating > 0 && orderCompleted && !submitting);
+
+  const toggleStep = (step: ReviewStep) => {
+    setActiveStep((current) => (current === step ? null : step));
+  };
 
   const visibleStepCount = [
     showOrderSection,
@@ -118,8 +126,9 @@ export default function AddReviewScreen() {
   }, [visibleStepCount]);
 
   const handleRatingSelect = (nextRating: number) => {
+    const wasZero = rating === 0;
     setRating(nextRating);
-    if (!orderCompleted) {
+    if (wasZero && !orderCompleted) {
       setActiveStep('order');
     }
   };
@@ -192,9 +201,12 @@ export default function AddReviewScreen() {
     setNotesCompleted(false);
     setPhotosCompleted(false);
     setDate(new Date());
+    setShowDatePicker(false);
+    setSubmitting(false);
   };
 
   const handleSubmit = async () => {
+    if (submitting) return;
     if (!selectedCafe) {
       Alert.alert('Missing Information', 'Please select a cafe');
       return;
@@ -208,18 +220,24 @@ export default function AddReviewScreen() {
       return;
     }
 
-    await addReview({
-      cafeId: selectedCafe.id,
-      rating,
-      text: notes.trim(),
-      orderedItem: orderedItem.trim(),
-      attributes: selectedAttributes,
-      photos,
-    });
-    Alert.alert('Success', 'Your review has been added!');
+    setSubmitting(true);
+    try {
+      await addReview({
+        cafeId: selectedCafe.id,
+        rating,
+        text: notes.trim(),
+        orderedItem: orderedItem.trim(),
+        attributes: selectedAttributes,
+        photos,
+        visitDate: date,
+      });
+      Alert.alert('Success', 'Your review has been added!');
 
-    resetForm();
-    router.push('/(tabs)/home');
+      resetForm();
+      router.push('/(tabs)/home');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -271,73 +289,42 @@ export default function AddReviewScreen() {
             <ChevronDown size={20} color={colors.mutedText} />
           </TouchableOpacity>
           {showDatePicker && (
-            <View style={styles.datePickerContainer}>
-              <TextInput
-                style={styles.dateInput}
-                placeholder="MM/DD/YYYY"
-                placeholderTextColor={colors.mutedText}
-                value={date.toLocaleDateString('en-US')}
-                onChangeText={(text) => {
-                  const newDate = new Date(text);
-                  if (!isNaN(newDate.getTime())) {
-                    setDate(newDate);
-                  }
-                }}
-              />
-              <View style={styles.dateQuickOptions}>
-                <TouchableOpacity
-                  style={styles.dateQuickButton}
-                  onPress={() => {
-                    setDate(new Date());
-                    setShowDatePicker(false);
-                  }}
-                >
-                  <Text style={styles.dateQuickButtonText}>Today</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.dateQuickButton}
-                  onPress={() => {
-                    const yesterday = new Date();
-                    yesterday.setDate(yesterday.getDate() - 1);
-                    setDate(yesterday);
-                    setShowDatePicker(false);
-                  }}
-                >
-                  <Text style={styles.dateQuickButtonText}>Yesterday</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+            <InlineDatePicker
+              value={date}
+              onChange={(next) => setDate(next)}
+              maxDate={new Date()}
+            />
           )}
         </View>
 
         <AnimatedSection>
           <Text style={styles.stepEyebrow}>Rating</Text>
           <Text style={styles.stepTitle}>How was your experience?</Text>
-          <View style={styles.starsContainer}>
-            {[1, 2, 3, 4, 5].map((star) => (
-              <TouchableOpacity
-                key={star}
-                onPress={() => handleRatingSelect(star)}
-                style={styles.starButton}
-                activeOpacity={0.8}
-              >
-                <Star
-                  size={42}
-                  color={star <= rating ? colors.gold : colors.disabled}
-                  fill={star <= rating ? colors.gold : 'transparent'}
-                  strokeWidth={2}
-                />
-              </TouchableOpacity>
-            ))}
-          </View>
+          <SwipeableStarRating
+            rating={rating}
+            onChange={handleRatingSelect}
+            size={42}
+          />
+          {rating > 0 && (
+            <Text style={styles.ratingValue}>{rating.toFixed(1)} / 5</Text>
+          )}
         </AnimatedSection>
 
         {showOrderSection && (
           <AnimatedSection>
             {activeStep === 'order' ? (
               <>
-                <Text style={styles.stepEyebrow}>What Did You Order?</Text>
-                <Text style={styles.stepHint}>Choose one</Text>
+                <TouchableOpacity
+                  style={styles.expandedHeader}
+                  onPress={() => toggleStep('order')}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.collapsedStepText}>
+                    <Text style={styles.stepEyebrow}>What Did You Order?</Text>
+                    <Text style={styles.stepHint}>Choose one</Text>
+                  </View>
+                  <ChevronUp size={20} color={colors.mutedText} />
+                </TouchableOpacity>
                 <View style={styles.orderPillsContainer}>
                   {ORDER_ITEMS.map((item) => {
                     const isSelected = orderedItem === item;
@@ -369,7 +356,7 @@ export default function AddReviewScreen() {
             ) : (
               <TouchableOpacity
                 style={styles.collapsedStep}
-                onPress={() => setActiveStep('order')}
+                onPress={() => toggleStep('order')}
                 activeOpacity={0.85}
               >
                 <View style={styles.collapsedStepText}>
@@ -389,10 +376,17 @@ export default function AddReviewScreen() {
             {activeStep === 'likes' ? (
               <>
                 <View style={styles.stepHeaderRow}>
-                  <View>
-                    <Text style={styles.stepEyebrow}>What Did You Like?</Text>
-                    <Text style={styles.stepHint}>Choose up to 3</Text>
-                  </View>
+                  <TouchableOpacity
+                    style={styles.stepHeaderTitle}
+                    onPress={() => toggleStep('likes')}
+                    activeOpacity={0.85}
+                  >
+                    <View>
+                      <Text style={styles.stepEyebrow}>What Did You Like?</Text>
+                      <Text style={styles.stepHint}>Choose up to 3</Text>
+                    </View>
+                    <ChevronUp size={20} color={colors.mutedText} />
+                  </TouchableOpacity>
                   <TouchableOpacity onPress={completeLikesStep} style={styles.skipButton}>
                     <Text style={styles.skipButtonText}>Skip</Text>
                   </TouchableOpacity>
@@ -443,7 +437,7 @@ export default function AddReviewScreen() {
             ) : (
               <TouchableOpacity
                 style={styles.collapsedStep}
-                onPress={() => setActiveStep('likes')}
+                onPress={() => toggleStep('likes')}
                 activeOpacity={0.85}
               >
                 <View style={styles.collapsedStepText}>
@@ -470,10 +464,17 @@ export default function AddReviewScreen() {
             {activeStep === 'notes' ? (
               <>
                 <View style={styles.stepHeaderRow}>
-                  <View>
-                    <Text style={styles.stepEyebrow}>Notes</Text>
-                    <Text style={styles.stepHint}>Optional</Text>
-                  </View>
+                  <TouchableOpacity
+                    style={styles.stepHeaderTitle}
+                    onPress={() => toggleStep('notes')}
+                    activeOpacity={0.85}
+                  >
+                    <View>
+                      <Text style={styles.stepEyebrow}>Notes</Text>
+                      <Text style={styles.stepHint}>Optional</Text>
+                    </View>
+                    <ChevronUp size={20} color={colors.mutedText} />
+                  </TouchableOpacity>
                   <TouchableOpacity onPress={completeNotesStep} style={styles.skipButton}>
                     <Text style={styles.skipButtonText}>Skip</Text>
                   </TouchableOpacity>
@@ -501,7 +502,7 @@ export default function AddReviewScreen() {
             ) : (
               <TouchableOpacity
                 style={styles.collapsedStep}
-                onPress={() => setActiveStep('notes')}
+                onPress={() => toggleStep('notes')}
                 activeOpacity={0.85}
               >
                 <View style={styles.collapsedStepText}>
@@ -521,10 +522,17 @@ export default function AddReviewScreen() {
             {activeStep === 'photos' ? (
               <>
                 <View style={styles.stepHeaderRow}>
-                  <View>
-                    <Text style={styles.stepEyebrow}>Upload Photo</Text>
-                    <Text style={styles.stepHint}>Optional</Text>
-                  </View>
+                  <TouchableOpacity
+                    style={styles.stepHeaderTitle}
+                    onPress={() => toggleStep('photos')}
+                    activeOpacity={0.85}
+                  >
+                    <View>
+                      <Text style={styles.stepEyebrow}>Upload Photo</Text>
+                      <Text style={styles.stepHint}>Optional</Text>
+                    </View>
+                    <ChevronUp size={20} color={colors.mutedText} />
+                  </TouchableOpacity>
                   <TouchableOpacity onPress={completePhotosStep} style={styles.skipButton}>
                     <Text style={styles.skipButtonText}>Skip</Text>
                   </TouchableOpacity>
@@ -552,7 +560,7 @@ export default function AddReviewScreen() {
             ) : (
               <TouchableOpacity
                 style={styles.collapsedStep}
-                onPress={() => setActiveStep('photos')}
+                onPress={() => toggleStep('photos')}
                 activeOpacity={0.85}
               >
                 <View style={styles.collapsedStepText}>
@@ -587,7 +595,9 @@ export default function AddReviewScreen() {
           disabled={!canSubmit}
           activeOpacity={0.9}
         >
-          <Text style={styles.continueButtonText}>Continue</Text>
+          <Text style={styles.continueButtonText}>
+            {submitting ? 'Submitting...' : 'Submit'}
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -720,47 +730,26 @@ const styles = StyleSheet.create({
     color: colors.primary,
     flex: 1,
   },
-  datePickerContainer: {
-    backgroundColor: colors.surface,
-    borderRadius: 18,
-    marginTop: 10,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.warmBorder,
-  },
-  dateInput: {
-    backgroundColor: colors.warmSurface,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    fontFamily: 'Lato-Regular',
-    color: colors.primary,
-    marginBottom: 12,
-  },
-  dateQuickOptions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  dateQuickButton: {
-    flex: 1,
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  dateQuickButtonText: {
+  ratingValue: {
     fontSize: 14,
     fontFamily: 'Lato-Bold',
-    color: colors.white,
+    color: colors.goldText,
+    marginTop: 10,
+    textAlign: 'center',
   },
-  starsContainer: {
+  expandedHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 16,
+    marginBottom: 8,
   },
-  starButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 3,
+  stepHeaderTitle: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
   },
   collapsedStep: {
     flexDirection: 'row',

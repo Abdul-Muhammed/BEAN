@@ -41,6 +41,7 @@ export interface UserReview {
   cafePlaceId?: string;
   rating: number;
   date: string;
+  visitDate?: string;
   text: string;
   orderedItem?: string;
   attributes?: string[];

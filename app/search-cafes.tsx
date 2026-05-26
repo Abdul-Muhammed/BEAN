@@ -226,7 +226,7 @@ export default function SearchCafesScreen() {
       {showRecents && (
         <View style={styles.recentsContainer}>
           <View style={styles.recentsHeader}>
-            <Text style={styles.recentsTitle}>Recently Searched</Text>
+            <Text style={styles.recentsTitle}>Recent Searches</Text>
             <TouchableOpacity onPress={clearAllRecent}>
               <Text style={styles.clearAllText}>Clear</Text>
             </TouchableOpacity>
