@@ -96,6 +96,17 @@ android {
         versionName "1.0.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
+
+        // Resolves the ${GOOGLE_MAPS_API_KEY} placeholder in AndroidManifest.xml
+        // for the react-native-maps Google provider. Prefer a Gradle property
+        // (set in ~/.gradle/gradle.properties so it stays out of git), then fall
+        // back to the EXPO_PUBLIC_* env vars the JS bundle already uses.
+        manifestPlaceholders = [
+            GOOGLE_MAPS_API_KEY: (project.findProperty('GOOGLE_MAPS_API_KEY')
+                ?: System.getenv('EXPO_PUBLIC_GOOGLE_MAPS_API_KEY')
+                ?: System.getenv('EXPO_PUBLIC_GOOGLE_PLACES_API_KEY')
+                ?: '')
+        ]
     }
     signingConfigs {
         debug {

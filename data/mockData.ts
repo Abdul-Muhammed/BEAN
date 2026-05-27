@@ -19,6 +19,8 @@ export interface Cafe {
   savedCount?: number;
   photos?: string[]; // Array of photo URLs
   place_id?: string; // Google Places ID
+  latitude?: number; // Map coordinate (from Google Places geometry)
+  longitude?: number; // Map coordinate (from Google Places geometry)
 }
 
 export interface Review {
