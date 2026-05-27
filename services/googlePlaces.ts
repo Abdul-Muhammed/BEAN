@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { CafeHours } from '../data/mockData';
+import { supabase } from '../lib/supabase';
 
 // Google Places API integration
 const GOOGLE_PLACES_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY;
@@ -186,35 +187,19 @@ function simplifyAddress(address: string): string | null {
   return tail.join(', ');
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// Search cafes around an explicit coordinate. Skips the Geocoding API
-// entirely, which avoids `REQUEST_DENIED` failures when the project's
-// Geocoding API isn't enabled but Places is.
+// Search cafes around an explicit coordinate through the Supabase Edge
+// Function. The function owns the Google API key and shared persistent cache;
+// this client-side cache avoids repeated function calls during one app session.
 //
-// `maxPages` controls how many Nearby Search pages to fetch (Google returns
-// up to 20 results per page, max 3 pages = 60 results). Pagination requires
-// a short server-side delay before the `next_page_token` becomes valid, so
-// each extra page adds ~2s to the call.
+// `maxPages` controls how many Nearby Search pages the function may fetch.
+// It is capped at 2 to limit Google Places spend.
 export async function searchCafesNearbyByCoords(
   lat: number,
   lng: number,
   radius: number = 5000,
-  maxPages: number = 2
+  maxPages: number = 1
 ): Promise<PlaceDetails[]> {
-  if (Platform.OS === 'web') {
-    console.warn('Google Places API is not available on web platform due to CORS restrictions');
-    return [];
-  }
-
-  if (!GOOGLE_PLACES_API_KEY) {
-    console.warn('Google Places API key not found');
-    return [];
-  }
-
-  const pages = Math.min(Math.max(maxPages, 1), 3);
+  const pages = Math.min(Math.max(Math.trunc(maxPages), 1), 2);
 
   // Build a cache key that ignores tiny GPS jitter while still
   // distinguishing meaningfully different viewports.
@@ -227,66 +212,25 @@ export async function searchCafesNearbyByCoords(
   }
 
   try {
-    const aggregated: any[] = [];
-    let pageToken: string | undefined;
+    const { data, error } = await supabase.functions.invoke('nearby-cafes', {
+      body: {
+        lat,
+        lng,
+        radius: roundedRadius,
+        maxPages: pages,
+      },
+    });
 
-    for (let page = 0; page < pages; page++) {
-      const url = pageToken
-        ? `https://maps.googleapis.com/maps/api/place/nearbysearch/json?pagetoken=${pageToken}&key=${GOOGLE_PLACES_API_KEY}`
-        : `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=cafe&key=${GOOGLE_PLACES_API_KEY}`;
-
-      const placesResponse = await fetch(url);
-      const placesData = await placesResponse.json();
-
-      if (placesData.status === 'OVER_QUERY_LIMIT') {
-        console.warn('Google Places API quota exceeded');
-        break;
-      }
-
-      if (placesData.status === 'REQUEST_DENIED') {
-        console.warn(
-          'Google Places Nearby Search returned REQUEST_DENIED. Check that the Places API is enabled, billing is active, and the API key restrictions allow requests from this app. Details:',
-          placesData.error_message || '(no error_message)'
-        );
-        return [];
-      }
-
-      // INVALID_REQUEST is expected immediately after receiving a fresh
-      // next_page_token. Wait briefly and retry once before giving up.
-      if (placesData.status === 'INVALID_REQUEST' && pageToken) {
-        await delay(1800);
-        const retryResponse = await fetch(url);
-        const retryData = await retryResponse.json();
-        if (retryData.status === 'OK' && Array.isArray(retryData.results)) {
-          aggregated.push(...retryData.results);
-          pageToken = retryData.next_page_token;
-          if (!pageToken) break;
-          await delay(1800);
-          continue;
-        }
-        break;
-      }
-
-      if (placesData.status !== 'OK' && placesData.status !== 'ZERO_RESULTS') {
-        console.warn('Google Places API error:', placesData.status, placesData.error_message);
-        break;
-      }
-
-      if (Array.isArray(placesData.results)) {
-        aggregated.push(...placesData.results);
-      }
-
-      pageToken = placesData.next_page_token;
-      if (!pageToken) break;
-
-      // Google needs a short window before next_page_token is usable.
-      await delay(1800);
+    if (error) {
+      console.warn('Nearby cafes function error:', error.message);
+      return [];
     }
 
-    nearbyCache.set(cacheKey, aggregated);
-    return aggregated;
+    const results = Array.isArray(data?.results) ? data.results : [];
+    nearbyCache.set(cacheKey, results);
+    return results;
   } catch (error) {
-    console.error('Error searching cafes nearby by coords:', error);
+    console.error('Error invoking nearby cafes function:', error);
     return [];
   }
 }
