@@ -8,6 +8,10 @@ const GOOGLE_PLACES_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY;
 const searchCache = new Map<string, PlaceDetails[]>();
 const detailsCache = new Map<string, any>();
 const photoCache = new Map<string, string>();
+// Nearby search cache keyed by rounded center/radius/page-count so the map
+// doesn't refetch the same viewport when panning slightly or returning to
+// a previously loaded area.
+const nearbyCache = new Map<string, PlaceDetails[]>();
 
 export interface PlacePhoto {
   photo_reference: string;
@@ -182,13 +186,23 @@ function simplifyAddress(address: string): string | null {
   return tail.join(', ');
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // Search cafes around an explicit coordinate. Skips the Geocoding API
 // entirely, which avoids `REQUEST_DENIED` failures when the project's
 // Geocoding API isn't enabled but Places is.
+//
+// `maxPages` controls how many Nearby Search pages to fetch (Google returns
+// up to 20 results per page, max 3 pages = 60 results). Pagination requires
+// a short server-side delay before the `next_page_token` becomes valid, so
+// each extra page adds ~2s to the call.
 export async function searchCafesNearbyByCoords(
   lat: number,
   lng: number,
-  radius: number = 5000
+  radius: number = 5000,
+  maxPages: number = 2
 ): Promise<PlaceDetails[]> {
   if (Platform.OS === 'web') {
     console.warn('Google Places API is not available on web platform due to CORS restrictions');
@@ -200,32 +214,77 @@ export async function searchCafesNearbyByCoords(
     return [];
   }
 
+  const pages = Math.min(Math.max(maxPages, 1), 3);
+
+  // Build a cache key that ignores tiny GPS jitter while still
+  // distinguishing meaningfully different viewports.
+  const roundedLat = Math.round(lat * 1000) / 1000;
+  const roundedLng = Math.round(lng * 1000) / 1000;
+  const roundedRadius = Math.round(radius / 250) * 250;
+  const cacheKey = `${roundedLat},${roundedLng},${roundedRadius},${pages}`;
+  if (nearbyCache.has(cacheKey)) {
+    return nearbyCache.get(cacheKey)!;
+  }
+
   try {
-    const placesResponse = await fetch(
-      `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=cafe&key=${GOOGLE_PLACES_API_KEY}`
-    );
+    const aggregated: any[] = [];
+    let pageToken: string | undefined;
 
-    const placesData = await placesResponse.json();
+    for (let page = 0; page < pages; page++) {
+      const url = pageToken
+        ? `https://maps.googleapis.com/maps/api/place/nearbysearch/json?pagetoken=${pageToken}&key=${GOOGLE_PLACES_API_KEY}`
+        : `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=cafe&key=${GOOGLE_PLACES_API_KEY}`;
 
-    if (placesData.status === 'OVER_QUERY_LIMIT') {
-      console.warn('Google Places API quota exceeded');
-      return [];
+      const placesResponse = await fetch(url);
+      const placesData = await placesResponse.json();
+
+      if (placesData.status === 'OVER_QUERY_LIMIT') {
+        console.warn('Google Places API quota exceeded');
+        break;
+      }
+
+      if (placesData.status === 'REQUEST_DENIED') {
+        console.warn(
+          'Google Places Nearby Search returned REQUEST_DENIED. Check that the Places API is enabled, billing is active, and the API key restrictions allow requests from this app. Details:',
+          placesData.error_message || '(no error_message)'
+        );
+        return [];
+      }
+
+      // INVALID_REQUEST is expected immediately after receiving a fresh
+      // next_page_token. Wait briefly and retry once before giving up.
+      if (placesData.status === 'INVALID_REQUEST' && pageToken) {
+        await delay(1800);
+        const retryResponse = await fetch(url);
+        const retryData = await retryResponse.json();
+        if (retryData.status === 'OK' && Array.isArray(retryData.results)) {
+          aggregated.push(...retryData.results);
+          pageToken = retryData.next_page_token;
+          if (!pageToken) break;
+          await delay(1800);
+          continue;
+        }
+        break;
+      }
+
+      if (placesData.status !== 'OK' && placesData.status !== 'ZERO_RESULTS') {
+        console.warn('Google Places API error:', placesData.status, placesData.error_message);
+        break;
+      }
+
+      if (Array.isArray(placesData.results)) {
+        aggregated.push(...placesData.results);
+      }
+
+      pageToken = placesData.next_page_token;
+      if (!pageToken) break;
+
+      // Google needs a short window before next_page_token is usable.
+      await delay(1800);
     }
 
-    if (placesData.status === 'REQUEST_DENIED') {
-      console.warn(
-        'Google Places Nearby Search returned REQUEST_DENIED. Check that the Places API is enabled, billing is active, and the API key restrictions allow requests from this app. Details:',
-        placesData.error_message || '(no error_message)'
-      );
-      return [];
-    }
-
-    if (placesData.status !== 'OK' && placesData.status !== 'ZERO_RESULTS') {
-      console.warn('Google Places API error:', placesData.status, placesData.error_message);
-      return [];
-    }
-
-    return placesData.results || [];
+    nearbyCache.set(cacheKey, aggregated);
+    return aggregated;
   } catch (error) {
     console.error('Error searching cafes nearby by coords:', error);
     return [];
@@ -368,7 +427,8 @@ export async function getPlaceDetails(placeId: string): Promise<any | null> {
       'opening_hours',
       'photos',
       'rating',
-      'types'
+      'types',
+      'geometry'
     ].join(',');
 
     const response = await fetch(
@@ -502,6 +562,13 @@ export async function convertPlaceToCafe(place: any): Promise<any> {
   const types = place.types || [];
   const amenities = determineAmenities(types, place.rating);
 
+  // Preserve coordinates from Google Places geometry so markers can be
+  // rendered on the map without an extra geocoding round-trip.
+  const geoLat = place?.geometry?.location?.lat;
+  const geoLng = place?.geometry?.location?.lng;
+  const latitude = typeof geoLat === 'number' ? geoLat : undefined;
+  const longitude = typeof geoLng === 'number' ? geoLng : undefined;
+
   // Return basic cafe data - NO Place Details API call here
   // Details will be lazy loaded when user clicks on cafe
   return {
@@ -518,7 +585,9 @@ export async function convertPlaceToCafe(place: any): Promise<any> {
     amenities: amenities.length > 0 ? amenities : undefined,
     favoritesCount: 0,
     savedCount: 0,
-    photos: [photoUrl] // Single photo for now, will be enriched later
+    photos: [photoUrl], // Single photo for now, will be enriched later
+    latitude,
+    longitude,
   };
 }
 
@@ -555,6 +624,11 @@ export async function enrichCafeWithDetails(placeId: string): Promise<any | null
   const types = placeDetails.types || [];
   const amenities = determineAmenities(types, placeDetails.rating);
 
+  const geoLat = placeDetails?.geometry?.location?.lat;
+  const geoLng = placeDetails?.geometry?.location?.lng;
+  const latitude = typeof geoLat === 'number' ? geoLat : undefined;
+  const longitude = typeof geoLng === 'number' ? geoLng : undefined;
+
   return {
     name: placeDetails.name || undefined,
     location: placeDetails.formatted_address || undefined,
@@ -566,6 +640,8 @@ export async function enrichCafeWithDetails(placeId: string): Promise<any | null
     hours: hours || undefined,
     amenities: amenities.length > 0 ? amenities : undefined,
     photos: photos.length > 0 ? photos : undefined,
-    rating: placeDetails.rating || undefined
+    rating: placeDetails.rating || undefined,
+    latitude,
+    longitude,
   };
 }
