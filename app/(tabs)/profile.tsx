@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUser, useAuth } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
-import { LogOut, Star, Plus, Bookmark, Heart, Coffee } from 'lucide-react-native';
+import { LogOut, Plus, Bookmark, Heart, Coffee } from 'lucide-react-native';
 import { useReviews } from '../../context/ReviewContext';
 import { useUserProfile } from '../../hooks/useUserProfile';
 import ProfileTabs from '../../components/ProfileTabs';
@@ -45,14 +45,66 @@ const MONTH_ABBR: Record<string, string> = {
   December: 'DEC',
 };
 
-function parseVisitDate(visitDate?: string): { day: number; month: string } | null {
+type ParsedVisitDate = {
+  year: number;
+  month: string;
+  day: number;
+  timestamp: number;
+};
+
+function buildParsedVisitDate(year: number, monthIndex: number, day: number): ParsedVisitDate | null {
+  if (monthIndex < 0 || monthIndex > 11 || day < 1 || day > 31) return null;
+
+  const date = new Date(year, monthIndex, day);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== monthIndex ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return {
+    year,
+    month: MONTH_NAMES[monthIndex],
+    day,
+    timestamp: date.getTime(),
+  };
+}
+
+function parseVisitDate(visitDate?: string): ParsedVisitDate | null {
   if (!visitDate) return null;
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(visitDate);
   if (!match) return null;
-  const [, , m, d] = match;
+  const [, y, m, d] = match;
   const monthIndex = Number(m) - 1;
-  if (monthIndex < 0 || monthIndex > 11) return null;
-  return { day: Number(d), month: MONTH_NAMES[monthIndex] };
+  return buildParsedVisitDate(Number(y), monthIndex, Number(d));
+}
+
+function parseDisplayDate(displayDate: string): ParsedVisitDate | null {
+  const currentDate = new Date();
+  if (displayDate === 'Just now') {
+    return buildParsedVisitDate(
+      currentDate.getFullYear(),
+      currentDate.getMonth(),
+      currentDate.getDate()
+    );
+  }
+
+  const dateMatch = displayDate.match(/^(\d+)\s+(\w+)(?:\s+(\d{4}))?$/);
+  if (!dateMatch) return null;
+
+  const [, day, month, year] = dateMatch;
+  const monthIndex = MONTH_NAMES.indexOf(month);
+  return buildParsedVisitDate(
+    year ? Number(year) : currentDate.getFullYear(),
+    monthIndex,
+    Number(day)
+  );
+}
+
+function getReviewVisitDate(review: UserReview): ParsedVisitDate | null {
+  return parseVisitDate(review.visitDate) || parseDisplayDate(review.date);
 }
 
 export default function ProfileScreen() {
@@ -106,42 +158,33 @@ export default function ProfileScreen() {
   const profileImageUrl = profile?.profile_image_url || user?.imageUrl;
   const userName = user?.fullName || user?.firstName || 'User';
 
-  // Group reviews by month for Diary tab. Prefer the user-picked
+  // Group reviews by visit year for Diary tab. Prefer the user-picked
   // `visitDate` when present; fall back to the older parsed `date` string.
-  const reviewsByMonth = useMemo(() => {
+  const reviewsByYear = useMemo(() => {
     const grouped: { [key: string]: UserReview[] } = {};
 
     userReviews.forEach((review) => {
-      const fromVisit = parseVisitDate(review.visitDate);
-      let month: string | null = fromVisit?.month || null;
-      if (!month) {
-        const dateMatch = review.date.match(/(\d+)\s+(\w+)/);
-        month = dateMatch ? dateMatch[2] : 'Other';
-      }
-      if (!grouped[month]) grouped[month] = [];
-      grouped[month].push(review);
+      const visitDate = getReviewVisitDate(review);
+      const year = visitDate ? String(visitDate.year) : 'Other';
+
+      if (!grouped[year]) grouped[year] = [];
+      grouped[year].push(review);
     });
 
-    const monthOrder = [...MONTH_NAMES, 'Other'];
-    const sortedMonths = Object.keys(grouped).sort((a, b) => {
-      const aIndex = monthOrder.indexOf(a);
-      const bIndex = monthOrder.indexOf(b);
-      if (aIndex === -1 && bIndex === -1) return 0;
-      if (aIndex === -1) return 1;
-      if (bIndex === -1) return -1;
-      return aIndex - bIndex;
-    });
-
-    const dayOf = (review: UserReview): number => {
-      const fromVisit = parseVisitDate(review.visitDate);
-      if (fromVisit) return fromVisit.day;
-      return parseInt(review.date.match(/\d+/)?.[0] || '0', 10);
+    const sortValueOf = (review: UserReview): number => {
+      return getReviewVisitDate(review)?.timestamp || 0;
     };
 
-    return sortedMonths.map((month) => ({
-      month,
-      reviews: grouped[month].sort((a, b) => dayOf(b) - dayOf(a)),
-    }));
+    return Object.keys(grouped)
+      .sort((a, b) => {
+        if (a === 'Other') return 1;
+        if (b === 'Other') return -1;
+        return Number(b) - Number(a);
+      })
+      .map((year) => ({
+        year,
+        reviews: grouped[year].sort((a, b) => sortValueOf(b) - sortValueOf(a)),
+      }));
   }, [userReviews]);
 
   const renderProfileTab = () => (
@@ -180,22 +223,18 @@ export default function ProfileScreen() {
       {/* Stat Cards */}
       <View style={styles.statCardsContainer}>
         <StatCard
-          icon={Star}
-          label="Average Rating"
-          value={averageRating.toFixed(1)}
-          iconColor="#4CAF50"
-        />
-        <StatCard
           icon={Plus}
           label="Visited"
           value={visitedCount}
           iconColor="#1C1C1E"
+          onPress={() => setActiveTab('diary')}
         />
         <StatCard
           icon={Bookmark}
           label="Saved"
           value={savedCount}
           iconColor="#1C1C1E"
+          onPress={() => router.push('/(tabs)/bookmarks')}
         />
       </View>
 
@@ -284,27 +323,27 @@ export default function ProfileScreen() {
 
     return (
       <FlatList
-        data={reviewsByMonth}
-        keyExtractor={(item) => item.month}
+        data={reviewsByYear}
+        keyExtractor={(item) => item.year}
         contentContainerStyle={styles.diaryContent}
         showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
-          <View style={styles.monthSection}>
-            <View style={styles.monthHeaderRow}>
-              <Text style={styles.monthHeader}>{item.month}</Text>
-              <View style={styles.monthHeaderLine} />
-              <Text style={styles.monthCount}>
+          <View style={styles.yearSection}>
+            <View style={styles.yearHeaderRow}>
+              <Text style={styles.yearHeader}>{item.year}</Text>
+              <View style={styles.yearHeaderLine} />
+              <Text style={styles.yearCount}>
                 {item.reviews.length} {item.reviews.length === 1 ? 'visit' : 'visits'}
               </Text>
             </View>
             {item.reviews.map((review) => {
               const isFav = isFavorited(review.cafeId);
-              const fromVisit = parseVisitDate(review.visitDate);
-              const dayNumber = fromVisit
-                ? String(fromVisit.day)
+              const visitDate = getReviewVisitDate(review);
+              const dayNumber = visitDate
+                ? String(visitDate.day)
                 : review.date.match(/\d+/)?.[0] || review.date;
-              const monthName = fromVisit
-                ? fromVisit.month
+              const monthName = visitDate
+                ? visitDate.month
                 : review.date.match(/[A-Za-z]+/)?.[0] || '';
               const monthAbbr = MONTH_ABBR[monthName] || monthName.slice(0, 3).toUpperCase();
               return (
@@ -543,27 +582,27 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 100,
   },
-  monthSection: {
+  yearSection: {
     paddingHorizontal: 20,
     marginBottom: 24,
   },
-  monthHeaderRow: {
+  yearHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
     gap: 12,
   },
-  monthHeader: {
+  yearHeader: {
     fontSize: 18,
     fontFamily: 'OtomanopeeOne-Regular',
     color: '#1C1C1E',
   },
-  monthHeaderLine: {
+  yearHeaderLine: {
     flex: 1,
     height: 1,
     backgroundColor: '#E5E5EA',
   },
-  monthCount: {
+  yearCount: {
     fontSize: 12,
     fontFamily: 'Lato-Regular',
     color: '#8E8E93',

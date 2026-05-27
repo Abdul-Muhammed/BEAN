@@ -9,6 +9,7 @@ import {
   StatusBar,
   Alert,
   ActivityIndicator,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -113,6 +114,7 @@ export default function HomeScreen() {
   }, [addCafe, profileLatitude, profileLocationAddress, profileLongitude]);
 
   const handleCafeClick = (cafe: any) => {
+    Keyboard.dismiss();
     addCafe(cafe);
     router.push(`/cafe/${cafe.id}`);
   };
@@ -192,6 +194,7 @@ export default function HomeScreen() {
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Search Section */}
         <View style={styles.searchSection}>
@@ -297,6 +300,7 @@ export default function HomeScreen() {
                       style={styles.bookmarkButton}
                       onPress={(e) => {
                         e.stopPropagation();
+                        addCafe(cafe);
                         toggleBookmark(cafe.id);
                       }}
                     >

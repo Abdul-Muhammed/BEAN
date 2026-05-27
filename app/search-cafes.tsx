@@ -8,6 +8,7 @@ import {
   StatusBar,
   FlatList,
   Alert,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -133,6 +134,7 @@ export default function SearchCafesScreen() {
   };
 
   const selectCafe = (cafe: any) => {
+    Keyboard.dismiss();
     addCafe(cafe);
     addToRecent(cafe);
     if (isReviewMode) {
@@ -150,6 +152,7 @@ export default function SearchCafesScreen() {
   };
 
   const selectRecent = (entry: RecentSearch) => {
+    Keyboard.dismiss();
     addToRecent(entry);
     addCafe({
       id: entry.id,
@@ -235,6 +238,7 @@ export default function SearchCafesScreen() {
             data={recentSearches}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
+            keyboardShouldPersistTaps="always"
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={styles.recentItem}
@@ -285,6 +289,7 @@ export default function SearchCafesScreen() {
           data={searchResults}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
+          keyboardShouldPersistTaps="always"
           renderItem={({ item }) => (
             <TouchableOpacity
               style={styles.cafeItem}

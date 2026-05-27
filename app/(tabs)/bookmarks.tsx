@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,9 +7,10 @@ import {
   StatusBar,
   TouchableOpacity,
   Image,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bookmark, MapPin, Star, Wifi, Car } from 'lucide-react-native';
+import { Bookmark, MapPin, Star, Wifi, Car, Search, X } from 'lucide-react-native';
 import { useReviews } from '../../context/ReviewContext';
 import { useRouter } from 'expo-router';
 import { Badge, BadgeText } from '@gluestack-ui/themed';
@@ -18,6 +19,28 @@ import { colors } from '@/constants/theme';
 export default function BookmarksScreen() {
   const { bookmarkedCafes, toggleBookmark, isBookmarked, addCafe } = useReviews();
   const router = useRouter();
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredCafes = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return bookmarkedCafes;
+
+    return bookmarkedCafes.filter((cafe) => {
+      const searchable = [
+        cafe.name,
+        cafe.location,
+        ...(cafe.amenities || []),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return searchable.includes(query);
+    });
+  }, [bookmarkedCafes, searchQuery]);
+
+  const hasSavedCafes = bookmarkedCafes.length > 0;
+  const hasSearch = searchQuery.trim().length > 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -27,11 +50,37 @@ export default function BookmarksScreen() {
         <Text style={styles.headerTitle}>Saved</Text>
       </View>
 
+      {hasSavedCafes && (
+        <View style={styles.searchSection}>
+          <View style={styles.searchInputContainer}>
+            <Search size={20} color="#8E8E93" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search saved cafes"
+              placeholderTextColor="#8E8E93"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              returnKeyType="search"
+            />
+            {hasSearch && (
+              <TouchableOpacity
+                style={styles.clearButton}
+                onPress={() => setSearchQuery('')}
+                hitSlop={8}
+              >
+                <X size={18} color="#8E8E93" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
+
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={bookmarkedCafes.length === 0 ? styles.scrollContentEmpty : styles.scrollContent}
+        contentContainerStyle={!hasSavedCafes || filteredCafes.length === 0 ? styles.scrollContentEmpty : styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
-        {bookmarkedCafes.length === 0 ? (
+        {!hasSavedCafes ? (
           <View style={styles.emptyState}>
             <Bookmark size={64} color="#E5E5EA" />
             <Text style={styles.emptyTitle}>No saved cafes yet</Text>
@@ -39,8 +88,16 @@ export default function BookmarksScreen() {
               Bookmark your favorite cafes to find them here
             </Text>
           </View>
+        ) : filteredCafes.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Search size={64} color="#E5E5EA" />
+            <Text style={styles.emptyTitle}>No saved cafes found</Text>
+            <Text style={styles.emptyText}>
+              Try searching by cafe name, location, or amenity.
+            </Text>
+          </View>
         ) : (
-          bookmarkedCafes.map((cafe) => (
+          filteredCafes.map((cafe) => (
             <View key={cafe.id} style={styles.cafeCard}>
               <TouchableOpacity
                 style={styles.cafeCardContent}
@@ -124,6 +181,32 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontFamily: 'OtomanopeeOne-Regular',
     color: '#1C1C1E',
+  },
+  searchSection: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F2F2F7',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    fontFamily: 'Lato-Regular',
+    color: '#1C1C1E',
+    paddingVertical: 13,
+  },
+  clearButton: {
+    padding: 4,
+    marginLeft: 8,
   },
   scrollView: {
     flex: 1,

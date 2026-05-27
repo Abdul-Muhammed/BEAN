@@ -8,7 +8,7 @@
     "build:web": "expo export --platform web",
     "lint": "expo lint",
     "eas-build-pre-install": "node eas-build-pre-install.js",
-    "postinstall": "node eas-build-pre-install.js",
+    "postinstall": "node eas-build-pre-install.js && patch-package",
     "android": "expo run:android",
     "ios": "expo run:ios"
   },
@@ -23,6 +23,7 @@
     "@gorhom/bottom-sheet": "^5.2.10",
     "@lucide/lab": "^0.1.2",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "8.4.4",
     "@react-navigation/bottom-tabs": "^7.2.0",
     "@react-navigation/native": "^7.0.14",
     "@supabase/supabase-js": "^2.81.1",
@@ -69,6 +70,7 @@
     "@types/react-native": "^0.72.8",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~10.0.0",
+    "patch-package": "^8.0.1",
     "typescript": "~5.9.2"
   }
 }

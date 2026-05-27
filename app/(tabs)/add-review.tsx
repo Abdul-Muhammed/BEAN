@@ -12,12 +12,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { X, Camera, ChevronDown, ChevronUp, Check } from 'lucide-react-native';
+import { X, Camera, ChevronDown, ChevronUp, Check, Heart } from 'lucide-react-native';
 import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
 import * as ImagePicker from 'expo-image-picker';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useReviews } from '../../context/ReviewContext';
 import { colors } from '@/constants/theme';
-import InlineDatePicker from '@/components/InlineDatePicker';
 import SwipeableStarRating from '@/components/SwipeableStarRating';
 
 type ReviewStep = 'order' | 'likes' | 'notes' | 'photos';
@@ -58,7 +58,7 @@ function AnimatedSection({ children }: { children: React.ReactNode }) {
 }
 
 export default function AddReviewScreen() {
-  const { addReview } = useReviews();
+  const { addReview, toggleFavorite, isFavorited } = useReviews();
   const params = useLocalSearchParams();
   const scrollRef = useRef<ScrollView>(null);
   const [selectedCafe, setSelectedCafe] = useState<any>(null);
@@ -70,9 +70,6 @@ export default function AddReviewScreen() {
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [activeStep, setActiveStep] = useState<ReviewStep | null>(null);
-  const [likesCompleted, setLikesCompleted] = useState(false);
-  const [notesCompleted, setNotesCompleted] = useState(false);
-  const [photosCompleted, setPhotosCompleted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -96,15 +93,17 @@ export default function AddReviewScreen() {
   }, [params.selectedCafeId, params.selectedCafeName, params.selectedCafeImage]);
 
   const orderCompleted = orderedItem.trim().length > 0;
-  const notesStepCompleted = notes.trim().length > 0 || notesCompleted;
   const sectionsRevealed = rating > 0;
   const showOrderSection = sectionsRevealed;
   const showLikesSection = sectionsRevealed;
   const showNotesSection = sectionsRevealed;
   const showPhotoSection = sectionsRevealed;
-  const canSubmit = Boolean(selectedCafe && rating > 0 && orderCompleted && !submitting);
+  const favoriteCafeId = selectedCafe?.id ? String(selectedCafe.id) : null;
+  const isLovedCafe = favoriteCafeId ? isFavorited(favoriteCafeId) : false;
+  const canSubmit = Boolean(selectedCafe && rating > 0 && !submitting);
 
   const toggleStep = (step: ReviewStep) => {
+    setShowDatePicker(false);
     setActiveStep((current) => (current === step ? null : step));
   };
 
@@ -127,6 +126,7 @@ export default function AddReviewScreen() {
 
   const handleRatingSelect = (nextRating: number) => {
     const wasZero = rating === 0;
+    setShowDatePicker(false);
     setRating(nextRating);
     if (wasZero && !orderCompleted) {
       setActiveStep('order');
@@ -135,25 +135,10 @@ export default function AddReviewScreen() {
 
   const selectOrderItem = (item: string) => {
     setOrderedItem(item);
-    setActiveStep('likes');
-  };
-
-  const completeLikesStep = () => {
-    setLikesCompleted(true);
-    setActiveStep('notes');
-  };
-
-  const completeNotesStep = () => {
-    setNotesCompleted(true);
-    setActiveStep('photos');
-  };
-
-  const completePhotosStep = () => {
-    setPhotosCompleted(true);
-    setActiveStep(null);
   };
 
   const toggleAttribute = (attributeId: string) => {
+    setShowDatePicker(false);
     setSelectedAttributes((prev) => {
       if (prev.includes(attributeId)) {
         return prev.filter((id) => id !== attributeId);
@@ -177,7 +162,6 @@ export default function AddReviewScreen() {
     if (!result.canceled) {
       const newPhotos = result.assets.map((asset) => asset.uri);
       setPhotos((prev) => [...prev, ...newPhotos].slice(0, 5));
-      completePhotosStep();
     }
   };
 
@@ -197,12 +181,20 @@ export default function AddReviewScreen() {
     setSelectedAttributes([]);
     setPhotos([]);
     setActiveStep(null);
-    setLikesCompleted(false);
-    setNotesCompleted(false);
-    setPhotosCompleted(false);
     setDate(new Date());
     setShowDatePicker(false);
     setSubmitting(false);
+  };
+
+  const handleDateChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (selectedDate) {
+      setDate(selectedDate);
+    }
+  };
+
+  const handleToggleFavorite = () => {
+    if (!favoriteCafeId) return;
+    toggleFavorite(favoriteCafeId);
   };
 
   const handleSubmit = async () => {
@@ -215,10 +207,6 @@ export default function AddReviewScreen() {
       Alert.alert('Missing Information', 'Please add a rating');
       return;
     }
-    if (orderedItem.trim().length === 0) {
-      Alert.alert('Missing Information', 'Please add what you ordered');
-      return;
-    }
 
     setSubmitting(true);
     try {
@@ -226,7 +214,7 @@ export default function AddReviewScreen() {
         cafeId: selectedCafe.id,
         rating,
         text: notes.trim(),
-        orderedItem: orderedItem.trim(),
+        orderedItem: orderedItem.trim() || undefined,
         attributes: selectedAttributes,
         photos,
         visitDate: date,
@@ -254,12 +242,14 @@ export default function AddReviewScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={() => setShowDatePicker(false)}
       >
         <View style={styles.contextCard}>
           <Text style={styles.contextLabel}>Cafe visited</Text>
           <TouchableOpacity
             style={styles.dropdown}
             onPress={() => {
+              setShowDatePicker(false);
               router.push({
                 pathname: '/search-cafes',
                 params: { mode: 'review' },
@@ -289,25 +279,63 @@ export default function AddReviewScreen() {
             <ChevronDown size={20} color={colors.mutedText} />
           </TouchableOpacity>
           {showDatePicker && (
-            <InlineDatePicker
-              value={date}
-              onChange={(next) => setDate(next)}
-              maxDate={new Date()}
-            />
+            <>
+              <View style={styles.datePickerHeader}>
+                <Text style={styles.datePickerHint}>Pick a visit date</Text>
+                <TouchableOpacity
+                  onPress={() => setShowDatePicker(false)}
+                  hitSlop={8}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.datePickerClose}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.datePickerWrap}>
+                <DateTimePicker
+                  value={date}
+                  onChange={handleDateChange}
+                  mode="date"
+                  display="spinner"
+                  themeVariant="light"
+                  maximumDate={new Date()}
+                  style={styles.datePickerWheel}
+                />
+              </View>
+            </>
           )}
         </View>
 
         <AnimatedSection>
           <Text style={styles.stepEyebrow}>Rating</Text>
           <Text style={styles.stepTitle}>How was your experience?</Text>
-          <SwipeableStarRating
-            rating={rating}
-            onChange={handleRatingSelect}
-            size={42}
-          />
-          {rating > 0 && (
-            <Text style={styles.ratingValue}>{rating.toFixed(1)} / 5</Text>
-          )}
+          <View style={styles.ratingControlRow}>
+            <View style={styles.ratingStarsBlock}>
+              <SwipeableStarRating
+                rating={rating}
+                onChange={handleRatingSelect}
+                size={42}
+              />
+              {rating > 0 && (
+                <Text style={styles.ratingValue}>{rating.toFixed(1)} / 5</Text>
+              )}
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.loveButton,
+                isLovedCafe && styles.loveButtonActive,
+                !favoriteCafeId && styles.loveButtonDisabled,
+              ]}
+              onPress={handleToggleFavorite}
+              disabled={!favoriteCafeId}
+              activeOpacity={0.85}
+            >
+              <Heart
+                size={26}
+                color={isLovedCafe ? colors.danger : colors.primary}
+                fill={isLovedCafe ? colors.danger : 'transparent'}
+              />
+            </TouchableOpacity>
+          </View>
         </AnimatedSection>
 
         {showOrderSection && (
@@ -375,22 +403,17 @@ export default function AddReviewScreen() {
           <AnimatedSection>
             {activeStep === 'likes' ? (
               <>
-                <View style={styles.stepHeaderRow}>
-                  <TouchableOpacity
-                    style={styles.stepHeaderTitle}
-                    onPress={() => toggleStep('likes')}
-                    activeOpacity={0.85}
-                  >
-                    <View>
-                      <Text style={styles.stepEyebrow}>What Did You Like?</Text>
-                      <Text style={styles.stepHint}>Choose up to 3</Text>
-                    </View>
-                    <ChevronUp size={20} color={colors.mutedText} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={completeLikesStep} style={styles.skipButton}>
-                    <Text style={styles.skipButtonText}>Skip</Text>
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  style={styles.expandedHeader}
+                  onPress={() => toggleStep('likes')}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.collapsedStepText}>
+                    <Text style={styles.stepEyebrow}>What Did You Like?</Text>
+                    <Text style={styles.stepHint}>Choose up to 3</Text>
+                  </View>
+                  <ChevronUp size={20} color={colors.mutedText} />
+                </TouchableOpacity>
 
                 <View style={styles.attributesContainer}>
                   {ATTRIBUTES.map((attr) => {
@@ -424,15 +447,6 @@ export default function AddReviewScreen() {
                   })}
                 </View>
 
-                {selectedAttributes.length > 0 && (
-                  <TouchableOpacity
-                    onPress={completeLikesStep}
-                    style={styles.stepContinueButton}
-                    activeOpacity={0.9}
-                  >
-                    <Text style={styles.stepContinueButtonText}>Continue</Text>
-                  </TouchableOpacity>
-                )}
               </>
             ) : (
               <TouchableOpacity
@@ -448,9 +462,7 @@ export default function AddReviewScreen() {
                           .map((id) => ATTRIBUTES.find((attr) => attr.id === id)?.label)
                           .filter(Boolean)
                           .join(', ')
-                      : likesCompleted
-                        ? 'Skipped'
-                        : 'Choose up to 3'}
+                      : 'Choose up to 3'}
                   </Text>
                 </View>
                 <ChevronDown size={20} color={colors.mutedText} />
@@ -463,41 +475,28 @@ export default function AddReviewScreen() {
           <AnimatedSection>
             {activeStep === 'notes' ? (
               <>
-                <View style={styles.stepHeaderRow}>
-                  <TouchableOpacity
-                    style={styles.stepHeaderTitle}
-                    onPress={() => toggleStep('notes')}
-                    activeOpacity={0.85}
-                  >
-                    <View>
-                      <Text style={styles.stepEyebrow}>Notes</Text>
-                      <Text style={styles.stepHint}>Optional</Text>
-                    </View>
-                    <ChevronUp size={20} color={colors.mutedText} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={completeNotesStep} style={styles.skipButton}>
-                    <Text style={styles.skipButtonText}>Skip</Text>
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  style={styles.expandedHeader}
+                  onPress={() => toggleStep('notes')}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.collapsedStepText}>
+                    <Text style={styles.stepEyebrow}>Notes</Text>
+                    <Text style={styles.stepHint}>Optional</Text>
+                  </View>
+                  <ChevronUp size={20} color={colors.mutedText} />
+                </TouchableOpacity>
                 <TextInput
                   style={styles.notesInput}
                   placeholder="Anything memorable about the visit?"
                   placeholderTextColor={colors.mutedText}
                   value={notes}
                   onChangeText={handleNotesChange}
+                  onFocus={() => setShowDatePicker(false)}
                   multiline
                   numberOfLines={4}
                   textAlignVertical="top"
                 />
-                {notes.trim().length > 0 && (
-                  <TouchableOpacity
-                    onPress={completeNotesStep}
-                    style={styles.stepContinueButton}
-                    activeOpacity={0.9}
-                  >
-                    <Text style={styles.stepContinueButtonText}>Continue</Text>
-                  </TouchableOpacity>
-                )}
               </>
             ) : (
               <TouchableOpacity
@@ -508,7 +507,7 @@ export default function AddReviewScreen() {
                 <View style={styles.collapsedStepText}>
                   <Text style={styles.stepEyebrow}>Notes</Text>
                   <Text style={notes.trim().length > 0 ? styles.collapsedSummary : styles.stepHint}>
-                    {notes.trim().length > 0 ? notes.trim() : notesCompleted ? 'Skipped' : 'Optional'}
+                    {notes.trim().length > 0 ? notes.trim() : 'Optional'}
                   </Text>
                 </View>
                 <ChevronDown size={20} color={colors.mutedText} />
@@ -521,22 +520,17 @@ export default function AddReviewScreen() {
           <AnimatedSection>
             {activeStep === 'photos' ? (
               <>
-                <View style={styles.stepHeaderRow}>
-                  <TouchableOpacity
-                    style={styles.stepHeaderTitle}
-                    onPress={() => toggleStep('photos')}
-                    activeOpacity={0.85}
-                  >
-                    <View>
-                      <Text style={styles.stepEyebrow}>Upload Photo</Text>
-                      <Text style={styles.stepHint}>Optional</Text>
-                    </View>
-                    <ChevronUp size={20} color={colors.mutedText} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={completePhotosStep} style={styles.skipButton}>
-                    <Text style={styles.skipButtonText}>Skip</Text>
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  style={styles.expandedHeader}
+                  onPress={() => toggleStep('photos')}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.collapsedStepText}>
+                    <Text style={styles.stepEyebrow}>Upload Photo</Text>
+                    <Text style={styles.stepHint}>Optional</Text>
+                  </View>
+                  <ChevronUp size={20} color={colors.mutedText} />
+                </TouchableOpacity>
                 <View style={styles.photosContainer}>
                   {photos.map((photo, index) => (
                     <View key={`${photo}-${index}`} style={styles.photoWrapper}>
@@ -568,9 +562,7 @@ export default function AddReviewScreen() {
                   <Text style={photos.length > 0 ? styles.collapsedSummary : styles.stepHint}>
                     {photos.length > 0
                       ? `${photos.length} photo${photos.length === 1 ? '' : 's'} selected`
-                      : photosCompleted
-                        ? 'Skipped'
-                        : 'Optional'}
+                      : 'Optional'}
                   </Text>
                 </View>
                 <ChevronDown size={20} color={colors.mutedText} />
@@ -667,13 +659,6 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 1,
   },
-  stepHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 16,
-    marginBottom: 16,
-  },
   stepEyebrow: {
     fontSize: 13,
     fontFamily: 'Lato-Bold',
@@ -730,12 +715,61 @@ const styles = StyleSheet.create({
     color: colors.primary,
     flex: 1,
   },
+  datePickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    paddingHorizontal: 2,
+  },
+  datePickerHint: {
+    fontSize: 13,
+    fontFamily: 'Lato-Regular',
+    color: colors.mutedText,
+  },
+  datePickerClose: {
+    fontSize: 14,
+    fontFamily: 'Lato-Bold',
+    color: colors.primary,
+  },
+  datePickerWrap: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    marginTop: 10,
+    overflow: 'hidden',
+  },
+  datePickerWheel: {
+    height: 180,
+    width: 310,
+  },
+  ratingControlRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  ratingStarsBlock: {
+    alignItems: 'flex-start',
+  },
   ratingValue: {
     fontSize: 14,
     fontFamily: 'Lato-Bold',
     color: colors.goldText,
     marginTop: 10,
-    textAlign: 'center',
+  },
+  loveButton: {
+    width: 50,
+    height: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 8,
+  },
+  loveButtonActive: {
+    transform: [{ scale: 1.04 }],
+  },
+  loveButtonDisabled: {
+    opacity: 0.45,
   },
   expandedHeader: {
     flexDirection: 'row',
@@ -743,13 +777,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 16,
     marginBottom: 8,
-  },
-  stepHeaderTitle: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
   },
   collapsedStep: {
     flexDirection: 'row',
@@ -770,17 +797,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 10,
     marginTop: 16,
-  },
-  skipButton: {
-    backgroundColor: colors.warmSurface,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  skipButtonText: {
-    fontSize: 13,
-    fontFamily: 'Lato-Bold',
-    color: colors.primary,
   },
   attributesContainer: {
     flexDirection: 'row',
@@ -815,18 +831,6 @@ const styles = StyleSheet.create({
   },
   attributeTextDisabled: {
     color: colors.mutedText,
-  },
-  stepContinueButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 16,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  stepContinueButtonText: {
-    fontSize: 15,
-    fontFamily: 'Lato-Bold',
-    color: colors.white,
   },
   notesInput: {
     backgroundColor: colors.warmSurface,
