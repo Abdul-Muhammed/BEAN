@@ -259,8 +259,8 @@ export default function DiscoverScreen() {
           previous.latitude,
           previous.longitude
         );
-        const radiusGrew = radius > previous.radius * 1.4;
-        const movedFar = moved > previous.radius * 0.4;
+        const radiusGrew = radius > previous.radius * 1.75;
+        const movedFar = moved > previous.radius * 0.65;
         if (!radiusGrew && !movedFar) {
           return;
         }
@@ -279,8 +279,8 @@ export default function DiscoverScreen() {
           currentRegion.latitude,
           currentRegion.longitude,
           radius,
-          // Pull a deeper batch when zoomed out so the map fills with markers.
-          radius > 8000 ? 3 : 2
+          // Pull one extra page only when zoomed far out to reduce API spend.
+          radius > 8000 ? 2 : 1
         );
         const converted = await Promise.all(
           results.map((place) => convertPlaceToCafe(place))
