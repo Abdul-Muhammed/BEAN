@@ -32,6 +32,7 @@ import { useUserProfile } from '../../hooks/useUserProfile';
 import {
   searchCafesNearbyByCoords,
   convertPlaceToCafe,
+  isNzCafe,
 } from '../../services/googlePlaces';
 import { colors } from '@/constants/theme';
 import type { Cafe } from '../../data/mockData';
@@ -240,6 +241,18 @@ export default function DiscoverScreen() {
           return null;
         }
 
+        const nzCafes = parsed.cafes.filter(isNzCafe);
+        if (nzCafes.length !== parsed.cafes.length) {
+          if (nzCafes.length === 0) {
+            await AsyncStorage.removeItem(NEARBY_CAFES_CACHE_KEY);
+          } else {
+            await AsyncStorage.setItem(
+              NEARBY_CAFES_CACHE_KEY,
+              JSON.stringify({ ...parsed, cafes: nzCafes })
+            );
+          }
+        }
+
         const moved = approximateDistanceMeters(
           coords.latitude,
           coords.longitude,
@@ -247,7 +260,7 @@ export default function DiscoverScreen() {
           parsed.longitude
         );
         return moved <= LOCATION_REFRESH_THRESHOLD_METERS
-          ? parsed.cafes.slice(0, NEARBY_CAFE_LIST_LIMIT)
+          ? nzCafes.slice(0, NEARBY_CAFE_LIST_LIMIT)
           : null;
       } catch (error) {
         console.warn('Failed to read nearby cafes cache:', error);
@@ -260,10 +273,11 @@ export default function DiscoverScreen() {
       cafesToPersist: Cafe[]
     ) => {
       try {
+        const nzCafes = cafesToPersist.filter(isNzCafe);
         const payload: CachedNearbyCafes = {
           latitude: coords.latitude,
           longitude: coords.longitude,
-          cafes: cafesToPersist.slice(0, NEARBY_CAFE_LIST_LIMIT),
+          cafes: nzCafes.slice(0, NEARBY_CAFE_LIST_LIMIT),
         };
         await AsyncStorage.setItem(NEARBY_CAFES_CACHE_KEY, JSON.stringify(payload));
       } catch (error) {
@@ -326,14 +340,15 @@ export default function DiscoverScreen() {
         const converted = await Promise.all(
           closestPlaces.map((place) => convertPlaceToCafe(place))
         );
+        const nzConverted = converted.filter(isNzCafe);
         if (cancelled) return;
 
-        setNearbyCafes(converted);
-        setMapCafes((prev) => mergeCafesById(prev, converted));
-        converted.forEach((cafe) => addCafeRef.current(cafe));
-        await persistNearbyCafes(coords, converted);
+        setNearbyCafes(nzConverted);
+        setMapCafes((prev) => mergeCafesById(prev, nzConverted));
+        nzConverted.forEach((cafe) => addCafeRef.current(cafe));
+        await persistNearbyCafes(coords, nzConverted);
 
-        if (converted.length === 0) {
+        if (nzConverted.length === 0) {
           setCafeError('No cafes found nearby.');
         }
       } catch {
@@ -395,8 +410,9 @@ export default function DiscoverScreen() {
         const converted = await Promise.all(
           results.map((place) => convertPlaceToCafe(place))
         );
-        setMapCafes((prev) => mergeCafesById(prev, converted));
-        converted.forEach((cafe) => addCafeRef.current(cafe));
+        const nzConverted = converted.filter(isNzCafe);
+        setMapCafes((prev) => mergeCafesById(prev, nzConverted));
+        nzConverted.forEach((cafe) => addCafeRef.current(cafe));
       } catch (error) {
         console.warn('Unable to load map cafes:', error);
         lastMapFetchRef.current = null;

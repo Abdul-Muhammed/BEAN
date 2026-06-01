@@ -14,13 +14,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Search, X, Clock, MapPin } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { searchCafesByText, convertPlaceToCafe } from '../services/googlePlaces';
+import { searchCafesByText, convertPlaceToCafe, isNzCafe } from '../services/googlePlaces';
 import { useReviews } from '../context/ReviewContext';
 import BeanLogo from '../components/BeanLogo';
 import { colors } from '@/constants/theme';
 
 const RECENT_SEARCHES_KEY = '@bean/recent_searches';
 const MAX_RECENT_SEARCHES = 8;
+// Wait until the user has typed a meaningful query before searching, to avoid
+// firing a billable search on every keystroke.
+const MIN_QUERY_LENGTH = 3;
+const SEARCH_DEBOUNCE_MS = 800;
 const DEFAULT_CAFE_IMAGE =
   'https://images.pexels.com/photos/302899/pexels-photo-302899.jpeg?auto=compress&cs=tinysrgb&w=800';
 
@@ -50,7 +54,11 @@ export default function SearchCafesScreen() {
         const stored = await AsyncStorage.getItem(RECENT_SEARCHES_KEY);
         if (stored) {
           const parsed: RecentSearch[] = JSON.parse(stored);
-          setRecentSearches(parsed);
+          const nzOnly = parsed.filter(isNzCafe).slice(0, MAX_RECENT_SEARCHES);
+          setRecentSearches(nzOnly);
+          if (nzOnly.length !== parsed.length) {
+            await AsyncStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(nzOnly));
+          }
         }
       } catch (err) {
         console.warn('Failed to load recent searches:', err);
@@ -76,6 +84,8 @@ export default function SearchCafesScreen() {
       rating?: number;
       place_id?: string;
     }) => {
+      if (!isNzCafe(cafe)) return;
+
       const entry: RecentSearch = {
         id: cafe.id,
         name: cafe.name,
@@ -106,16 +116,16 @@ export default function SearchCafesScreen() {
   const handleSearch = (query: string) => {
     setSearchQuery(query);
 
-    if (!query.trim()) {
-      setSearchResults([]);
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-      return;
-    }
-
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
+    }
+
+    // Require a minimum query length so short/incomplete input doesn't trigger
+    // a search call.
+    if (query.trim().length < MIN_QUERY_LENGTH) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
     }
 
     debounceTimerRef.current = setTimeout(async () => {
@@ -130,7 +140,7 @@ export default function SearchCafesScreen() {
         Alert.alert('Search Error', 'Failed to search for cafes. Please try again.');
       }
       setIsSearching(false);
-    }, 500);
+    }, SEARCH_DEBOUNCE_MS);
   };
 
   const selectCafe = (cafe: any) => {
@@ -271,12 +281,14 @@ export default function SearchCafesScreen() {
         </View>
       )}
 
-      {searchResults.length === 0 && !isSearching && searchQuery !== '' && (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>No cafes found</Text>
-          <Text style={styles.emptyText}>Try a different search term</Text>
-        </View>
-      )}
+      {searchResults.length === 0 &&
+        !isSearching &&
+        searchQuery.trim().length >= MIN_QUERY_LENGTH && (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>No cafes found</Text>
+            <Text style={styles.emptyText}>Try a different search term</Text>
+          </View>
+        )}
 
       {isSearching && (
         <View style={styles.emptyState}>

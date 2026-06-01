@@ -34,6 +34,19 @@ import { colors } from '@/constants/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+// Stock fallback used by list/search results before real cached photos load.
+// Treated as "not a real photo" so detail enrichment always replaces it.
+const DEFAULT_CAFE_IMAGE =
+  'https://images.pexels.com/photos/302899/pexels-photo-302899.jpeg?auto=compress&cs=tinysrgb&w=800';
+
+function isPlaceholderImage(uri: string | undefined | null): boolean {
+  return !uri || uri === DEFAULT_CAFE_IMAGE;
+}
+
+function hasRealPhotos(photos: string[] | undefined | null): boolean {
+  return Array.isArray(photos) && photos.some((p) => !isPlaceholderImage(p));
+}
+
 export default function CafeDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -59,28 +72,53 @@ export default function CafeDetailScreen() {
       if (
         cafe.place_id &&
         !enrichedPlaceIds.current.has(cafe.place_id) &&
-        (!cafe.phone || !cafe.hours || !cafe.photos || cafe.photos.length <= 1)
+        (!cafe.phone || !cafe.hours || !hasRealPhotos(cafe.photos))
       ) {
-        enrichedPlaceIds.current.add(cafe.place_id);
-        enrichCafeWithDetails(cafe.place_id).then((enrichedData) => {
+        const placeIdForEnrich = cafe.place_id;
+        enrichedPlaceIds.current.add(placeIdForEnrich);
+        enrichCafeWithDetails(placeIdForEnrich).then((enrichedData) => {
           if (enrichedData) {
-            // Update cafe in context with enriched data
+            // Prefer real cached cafe photos over the stock placeholder so the
+            // header image and gallery swap in as soon as they load.
+            const enrichedPhotos = Array.isArray(enrichedData.photos)
+              ? enrichedData.photos.filter((p: string) => !isPlaceholderImage(p))
+              : [];
+            const nextPhotos = enrichedPhotos.length > 0
+              ? enrichedPhotos
+              : hasRealPhotos(cafe.photos)
+                ? cafe.photos
+                : cafe.photos || [cafe.image];
+            const nextImage = enrichedPhotos[0]
+              || (!isPlaceholderImage(enrichedData.image) ? enrichedData.image : undefined)
+              || (hasRealPhotos(cafe.photos) ? cafe.photos?.[0] : undefined)
+              || cafe.image;
+
             const updatedCafe = {
               ...cafe,
               name: enrichedData.name || cafe.name,
               location: enrichedData.location || cafe.location,
               description: enrichedData.description || cafe.description,
-              image: enrichedData.image || cafe.image,
+              image: nextImage,
               phone: enrichedData.phone || cafe.phone,
               hours: enrichedData.hours || cafe.hours,
               amenities: enrichedData.amenities || cafe.amenities,
-              photos: enrichedData.photos || cafe.photos || [cafe.image],
+              photos: nextPhotos,
               rating: enrichedData.rating || cafe.rating
             };
             addCafe(updatedCafe);
+
+            // If enrichment still didn't yield a real photo, allow a future
+            // attempt instead of permanently marking this place as enriched.
+            if (!hasRealPhotos(nextPhotos) && isPlaceholderImage(nextImage)) {
+              enrichedPlaceIds.current.delete(placeIdForEnrich);
+            }
+          } else {
+            // No data came back; don't block a later retry this session.
+            enrichedPlaceIds.current.delete(placeIdForEnrich);
           }
         }).catch((error) => {
           console.error('Error enriching cafe details:', error);
+          enrichedPlaceIds.current.delete(placeIdForEnrich);
         });
       }
       return;
@@ -117,8 +155,9 @@ export default function CafeDetailScreen() {
     );
   }
 
-  const photoCount = cafe.photos?.length || 0;
-  const displayImage = cafe.photos && cafe.photos.length > 0 ? cafe.photos[0] : cafe.image;
+  const realPhotos = (cafe.photos || []).filter((p) => !isPlaceholderImage(p));
+  const photoCount = realPhotos.length;
+  const displayImage = realPhotos.length > 0 ? realPhotos[0] : cafe.image;
   const isFav = isFavorited(cafe.id);
   const isSaved = isBookmarked(cafe.id);
   const favoritesCount = cafe.favoritesCount || 0;
@@ -328,9 +367,9 @@ export default function CafeDetailScreen() {
       </View>
 
       {/* Photo Gallery Modal */}
-      {cafe.photos && cafe.photos.length > 0 && (
+      {realPhotos.length > 0 && (
         <PhotoGallery
-          photos={cafe.photos}
+          photos={realPhotos}
           visible={showPhotoGallery}
           onClose={() => setShowPhotoGallery(false)}
         />

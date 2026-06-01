@@ -44,6 +44,14 @@ const MONTH_NAMES = [
 const DEFAULT_CAFE_IMAGE =
   'https://images.pexels.com/photos/302899/pexels-photo-302899.jpeg?auto=compress&cs=tinysrgb&w=800';
 
+function isPlaceholderImage(uri: string | undefined | null): boolean {
+  return !uri || uri === DEFAULT_CAFE_IMAGE;
+}
+
+function hasRealPhotos(photos: string[] | undefined | null): boolean {
+  return Array.isArray(photos) && photos.some((p) => !isPlaceholderImage(p));
+}
+
 // Stored bookmark cafe info so we can render saved cafes even before the
 // live `cafes` state has been populated from Google Places.
 interface StoredBookmark {
@@ -187,8 +195,19 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
     setCafes((prev) => {
       const existingIndex = prev.findIndex((c) => c.id === cafe.id);
       if (existingIndex >= 0) {
+        const existing = prev[existingIndex];
+        const merged = { ...existing, ...cafe };
+        // Don't let a stock placeholder coming from search/recent overwrite a
+        // real image/photos already loaded for this cafe (e.g. from the map or
+        // a prior detail enrichment).
+        if (isPlaceholderImage(cafe.image) && !isPlaceholderImage(existing.image)) {
+          merged.image = existing.image;
+        }
+        if (!hasRealPhotos(cafe.photos) && hasRealPhotos(existing.photos)) {
+          merged.photos = existing.photos;
+        }
         const updated = [...prev];
-        updated[existingIndex] = { ...updated[existingIndex], ...cafe };
+        updated[existingIndex] = merged;
         return updated;
       }
       return [...prev, cafe];
