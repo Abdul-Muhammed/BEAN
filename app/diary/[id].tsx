@@ -23,7 +23,7 @@ import {
 } from 'lucide-react-native';
 import BeanLogo from '../../components/BeanLogo';
 import PhotoGallery from '../../components/PhotoGallery';
-import StarRating from '../../components/StarRating';
+import BeanRating from '../../components/BeanRating';
 import { useReviews } from '../../context/ReviewContext';
 import { colors } from '@/constants/theme';
 
@@ -143,7 +143,7 @@ export default function DiaryEntryScreen() {
             </View>
 
             <View style={styles.ratingRow}>
-              <StarRating rating={review.rating} size={18} />
+              <BeanRating rating={review.rating} size={18} />
               <Text style={styles.ratingText}>{review.rating.toFixed(1)}</Text>
             </View>
 

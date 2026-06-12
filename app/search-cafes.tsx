@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Search, X, Clock, MapPin } from 'lucide-react-native';
+import { CoffeeBean } from '../components/BeanRating';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { searchCafesByText, convertPlaceToCafe, isNzCafe } from '../services/googlePlaces';
 import { useReviews } from '../context/ReviewContext';
@@ -168,7 +169,9 @@ export default function SearchCafesScreen() {
       id: entry.id,
       name: entry.name,
       location: entry.location,
-      rating: entry.rating || 0,
+      // A 0 here won't clobber a real rating already loaded for this cafe —
+      // addCafe preserves the existing rating when the incoming one is falsy.
+      rating: entry.rating ?? 0,
       image: entry.image || DEFAULT_CAFE_IMAGE,
       description: entry.location ? `A cafe located at ${entry.location}.` : '',
       reviews: [],
@@ -311,6 +314,12 @@ export default function SearchCafesScreen() {
                 <Text style={styles.cafeName}>{item.name}</Text>
                 <Text style={styles.cafeLocation}>{item.location}</Text>
               </View>
+              {item.rating ? (
+                <View style={styles.ratingContainer}>
+                  <CoffeeBean size={16} />
+                  <Text style={styles.ratingText}>{item.rating.toFixed(1)}</Text>
+                </View>
+              ) : null}
             </TouchableOpacity>
           )}
         />
@@ -385,6 +394,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Lato-Regular',
     color: '#8E8E93',
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginLeft: 12,
+  },
+  ratingText: {
+    fontSize: 14,
+    fontFamily: 'Lato-Bold',
+    color: '#4CAF50',
   },
   emptyState: {
     flex: 1,

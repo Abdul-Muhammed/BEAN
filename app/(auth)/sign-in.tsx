@@ -13,15 +13,17 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useSignIn, useOAuth } from '@clerk/clerk-expo';
-import * as WebBrowser from 'expo-web-browser';
-import * as Linking from 'expo-linking';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
-import { createOrUpdateProfile } from '../../lib/profile';
+import { supabase } from '../../lib/supabase';
+import {
+  isGoogleSignInAvailable,
+  signInWithGoogle,
+  isSignInCancelled,
+} from '../../lib/googleSignin';
+import { logError } from '../_layout';
 import { colors } from '@/constants/theme';
-
-WebBrowser.maybeCompleteAuthSession();
 
 const beanLogoSvg = `<svg width="48" height="81" viewBox="0 0 48 81" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M25.6136 68.523C19.0159 70.9613 11.8444 72.1805 4.09929 72.1805C2.665 54.3953 1.01555 25.5303 0.441833 0C8.47384 1.004 4.70884 8.49815 11.7368 12.3707C18.9083 16.2433 36.5859 23.0561 40.8888 28.5064C45.335 33.8133 47.5582 39.2636 47.5582 44.8573C47.5582 50.0207 45.5502 54.6822 41.5342 58.8416C37.5182 62.8576 32.2113 66.0847 25.6136 68.523Z" fill="#0F1312"/>
@@ -34,9 +36,12 @@ const beanLogoSvg = `<svg width="48" height="81" viewBox="0 0 48 81" fill="none"
 <path d="M26.169 9.78076C26.1961 9.78136 26.2861 9.79243 26.3652 9.8317C26.4392 9.86842 26.4731 9.95128 26.4969 10.0291C26.5308 10.1402 26.504 10.2149 26.4622 10.3157C26.4357 10.3797 26.3837 10.4139 26.3059 10.4657C26.2222 10.5215 26.1315 10.519 26.0673 10.5051C25.9959 10.4897 25.9741 10.4153 25.945 10.3402C25.8793 10.1709 25.9279 9.9039 25.9571 9.85234C25.9827 9.83506 26.0139 9.82496 26.0444 9.82121C26.0587 9.82009 26.0708 9.82058 26.0849 9.82741" stroke="#0F1312" stroke-width="1.20301" stroke-linecap="round"/>
 </svg>`;
 
+// Manual email/password auth is temporarily hidden — only SSO (Google/Apple)
+// is offered for now. Flip this back to `true` to restore the email flow; the
+// handlers and markup below are intentionally kept intact, just not rendered.
+const SHOW_EMAIL_AUTH = false;
+
 export default function SignInScreen() {
-  const { signIn, setActive, isLoaded } = useSignIn();
-  const { startOAuthFlow } = useOAuth({ strategy: 'oauth_google' });
   const router = useRouter();
   const [emailAddress, setEmailAddress] = useState('');
   const [password, setPassword] = useState('');
@@ -51,63 +56,108 @@ export default function SignInScreen() {
       router.replace('/');
     }
   };
-  const onSignInPress = async () => {
-    if (!isLoaded) return;
 
+  const onSignInPress = async () => {
     setLoading(true);
     try {
-      const completeSignIn = await signIn.create({
-        identifier: emailAddress,
+      const { error } = await supabase.auth.signInWithPassword({
+        email: emailAddress,
         password,
       });
 
-      if (completeSignIn.status === 'complete') {
-        await setActive({ session: completeSignIn.createdSessionId });
-        router.replace('/');
+      if (error) {
+        logError('SIGN_IN', error);
+        if (error.message.toLowerCase().includes('email not confirmed')) {
+          Alert.alert(
+            'Email not verified',
+            'Please confirm your email address using the code we sent before signing in.'
+          );
+        } else {
+          Alert.alert('Error', error.message || 'Failed to sign in');
+        }
+        return;
       }
+
+      // onAuthStateChange updates the session; the index route handles routing.
+      router.replace('/');
     } catch (err: any) {
-      Alert.alert('Error', err.errors?.[0]?.message || 'Failed to sign in');
+      logError('SIGN_IN', err);
+      Alert.alert('Error', err?.message || 'Failed to sign in');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  };
+
+  const onForgotPassword = async () => {
+    if (!emailAddress) {
+      Alert.alert('Enter your email', 'Type your email address above, then tap "Forgot password".');
+      return;
+    }
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(emailAddress, {
+        redirectTo: 'beanapp://reset-password',
+      });
+      if (error) throw error;
+      Alert.alert('Check your email', `We've sent a password reset link to ${emailAddress}.`);
+    } catch (err: any) {
+      logError('PASSWORD_RESET', err);
+      Alert.alert('Error', err?.message || 'Failed to send reset email');
+    }
   };
 
   const onGoogleSignIn = async () => {
+    if (!isGoogleSignInAvailable) {
+      Alert.alert(
+        'Not available in Expo Go',
+        'Google Sign-In requires a development build. Use email/password here, or run a dev build to sign in with Google.'
+      );
+      return;
+    }
     try {
-      const { createdSessionId, signUp } = await startOAuthFlow({
-        redirectUrl: Linking.createURL('/'),
+      const idToken = await signInWithGoogle();
+
+      const { error } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: idToken,
+      });
+      if (error) throw error;
+
+      router.replace('/');
+    } catch (err: any) {
+      if (isSignInCancelled(err)) {
+        return; // user backed out — not an error
+      }
+      logError('GOOGLE_SIGN_IN', err);
+      Alert.alert('Error', err?.message || 'Failed to sign in with Google');
+    }
+  };
+
+  const onAppleSignIn = async () => {
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
       });
 
-      if (createdSessionId) {
-        await setActive!({ session: createdSessionId });
-
-        if (signUp?.createdUserId) {
-          try {
-            await createOrUpdateProfile({
-              userId: signUp.createdUserId,
-              username: '',
-              firstName: signUp.firstName || '',
-              lastName: signUp.lastName || '',
-              email: signUp.emailAddress || '',
-              profileImageUrl: null,
-              location: null,
-              preferences: [],
-              onboardingCompleted: false,
-            });
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Failed to create profile';
-            console.error('Failed to create profile:', errorMessage);
-            Alert.alert(
-              'Profile Creation Error',
-              errorMessage + '. Please try signing in again.'
-            );
-            return;
-          }
-        }
-
-        router.replace('/');
+      if (!credential.identityToken) {
+        throw new Error('No identity token returned from Apple');
       }
+
+      const { error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
+      });
+      if (error) throw error;
+
+      router.replace('/');
     } catch (err: any) {
-      Alert.alert('Error', err.errors?.[0]?.message || 'Failed to sign in with Google');
+      if (err?.code === 'ERR_REQUEST_CANCELED') {
+        return; // user cancelled the Apple sheet
+      }
+      logError('APPLE_SIGN_IN', err);
+      Alert.alert('Error', err?.message || 'Failed to sign in with Apple');
     }
   };
 
@@ -136,65 +186,92 @@ export default function SignInScreen() {
           </View>
 
           <View style={styles.form}>
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Email</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. johnsmith@gmail.com"
-                placeholderTextColor="#8E8E93"
-                value={emailAddress}
-                onChangeText={setEmailAddress}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoComplete="email"
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Password</Text>
-              <View style={styles.passwordContainer}>
-                <TextInput
-                  style={styles.passwordInput}
-                  placeholder="Enter Password"
-                  placeholderTextColor="#8E8E93"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                  autoComplete="password"
-                />
-                <TouchableOpacity
-                  style={styles.eyeIcon}
-                  onPress={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? (
-                    <EyeOff size={20} color="#8E8E93" />
-                  ) : (
-                    <Eye size={20} color="#8E8E93" />
-                  )}
-                </TouchableOpacity>
+            {!SHOW_EMAIL_AUTH && (
+              <View style={styles.ssoIntro}>
+                <Text style={styles.title}>Sign in or create an account</Text>
+                <Text style={styles.subtitle}>
+                  Continue with your Google or Apple account to get started.
+                </Text>
               </View>
-            </View>
+            )}
 
-            <View style={styles.dividerContainer}>
-              <Text style={styles.dividerText}>or</Text>
-            </View>
+            {SHOW_EMAIL_AUTH && (
+              <>
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Email</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. johnsmith@gmail.com"
+                    placeholderTextColor="#8E8E93"
+                    value={emailAddress}
+                    onChangeText={setEmailAddress}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoComplete="email"
+                  />
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Password</Text>
+                  <View style={styles.passwordContainer}>
+                    <TextInput
+                      style={styles.passwordInput}
+                      placeholder="Enter Password"
+                      placeholderTextColor="#8E8E93"
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry={!showPassword}
+                      autoComplete="password"
+                    />
+                    <TouchableOpacity
+                      style={styles.eyeIcon}
+                      onPress={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? (
+                        <EyeOff size={20} color="#8E8E93" />
+                      ) : (
+                        <Eye size={20} color="#8E8E93" />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity onPress={onForgotPassword} style={styles.forgotButton}>
+                    <Text style={styles.forgotText}>Forgot password?</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.dividerContainer}>
+                  <Text style={styles.dividerText}>or</Text>
+                </View>
+              </>
+            )}
 
             <TouchableOpacity
               style={styles.googleButton}
               onPress={onGoogleSignIn}
             >
-              <Text style={styles.socialButtonText}>G</Text>
+              <Text style={styles.socialButtonText}>Continue with Google</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.signInButton, loading && styles.buttonDisabled]}
-              onPress={onSignInPress}
-              disabled={loading || !emailAddress || !password}
-            >
-              <Text style={styles.signInButtonText}>
-                {loading ? 'Signing In...' : 'Sign In'}
-              </Text>
-            </TouchableOpacity>
+            {Platform.OS === 'ios' && (
+              <TouchableOpacity
+                style={styles.appleButton}
+                onPress={onAppleSignIn}
+              >
+                <Text style={styles.appleButtonText}>Continue with Apple</Text>
+              </TouchableOpacity>
+            )}
+
+            {SHOW_EMAIL_AUTH && (
+              <TouchableOpacity
+                style={[styles.signInButton, loading && styles.buttonDisabled]}
+                onPress={onSignInPress}
+                disabled={loading || !emailAddress || !password}
+              >
+                <Text style={styles.signInButtonText}>
+                  {loading ? 'Signing In...' : 'Sign In'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -240,6 +317,21 @@ const styles = StyleSheet.create({
   form: {
     width: '100%',
   },
+  ssoIntro: {
+    marginBottom: 32,
+  },
+  title: {
+    fontSize: 24,
+    fontFamily: 'OtomanopeeOne-Regular',
+    color: '#1C1C1E',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    fontFamily: 'Lato-Regular',
+    color: '#8E8E93',
+    lineHeight: 24,
+  },
   inputContainer: {
     marginBottom: 24,
   },
@@ -279,6 +371,16 @@ const styles = StyleSheet.create({
   eyeIcon: {
     padding: 8,
   },
+  forgotButton: {
+    alignSelf: 'flex-end',
+    marginTop: 8,
+  },
+  forgotText: {
+    fontSize: 14,
+    fontFamily: 'Lato-Regular',
+    color: '#1C1C1E',
+    textDecorationLine: 'underline',
+  },
   dividerContainer: {
     alignItems: 'center',
     marginVertical: 24,
@@ -295,12 +397,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1.5,
     borderColor: '#E5E5EA',
-    marginBottom: 32,
+    marginBottom: 16,
   },
   socialButtonText: {
-    fontSize: 20,
+    fontSize: 16,
     fontFamily: 'Lato-Bold',
     color: '#1C1C1E',
+  },
+  appleButton: {
+    backgroundColor: '#000000',
+    borderRadius: 8,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  appleButtonText: {
+    fontSize: 16,
+    fontFamily: 'Lato-Bold',
+    color: '#FFFFFF',
   },
   signInButton: {
     backgroundColor: '#1C1C1E',

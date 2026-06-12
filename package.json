@@ -13,7 +13,6 @@
     "ios": "expo run:ios"
   },
   "dependencies": {
-    "@clerk/clerk-expo": "^2.19.22",
     "@expo-google-fonts/lato": "^0.4.1",
     "@expo-google-fonts/otomanopee-one": "^0.2.2",
     "@expo/vector-icons": "^15.0.2",
@@ -24,10 +23,12 @@
     "@lucide/lab": "^0.1.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "8.4.4",
+    "@react-native-google-signin/google-signin": "^16.1.2",
     "@react-navigation/bottom-tabs": "^7.2.0",
     "@react-navigation/native": "^7.0.14",
     "@supabase/supabase-js": "^2.81.1",
     "expo": "~54.0.33",
+    "expo-apple-authentication": "~8.0.8",
     "expo-application": "~7.0.8",
     "expo-auth-session": "~7.0.10",
     "expo-blur": "~15.0.7",

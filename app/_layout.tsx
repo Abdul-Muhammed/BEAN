@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
-import { View, Text } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import {
@@ -14,18 +13,15 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { ReviewProvider } from '@/context/ReviewContext';
-import { ClerkProvider } from '@clerk/clerk-expo';
-import { tokenCache } from '@clerk/clerk-expo/token-cache';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { UserProfileProvider, useUserProfile } from '@/hooks/useUserProfile';
 import { GluestackUIProvider } from '@gluestack-ui/themed';
 import config from '@/gluestack-ui.config';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { colors } from '@/constants/theme';
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
-
-const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
 
 // Global error capture for debugging production issues
 const errorLog: string[] = [];
@@ -58,6 +54,65 @@ export function getErrorLog(): string[] {
   return errorLog;
 }
 
+// Allow other screens to record diagnostic messages into the same log that
+// the long-press debug modal reads.
+export function logError(prefix: string, error: any) {
+  captureError(prefix, error);
+}
+
+/**
+ * Reactive auth guard. Drives navigation from auth + onboarding state so that
+ * no screen has to redirect manually. This is what keeps a signed-out user from
+ * swiping back into authenticated screens: the moment the session flips to null,
+ * any (tabs)/(onboarding) screen is replaced with the sign-in screen.
+ */
+function AuthGate() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const { profile, isLoading: profileLoading } = useUserProfile();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    const group = segments[0];
+    const inAuth = group === '(auth)';
+    const inTabs = group === '(tabs)';
+    const inOnboarding = group === '(onboarding)';
+    // The add-review screen (and the cafe picker it opens) is part of the
+    // onboarding "review 3 cafes" step even though it lives outside the
+    // (onboarding) group. Allow a not-yet-onboarded user to visit it so the
+    // guard below doesn't bounce them mid-review.
+    const inReviewFlow =
+      (group === '(tabs)' && segments[1] === 'add-review') ||
+      group === 'search-cafes';
+
+    if (!isSignedIn) {
+      // Welcome screen (root index) and the (auth) group are valid signed-out
+      // destinations. Anything else means a stale authenticated stack — bounce.
+      if (inTabs || inOnboarding) {
+        router.replace('/(auth)/sign-in');
+      }
+      return;
+    }
+
+    // Signed in: wait until we know the onboarding state before routing.
+    if (profileLoading) return;
+
+    const onboarded = profile?.onboarding_completed === true;
+
+    // A missing profile is treated as an existing user (matches index.tsx
+    // fallback) and sent into the app rather than back through onboarding.
+    if (onboarded || !profile) {
+      if (inAuth) router.replace('/(tabs)/home');
+    } else if (!inOnboarding && !inReviewFlow) {
+      router.replace('/(onboarding)/username');
+    }
+  }, [isLoaded, isSignedIn, profile, profileLoading, segments, router]);
+
+  return null;
+}
+
 export default function RootLayout() {
   useFrameworkReady();
 
@@ -78,35 +133,27 @@ export default function RootLayout() {
     return null;
   }
 
-  if (!publishableKey) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, padding: 20 }}>
-        <Text style={{ color: '#D32F2F', fontSize: 16, textAlign: 'center' }}>
-          Missing Clerk Publishable Key. Environment variables may not be configured for this build.
-        </Text>
-      </View>
-    );
-  }
-
-  // No more ClerkLoadedGuard -- let the app render immediately.
-  // Clerk will load in the background. Screens that need auth
-  // already check isLoaded/isSignedIn and handle loading states.
+  // Render immediately; the AuthProvider resolves the persisted session in the
+  // background and screens already check isLoaded/isSignedIn.
   return (
     <ErrorBoundary>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <ClerkProvider tokenCache={tokenCache} publishableKey={publishableKey}>
-          <GluestackUIProvider config={config}>
-            <ReviewProvider>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-                <Stack.Screen name="(onboarding)" options={{ headerShown: false, gestureEnabled: false }} />
-                <Stack.Screen name="(tabs)" options={{ headerShown: false, gestureEnabled: false }} />
-                <Stack.Screen name="+not-found" />
-              </Stack>
-              <StatusBar style="auto" />
-            </ReviewProvider>
-          </GluestackUIProvider>
-        </ClerkProvider>
+        <AuthProvider>
+          <UserProfileProvider>
+            <GluestackUIProvider config={config}>
+              <ReviewProvider>
+                <AuthGate />
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="(auth)" options={{ headerShown: false, gestureEnabled: false }} />
+                  <Stack.Screen name="(onboarding)" options={{ headerShown: false, gestureEnabled: false }} />
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false, gestureEnabled: false }} />
+                  <Stack.Screen name="+not-found" />
+                </Stack>
+                <StatusBar style="auto" />
+              </ReviewProvider>
+            </GluestackUIProvider>
+          </UserProfileProvider>
+        </AuthProvider>
       </GestureHandlerRootView>
     </ErrorBoundary>
   );

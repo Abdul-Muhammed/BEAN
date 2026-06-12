@@ -9,8 +9,20 @@ module.exports = ({ config }) => {
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
     process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY;
 
+  // The reversed iOS OAuth client id (e.g. com.googleusercontent.apps.123-abc),
+  // required by the native Google Sign-In plugin for the iOS URL scheme.
+  const googleIosUrlScheme = process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME;
+
+  const plugins = [
+    ...(config.plugins || []),
+    ...(googleIosUrlScheme
+      ? [['@react-native-google-signin/google-signin', { iosUrlScheme: googleIosUrlScheme }]]
+      : ['@react-native-google-signin/google-signin']),
+  ];
+
   return {
     ...config,
+    plugins,
     android: {
       ...config.android,
       config: {

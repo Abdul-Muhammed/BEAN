@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { MapPin, Bookmark, Star, Wifi } from 'lucide-react-native';
+import { CoffeeBean } from './BeanRating';
 import { Cafe } from '../data/mockData';
 import { useReviews } from '../context/ReviewContext';
 import { colors } from '@/constants/theme';
@@ -81,7 +82,7 @@ export default function MapCafeCard({ cafe }: MapCafeCardProps) {
           </View>
 
           <View style={styles.ratingRow}>
-            <Star size={16} color="#4CAF50" fill="#4CAF50" />
+            <CoffeeBean size={16} />
             <Text style={styles.ratingText}>{cafe.rating.toFixed(1)}</Text>
           </View>
         </View>

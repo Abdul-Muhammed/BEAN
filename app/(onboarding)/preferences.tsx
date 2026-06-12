@@ -12,8 +12,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
-import { useUser } from '@clerk/clerk-expo';
-import { createOrUpdateProfile } from '../../lib/profile';
 import { type CafeCategory, getCafeCategories } from '../../lib/cafeCategories';
 import { colors } from '@/constants/theme';
 
@@ -30,13 +28,11 @@ const beanLogoSvg = `<svg width="48" height="81" viewBox="0 0 48 81" fill="none"
 
 export default function PreferencesScreen() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [categories, setCategories] = useState<CafeCategory[]>([]);
   const [isLoadingCategories, setIsLoadingCategories] = useState(true);
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const router = useRouter();
   const { username, location, latitude, longitude } = useLocalSearchParams();
-  const { user } = useUser();
 
   const loadCategories = useCallback(async () => {
     setIsLoadingCategories(true);
@@ -69,7 +65,7 @@ export default function PreferencesScreen() {
     });
   };
 
-  const handleContinue = async () => {
+  const handleContinue = () => {
     // Validate username exists and is not empty
     const trimmedUsername = (username as string)?.trim();
     if (!trimmedUsername || trimmedUsername.length < 4) {
@@ -80,52 +76,19 @@ export default function PreferencesScreen() {
       return;
     }
 
-    setIsLoading(true);
-
-    try {
-      if (!user?.id) {
-        throw new Error('User not found');
-      }
-
-      await user.update({
-        unsafeMetadata: {
-          username: trimmedUsername,
-          onboardingCompleted: true,
-        },
-      });
-
-      const parsedLat = latitude ? parseFloat(latitude as string) : NaN;
-      const parsedLng = longitude ? parseFloat(longitude as string) : NaN;
-
-      const updatedProfile = await createOrUpdateProfile({
-        userId: user.id,
+    // The profile write + onboarding completion now happens on the final
+    // "Top Cafes" step; carry everything gathered so far through the params.
+    router.push({
+      // Route types regenerate when the dev server picks up the new file.
+      pathname: '/(onboarding)/top-cafes' as any,
+      params: {
         username: trimmedUsername,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.primaryEmailAddress?.emailAddress || '',
-        profileImageUrl: user.imageUrl,
-        location: location as string,
-        latitude: Number.isFinite(parsedLat) ? parsedLat : null,
-        longitude: Number.isFinite(parsedLng) ? parsedLng : null,
-        preferences: selectedCategories,
-        onboardingCompleted: true,
-      });
-
-      console.log('✅ Profile updated successfully:', {
-        username: updatedProfile.username,
-        onboardingCompleted: updatedProfile.onboarding_completed,
-      });
-
-      router.replace('/(tabs)/home');
-    } catch (error) {
-      console.error('Onboarding error:', error);
-      Alert.alert(
-        'Setup Error',
-        error instanceof Error ? error.message : 'There was an error setting up your profile. Please try again.'
-      );
-    }
-
-    setIsLoading(false);
+        location: (location as string) ?? '',
+        latitude: (latitude as string) ?? '',
+        longitude: (longitude as string) ?? '',
+        preferences: selectedCategories.join(','),
+      },
+    });
   };
 
   const handleBackPress = () => {
@@ -145,7 +108,7 @@ export default function PreferencesScreen() {
         </TouchableOpacity>
 
         <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: '100%' }]} />
+          <View style={[styles.progressFill, { width: '66%' }]} />
         </View>
       </View>
 
@@ -224,14 +187,12 @@ export default function PreferencesScreen() {
         <TouchableOpacity
           style={[
             styles.continueButton,
-            (isLoading || isLoadingCategories || !!categoryError || categories.length === 0) && styles.continueButtonDisabled
+            (isLoadingCategories || !!categoryError || categories.length === 0) && styles.continueButtonDisabled
           ]}
           onPress={handleContinue}
-          disabled={isLoading || isLoadingCategories || !!categoryError || categories.length === 0}
+          disabled={isLoadingCategories || !!categoryError || categories.length === 0}
         >
-          <Text style={styles.continueButtonText}>
-            {isLoading ? 'Setting up...' : 'Continue'}
-          </Text>
+          <Text style={styles.continueButtonText}>Continue</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

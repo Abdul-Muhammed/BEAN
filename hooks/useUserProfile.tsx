@@ -1,10 +1,16 @@
-import { useState, useEffect, useRef } from 'react';
-import { useUser } from '@clerk/clerk-expo';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+} from 'react';
+import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 
 export interface UserProfile {
   id: string;
-  clerk_user_id: string;
   username: string;
   first_name: string | null;
   last_name: string | null;
@@ -19,15 +25,34 @@ export interface UserProfile {
   updated_at: string;
 }
 
-export function useUserProfile() {
-  const { user, isLoaded: isUserLoaded } = useUser();
+interface UserProfileContextValue {
+  profile: UserProfile | null;
+  isLoading: boolean;
+  error: Error | null;
+  /** Force a refetch of the profile. Awaitable so callers can ensure the
+   *  shared state is fresh before navigating (e.g. completing onboarding). */
+  refetch: () => Promise<void>;
+}
+
+const UserProfileContext = createContext<UserProfileContextValue | undefined>(
+  undefined
+);
+
+/**
+ * Single shared source of truth for the signed-in user's profile. Mounting this
+ * once (in the root layout) means every consumer — including the AuthGate guard —
+ * reads the same row and sees the same updates, instead of each component caching
+ * its own stale copy.
+ */
+export function UserProfileProvider({ children }: { children: React.ReactNode }) {
+  const { user, isLoaded: isUserLoaded } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const fetchingRef = useRef(false);
   const lastUserIdRef = useRef<string | null>(null);
 
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     // Prevent multiple simultaneous calls
     if (fetchingRef.current) {
       return;
@@ -41,7 +66,7 @@ export function useUserProfile() {
       return;
     }
 
-    // If we already fetched for this user ID, skip (unless forced refetch)
+    // If we already fetched for this user ID, skip (refetch() clears the ref to force)
     if (lastUserIdRef.current === user.id) {
       setIsLoading(false);
       return;
@@ -55,7 +80,7 @@ export function useUserProfile() {
       const { data, error: fetchError } = await supabase
         .from('profiles')
         .select('*')
-        .eq('clerk_user_id', user.id)
+        .eq('id', user.id)
         .maybeSingle();
 
       if (fetchError) {
@@ -86,7 +111,7 @@ export function useUserProfile() {
       setIsLoading(false);
       fetchingRef.current = false;
     }
-  };
+  }, [user?.id]);
 
   useEffect(() => {
     if (isUserLoaded && user?.id) {
@@ -102,17 +127,26 @@ export function useUserProfile() {
       setProfile(null);
       setError(null);
     }
-  }, [user?.id, isUserLoaded]);
+  }, [user?.id, isUserLoaded, fetchProfile]);
 
-  const refetch = () => {
+  const refetch = useCallback(async () => {
     lastUserIdRef.current = null; // Force refetch
-    fetchProfile();
-  };
+    await fetchProfile();
+  }, [fetchProfile]);
 
-  return {
-    profile,
-    isLoading: isLoading || !isUserLoaded,
-    error,
-    refetch,
-  };
+  return (
+    <UserProfileContext.Provider
+      value={{ profile, isLoading: isLoading || !isUserLoaded, error, refetch }}
+    >
+      {children}
+    </UserProfileContext.Provider>
+  );
+}
+
+export function useUserProfile(): UserProfileContextValue {
+  const ctx = useContext(UserProfileContext);
+  if (ctx === undefined) {
+    throw new Error('useUserProfile must be used within a UserProfileProvider');
+  }
+  return ctx;
 }

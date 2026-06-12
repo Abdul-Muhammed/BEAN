@@ -8,6 +8,8 @@ import {
   StatusBar,
   TextInput,
   Alert,
+  ActionSheetIOS,
+  Platform,
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,7 +20,7 @@ import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useReviews } from '../../context/ReviewContext';
 import { colors } from '@/constants/theme';
-import SwipeableStarRating from '@/components/SwipeableStarRating';
+import SwipeableBeanRating from '@/components/SwipeableBeanRating';
 
 type ReviewStep = 'order' | 'likes' | 'notes' | 'photos';
 
@@ -66,7 +68,7 @@ export default function AddReviewScreen() {
   const [orderedItem, setOrderedItem] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedAttributes, setSelectedAttributes] = useState<string[]>([]);
-  const [photos, setPhotos] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<{ uri: string; base64: string }[]>([]);
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [activeStep, setActiveStep] = useState<ReviewStep | null>(null);
@@ -152,16 +154,64 @@ export default function AddReviewScreen() {
     });
   };
 
-  const pickImage = async () => {
+  const addPhotoAssets = (assets: ImagePicker.ImagePickerAsset[]) => {
+    const picked = assets
+      .filter((asset) => asset.base64)
+      .map((asset) => ({ uri: asset.uri, base64: asset.base64 as string }));
+    setPhotos((prev) => [...prev, ...picked].slice(0, 5));
+  };
+
+  const pickFromLibrary = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
       quality: 0.8,
+      base64: true,
     });
 
     if (!result.canceled) {
-      const newPhotos = result.assets.map((asset) => asset.uri);
-      setPhotos((prev) => [...prev, ...newPhotos].slice(0, 5));
+      addPhotoAssets(result.assets);
+    }
+  };
+
+  const takePhoto = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        'Camera permission needed',
+        'Please enable camera access in Settings to take a photo.'
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.8,
+      base64: true,
+    });
+
+    if (!result.canceled) {
+      addPhotoAssets(result.assets);
+    }
+  };
+
+  const addPhoto = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Take Photo', 'Choose from Library', 'Cancel'],
+          cancelButtonIndex: 2,
+        },
+        (index) => {
+          if (index === 0) takePhoto();
+          else if (index === 1) pickFromLibrary();
+        }
+      );
+    } else {
+      Alert.alert('Add Photo', undefined, [
+        { text: 'Take Photo', onPress: takePhoto },
+        { text: 'Choose from Library', onPress: pickFromLibrary },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
     }
   };
 
@@ -197,6 +247,20 @@ export default function AddReviewScreen() {
     toggleFavorite(favoriteCafeId);
   };
 
+  // During onboarding this screen is pushed from the "Top Cafes" step, which
+  // lives in the (onboarding) group. A plain router.back() gets absorbed by the
+  // Tabs navigator and lands on the home tab, which the AuthGate then bounces to
+  // the username screen. dismiss() pops the whole pushed (tabs) entry and reveals
+  // the still-mounted top-cafes screen beneath it, preserving its loaded list.
+  const leaveReview = () => {
+    if (params.onboarding === '1') {
+      if (router.canDismiss()) router.dismiss();
+      else router.replace('/(onboarding)/top-cafes');
+    } else {
+      router.back();
+    }
+  };
+
   const handleSubmit = async () => {
     if (submitting) return;
     if (!selectedCafe) {
@@ -216,13 +280,21 @@ export default function AddReviewScreen() {
         text: notes.trim(),
         orderedItem: orderedItem.trim() || undefined,
         attributes: selectedAttributes,
-        photos,
+        photos: photos.map((photo) => photo.uri),
+        photoUploads: photos.map((photo) => ({ base64: photo.base64 })),
         visitDate: date,
       });
       Alert.alert('Success', 'Your review has been added!');
 
       resetForm();
-      router.push('/(tabs)/home');
+      // During onboarding the user reviews cafes from the "Top Cafes" step;
+      // return there (still mounted) so their progress updates, rather than
+      // jumping to Home.
+      if (params.onboarding === '1') {
+        leaveReview();
+      } else {
+        router.push('/(tabs)/home');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -310,7 +382,7 @@ export default function AddReviewScreen() {
           <Text style={styles.stepTitle}>How was your experience?</Text>
           <View style={styles.ratingControlRow}>
             <View style={styles.ratingStarsBlock}>
-              <SwipeableStarRating
+              <SwipeableBeanRating
                 rating={rating}
                 onChange={handleRatingSelect}
                 size={42}
@@ -380,6 +452,16 @@ export default function AddReviewScreen() {
                     );
                   })}
                 </View>
+                <Text style={styles.orderOtherLabel}>Something else?</Text>
+                <TextInput
+                  style={styles.orderOtherInput}
+                  placeholder="Type what you ordered"
+                  placeholderTextColor={colors.mutedText}
+                  value={ORDER_ITEMS.includes(orderedItem) ? '' : orderedItem}
+                  onChangeText={setOrderedItem}
+                  onFocus={() => setShowDatePicker(false)}
+                  returnKeyType="done"
+                />
               </>
             ) : (
               <TouchableOpacity
@@ -533,8 +615,8 @@ export default function AddReviewScreen() {
                 </TouchableOpacity>
                 <View style={styles.photosContainer}>
                   {photos.map((photo, index) => (
-                    <View key={`${photo}-${index}`} style={styles.photoWrapper}>
-                      <Image source={{ uri: photo }} style={styles.photoPreview} />
+                    <View key={`${photo.uri}-${index}`} style={styles.photoWrapper}>
+                      <Image source={{ uri: photo.uri }} style={styles.photoPreview} />
                       <TouchableOpacity
                         style={styles.removePhotoButton}
                         onPress={() => removePhoto(index)}
@@ -544,7 +626,7 @@ export default function AddReviewScreen() {
                     </View>
                   ))}
                   {photos.length < 5 && (
-                    <TouchableOpacity style={styles.addPhotoButton} onPress={pickImage}>
+                    <TouchableOpacity style={styles.addPhotoButton} onPress={addPhoto}>
                       <Camera size={26} color={colors.mutedText} />
                       <Text style={styles.addPhotoText}>Add Photo</Text>
                     </TouchableOpacity>
@@ -576,7 +658,7 @@ export default function AddReviewScreen() {
       <View style={styles.actionBar}>
         <TouchableOpacity
           style={styles.cancelButton}
-          onPress={() => router.back()}
+          onPress={leaveReview}
           activeOpacity={0.85}
         >
           <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -797,6 +879,22 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 10,
     marginTop: 16,
+  },
+  orderOtherLabel: {
+    fontSize: 13,
+    fontFamily: 'Lato-Bold',
+    color: colors.mutedText,
+    marginTop: 18,
+    marginBottom: 8,
+  },
+  orderOtherInput: {
+    backgroundColor: colors.warmSurface,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    fontFamily: 'Lato-Regular',
+    color: colors.primary,
   },
   attributesContainer: {
     flexDirection: 'row',
