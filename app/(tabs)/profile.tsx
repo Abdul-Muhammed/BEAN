@@ -12,7 +12,7 @@ import {
   FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useUser, useAuth } from '@clerk/clerk-expo';
+import { useAuth } from '../../context/AuthContext';
 import { useRouter } from 'expo-router';
 import { LogOut, Plus, Bookmark, Heart, Coffee } from 'lucide-react-native';
 import { useReviews } from '../../context/ReviewContext';
@@ -20,7 +20,7 @@ import { useUserProfile } from '../../hooks/useUserProfile';
 import ProfileTabs from '../../components/ProfileTabs';
 import StatCard from '../../components/StatCard';
 import RatingHistogram from '../../components/RatingHistogram';
-import StarRating from '../../components/StarRating';
+import BeanRating from '../../components/BeanRating';
 import BeanLogo from '../../components/BeanLogo';
 import { UserReview } from '../../data/mockData';
 import { colors } from '@/constants/theme';
@@ -109,8 +109,7 @@ function getReviewVisitDate(review: UserReview): ParsedVisitDate | null {
 
 export default function ProfileScreen() {
   const { userReviews, bookmarkedCafes, isFavorited } = useReviews();
-  const { user } = useUser();
-  const { signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const router = useRouter();
   const { profile, isLoading: isProfileLoading } = useUserProfile();
   const [activeTab, setActiveTab] = useState<'profile' | 'diary'>('profile');
@@ -151,12 +150,22 @@ export default function ProfileScreen() {
     profile.username.trim().length > 0 && 
     !profile.username.trim().startsWith('temp_');
   
+  // Auth user metadata (Google/Apple) acts as a fallback for the profile row.
+  const meta = (user?.user_metadata ?? {}) as Record<string, any>;
+  const metaFirstName = meta.first_name || meta.full_name || meta.name;
+  const fullNameFromProfile = [profile?.first_name, profile?.last_name]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+
   const username = hasValidUsername
     ? `@${profile.username.trim()}`
-    : `@${(user?.firstName || 'user').toLowerCase()}`;
-  
-  const profileImageUrl = profile?.profile_image_url || user?.imageUrl;
-  const userName = user?.fullName || user?.firstName || 'User';
+    : `@${(profile?.first_name || metaFirstName || 'user').toString().toLowerCase()}`;
+
+  const profileImageUrl =
+    profile?.profile_image_url || meta.avatar_url || meta.picture;
+  const userName =
+    fullNameFromProfile || meta.full_name || meta.name || profile?.first_name || 'User';
 
   // Group reviews by visit year for Diary tab. Prefer the user-picked
   // `visitDate` when present; fall back to the older parsed `date` string.
@@ -286,7 +295,7 @@ export default function ProfileScreen() {
                     <Text style={styles.activityDate}>{review.date}</Text>
                   </View>
                   <View style={styles.activityRatingRow}>
-                    <StarRating rating={review.rating} size={12} />
+                    <BeanRating rating={review.rating} size={12} />
                     <Text style={styles.activityRatingText}>
                       {review.rating.toFixed(1)}
                     </Text>
@@ -381,7 +390,7 @@ export default function ProfileScreen() {
                       )}
                     </View>
                     <View style={styles.diaryCardRatingRow}>
-                      <StarRating rating={review.rating} size={14} />
+                      <BeanRating rating={review.rating} size={14} />
                       <Text style={styles.diaryCardRatingText}>
                         {review.rating.toFixed(1)}
                       </Text>

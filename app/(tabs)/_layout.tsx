@@ -1,30 +1,33 @@
 import { Tabs, router } from 'expo-router';
-import { Home, Search, Plus, Bookmark, User } from 'lucide-react-native';
 import { View, StyleSheet } from 'react-native';
+import { SvgXml } from 'react-native-svg';
 import { colors } from '@/constants/theme';
+import {
+  HOME_SVG,
+  SEARCH_SVG,
+  SAVED_SVG,
+  PROFILE_SVG,
+  PLUS_SVG,
+} from '@/constants/navbarIcons';
+
+// The brand navbar SVGs carry their own fills, so active/inactive state is
+// conveyed with opacity rather than tinting.
+const INACTIVE_OPACITY = 0.4;
+
+function TabIcon({ xml, size, focused }: { xml: string; size: number; focused: boolean }) {
+  return (
+    <View style={{ opacity: focused ? 1 : INACTIVE_OPACITY }}>
+      <SvgXml xml={xml} width={size} height={size} />
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
   addButtonContainer: {
     position: 'absolute',
-    top: -20,
+    top: -8,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  addButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#4CAF50',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 8,
   },
   hiddenTabBar: {
     display: 'none',
@@ -61,8 +64,8 @@ export default function TabLayout() {
         name="home"
         options={{
           title: 'Home',
-          tabBarIcon: ({ size, color }) => (
-            <Home size={size} color={color} />
+          tabBarIcon: ({ focused }) => (
+            <TabIcon xml={HOME_SVG} size={24} focused={focused} />
           ),
         }}
       />
@@ -70,8 +73,8 @@ export default function TabLayout() {
         name="discover"
         options={{
           title: 'Search',
-          tabBarIcon: ({ size, color }) => (
-            <Search size={size} color={color} />
+          tabBarIcon: ({ focused }) => (
+            <TabIcon xml={SEARCH_SVG} size={24} focused={focused} />
           ),
         }}
       />
@@ -91,9 +94,7 @@ export default function TabLayout() {
           tabBarStyle: styles.hiddenTabBar,
           tabBarIcon: () => (
             <View style={styles.addButtonContainer}>
-              <View style={styles.addButton}>
-                <Plus size={28} color={colors.white} strokeWidth={3} />
-              </View>
+              <SvgXml xml={PLUS_SVG} width={40} height={40} />
             </View>
           ),
         }}
@@ -102,8 +103,8 @@ export default function TabLayout() {
         name="bookmarks"
         options={{
           title: 'Saved',
-          tabBarIcon: ({ size, color }) => (
-            <Bookmark size={size} color={color} />
+          tabBarIcon: ({ focused }) => (
+            <TabIcon xml={SAVED_SVG} size={24} focused={focused} />
           ),
         }}
       />
@@ -111,8 +112,8 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ size, color }) => (
-            <User size={size} color={color} />
+          tabBarIcon: ({ focused }) => (
+            <TabIcon xml={PROFILE_SVG} size={24} focused={focused} />
           ),
         }}
       />

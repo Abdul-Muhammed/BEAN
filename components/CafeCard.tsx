@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { MapPin } from 'lucide-react-native';
-import StarRating from './StarRating';
+import BeanRating from './BeanRating';
 import { Cafe } from '../data/mockData';
 import { colors } from '@/constants/theme';
 
@@ -55,7 +55,7 @@ export default function CafeCard({ cafe }: CafeCardProps) {
           <Text style={styles.location}>{suburb}</Text>
         </View>
         <View style={styles.ratingContainer}>
-          <StarRating rating={cafe.rating} size={16} />
+          <BeanRating rating={cafe.rating} size={16} />
           <Text style={styles.ratingText}>{cafe.rating.toFixed(1)}</Text>
         </View>
       </View>

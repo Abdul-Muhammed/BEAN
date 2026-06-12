@@ -1,4 +1,7 @@
+import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState } from 'react-native';
 import Constants from 'expo-constants';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || Constants.expoConfig?.extra?.supabaseUrl || '';
@@ -10,8 +13,21 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    persistSession: false,
+    storage: AsyncStorage,
+    persistSession: true,
+    autoRefreshToken: true,
+    // No URL-based session detection in a native app (handled via deep links).
+    detectSessionInUrl: false,
   },
+});
+
+// Keep the session token fresh only while the app is in the foreground.
+AppState.addEventListener('change', (state) => {
+  if (state === 'active') {
+    supabase.auth.startAutoRefresh();
+  } else {
+    supabase.auth.stopAutoRefresh();
+  }
 });
 
 export type Database = {
@@ -49,7 +65,6 @@ export type Database = {
       profiles: {
         Row: {
           id: string;
-          clerk_user_id: string;
           username: string;
           first_name: string | null;
           last_name: string | null;
@@ -64,8 +79,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
-          id?: string;
-          clerk_user_id: string;
+          id: string;
           username: string;
           first_name?: string | null;
           last_name?: string | null;
@@ -81,7 +95,6 @@ export type Database = {
         };
         Update: {
           id?: string;
-          clerk_user_id?: string;
           username?: string;
           first_name?: string | null;
           last_name?: string | null;
@@ -99,7 +112,7 @@ export type Database = {
       reviews: {
         Row: {
           id: string;
-          clerk_user_id: string;
+          user_id: string;
           cafe_id: string;
           cafe_place_id: string | null;
           cafe_name: string;
@@ -113,7 +126,7 @@ export type Database = {
         };
         Insert: {
           id?: string;
-          clerk_user_id: string;
+          user_id: string;
           cafe_id: string;
           cafe_place_id?: string | null;
           cafe_name: string;
@@ -127,7 +140,7 @@ export type Database = {
         };
         Update: {
           id?: string;
-          clerk_user_id?: string;
+          user_id?: string;
           cafe_id?: string;
           cafe_place_id?: string | null;
           cafe_name?: string;
@@ -143,53 +156,56 @@ export type Database = {
       bookmarks: {
         Row: {
           id: string;
-          clerk_user_id: string;
+          user_id: string;
           cafe_id: string;
           cafe_place_id: string | null;
           cafe_name: string;
           cafe_image: string | null;
           cafe_location: string | null;
+          cafe_rating: number | null;
           created_at: string;
         };
         Insert: {
           id?: string;
-          clerk_user_id: string;
+          user_id: string;
           cafe_id: string;
           cafe_place_id?: string | null;
           cafe_name: string;
           cafe_image?: string | null;
           cafe_location?: string | null;
+          cafe_rating?: number | null;
           created_at?: string;
         };
         Update: {
           id?: string;
-          clerk_user_id?: string;
+          user_id?: string;
           cafe_id?: string;
           cafe_place_id?: string | null;
           cafe_name?: string;
           cafe_image?: string | null;
           cafe_location?: string | null;
+          cafe_rating?: number | null;
           created_at?: string;
         };
       };
       favorites: {
         Row: {
           id: string;
-          clerk_user_id: string;
+          user_id: string;
           cafe_id: string;
           cafe_place_id: string | null;
           created_at: string;
         };
         Insert: {
           id?: string;
-          clerk_user_id: string;
+          user_id: string;
           cafe_id: string;
           cafe_place_id?: string | null;
           created_at?: string;
         };
         Update: {
           id?: string;
-          clerk_user_id?: string;
+          user_id?: string;
           cafe_id?: string;
           cafe_place_id?: string | null;
           created_at?: string;

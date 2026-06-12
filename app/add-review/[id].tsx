@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
-import StarRating from '../../components/StarRating';
+import BeanRating from '../../components/BeanRating';
 import { useReviews } from '../../context/ReviewContext';
 import { colors } from '@/constants/theme';
 
@@ -78,7 +78,7 @@ export default function AddReviewScreen() {
 
           <View style={styles.ratingSection}>
             <Text style={styles.sectionTitle}>Your Rating</Text>
-            <StarRating
+            <BeanRating
               rating={rating}
               size={32}
               interactive={true}

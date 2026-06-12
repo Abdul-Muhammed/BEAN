@@ -15,10 +15,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link, useRouter } from 'expo-router';
-import { useSignUp } from '@clerk/clerk-expo';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
-import { createOrUpdateProfile } from '../../lib/profile';
+import { supabase } from '../../lib/supabase';
 import { colors } from '@/constants/theme';
 
 const beanLogoSvg = `<svg width="48" height="81" viewBox="0 0 48 81" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -33,7 +32,6 @@ const beanLogoSvg = `<svg width="48" height="81" viewBox="0 0 48 81" fill="none"
 </svg>`;
 
 export default function SignUpScreen() {
-  const { isLoaded, signUp, setActive } = useSignUp();
   const router = useRouter();
   const [emailAddress, setEmailAddress] = useState('');
   const [password, setPassword] = useState('');
@@ -54,66 +52,60 @@ export default function SignUpScreen() {
     }
   };
   const onSignUpPress = async () => {
-    if (!isLoaded) return;
-
     setLoading(true);
     try {
-      await signUp.create({
-        emailAddress,
+      const { data, error } = await supabase.auth.signUp({
+        email: emailAddress,
         password,
-        firstName,
-        lastName,
+        options: {
+          // Carried into auth.users.raw_user_meta_data; the handle_new_user
+          // trigger reads these to seed the profile row.
+          data: { first_name: firstName, last_name: lastName },
+          emailRedirectTo: 'beanapp://auth/callback',
+        },
       });
 
-      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+      if (error) {
+        Alert.alert('Error', error.message || 'Failed to sign up');
+        return;
+      }
+
+      // If email confirmation is disabled, a session is returned immediately.
+      if (data.session) {
+        router.replace('/(onboarding)/username');
+        return;
+      }
+
       setPendingVerification(true);
     } catch (err: any) {
-      Alert.alert('Error', err.errors?.[0]?.message || 'Failed to sign up');
+      Alert.alert('Error', err?.message || 'Failed to sign up');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const onVerifyPress = async () => {
-    if (!isLoaded) return;
-
     setVerifying(true);
     try {
-      const completeSignUp = await signUp.attemptEmailAddressVerification({
-        code,
+      const { error } = await supabase.auth.verifyOtp({
+        email: emailAddress,
+        token: code.trim(),
+        type: 'signup',
       });
 
-      if (completeSignUp.status === 'complete') {
-        await setActive({ session: completeSignUp.createdSessionId });
-
-        try {
-          await createOrUpdateProfile({
-            userId: completeSignUp.createdUserId,
-            username: '',
-            firstName,
-            lastName,
-            email: emailAddress,
-            profileImageUrl: null,
-            location: null,
-            preferences: [],
-            onboardingCompleted: false,
-          });
-
-          router.replace('/(onboarding)/username');
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Failed to create profile';
-          console.error('Failed to create profile:', errorMessage);
-          Alert.alert(
-            'Profile Creation Error',
-            errorMessage + '. Please try signing up again.'
-          );
-          setVerifying(false);
-          return;
-        }
+      if (error) {
+        Alert.alert('Error', error.message || 'Invalid verification code');
+        return;
       }
+
+      // The profile row was created by the handle_new_user trigger; onboarding
+      // collects the username/location/preferences.
+      router.replace('/(onboarding)/username');
     } catch (err: any) {
-      Alert.alert('Error', err.errors?.[0]?.message || 'Invalid verification code');
+      Alert.alert('Error', err?.message || 'Invalid verification code');
+    } finally {
+      setVerifying(false);
     }
-    setVerifying(false);
   };
 
   if (pendingVerification) {
@@ -152,20 +144,20 @@ export default function SignUpScreen() {
                   <Text style={styles.label}>Verification Code</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="Enter 6-digit code"
+                    placeholder="Enter the code from your email"
                     placeholderTextColor="#8E8E93"
                     value={code}
                     onChangeText={setCode}
                     keyboardType="number-pad"
-                    maxLength={6}
+                    maxLength={10}
                     autoComplete="one-time-code"
                   />
                 </View>
 
                 <TouchableOpacity
-                  style={[styles.signUpButton, (verifying || code.length !== 6) && styles.buttonDisabled]}
+                  style={[styles.signUpButton, (verifying || code.trim().length < 6) && styles.buttonDisabled]}
                   onPress={onVerifyPress}
-                  disabled={verifying || code.length !== 6}
+                  disabled={verifying || code.trim().length < 6}
                 >
                   <Text style={styles.signUpButtonText}>
                     {verifying ? 'Verifying...' : 'Verify Email'}

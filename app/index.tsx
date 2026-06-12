@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, useRouter } from 'expo-router';
-import { useAuth, useUser } from '@clerk/clerk-expo';
+import { useAuth } from '../context/AuthContext';
 import { SvgXml } from 'react-native-svg';
 import { supabase } from '../lib/supabase';
 import { getErrorLog } from './_layout';
@@ -25,8 +25,7 @@ const logoSvg = `<svg width="320" height="93" viewBox="0 0 320 93" fill="none" x
 </svg>`;
 
 export default function WelcomeScreen() {
-  const { isSignedIn } = useAuth();
-  const { user, isLoaded } = useUser();
+  const { isSignedIn, user, isLoaded } = useAuth();
   const router = useRouter();
   const [checking, setChecking] = useState(true);
   const [shouldRedirect, setShouldRedirect] = useState<string | null>(null);
@@ -46,7 +45,7 @@ export default function WelcomeScreen() {
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('onboarding_completed')
-          .eq('clerk_user_id', user.id)
+          .eq('id', user.id)
           .maybeSingle();
 
         if (profileError) {
@@ -108,7 +107,7 @@ export default function WelcomeScreen() {
           <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 20 }}>
             <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 4 }}>Debug Info</Text>
             <Text style={{ fontSize: 13, color: '#555', marginBottom: 16 }}>
-              Long-pressed logo to open. Clerk isLoaded: {String(isLoaded)}, isSignedIn: {String(isSignedIn)}
+              Long-pressed logo to open. Auth isLoaded: {String(isLoaded)}, isSignedIn: {String(isSignedIn)}
             </Text>
 
             <Text style={{ fontSize: 15, fontWeight: 'bold', marginBottom: 8 }}>Error Log ({debugLogs.length} entries):</Text>
@@ -147,7 +146,7 @@ export default function WelcomeScreen() {
         <View style={styles.buttonsContainer}>
           <TouchableOpacity
             style={styles.createAccountButton}
-            onPress={() => router.push('/(auth)/sign-up')}
+            onPress={() => router.push('/(auth)/sign-in')}
           >
             <Text style={styles.createAccountText}>Create An Account</Text>
           </TouchableOpacity>

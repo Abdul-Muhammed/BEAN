@@ -6,6 +6,7 @@ export default function OnboardingLayout() {
       <Stack.Screen name="username" />
       <Stack.Screen name="location" />
       <Stack.Screen name="preferences" />
+      <Stack.Screen name="top-cafes" />
     </Stack>
   );
 }

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
 import { Bookmark } from 'lucide-react-native';
-import StarRating from './StarRating';
+import BeanRating from './BeanRating';
 import { UserReview } from '../data/mockData';
 import { colors } from '@/constants/theme';
 
@@ -63,7 +63,7 @@ export default function ActivityCard({ review, userName, userImage, onPress }: A
 
       {/* Star Rating */}
       <View style={styles.ratingContainer}>
-        <StarRating rating={review.rating} size={16} />
+        <BeanRating rating={review.rating} size={16} />
       </View>
 
       {/* Cafe Image */}

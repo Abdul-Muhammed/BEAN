@@ -53,6 +53,7 @@ export default function CafeDetailScreen() {
   const { cafes, toggleFavorite, isFavorited, toggleBookmark, isBookmarked, addCafe, getCafeById } = useReviews();
   const [isLoading, setIsLoading] = useState(true);
   const [showPhotoGallery, setShowPhotoGallery] = useState(false);
+  const [headerPhotoIndex, setHeaderPhotoIndex] = useState(0);
   const enrichedPlaceIds = useRef<Set<string>>(new Set());
   const cafeId = Array.isArray(id) ? id[0] : id;
 
@@ -157,7 +158,10 @@ export default function CafeDetailScreen() {
 
   const realPhotos = (cafe.photos || []).filter((p) => !isPlaceholderImage(p));
   const photoCount = realPhotos.length;
-  const displayImage = realPhotos.length > 0 ? realPhotos[0] : cafe.image;
+  // Photos shown in the swipeable header carousel. Fall back to the single
+  // cafe image when no real gallery photos have loaded yet.
+  const headerPhotos = realPhotos.length > 0 ? realPhotos : [cafe.image];
+  const safeHeaderIndex = Math.min(headerPhotoIndex, headerPhotos.length - 1);
   const isFav = isFavorited(cafe.id);
   const isSaved = isBookmarked(cafe.id);
   const favoritesCount = cafe.favoritesCount || 0;
@@ -182,12 +186,49 @@ export default function CafeDetailScreen() {
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header Section with Image */}
         <View style={styles.headerImageContainer}>
-          <Image 
-            source={{ uri: displayImage }} 
-            style={styles.headerImage}
-            defaultSource={{ uri: 'https://via.placeholder.com/400x300/E5E5EA/E5E5EA' }}
-          />
-          
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={(event) => {
+              const index = Math.round(
+                event.nativeEvent.contentOffset.x / SCREEN_WIDTH
+              );
+              setHeaderPhotoIndex(index);
+            }}
+          >
+            {headerPhotos.map((photo, index) => (
+              <TouchableOpacity
+                key={`${photo}-${index}`}
+                activeOpacity={0.9}
+                onPress={() => {
+                  if (realPhotos.length > 0) setShowPhotoGallery(true);
+                }}
+              >
+                <Image
+                  source={{ uri: photo }}
+                  style={styles.headerImage}
+                  defaultSource={{ uri: 'https://via.placeholder.com/400x300/E5E5EA/E5E5EA' }}
+                />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {/* Page dots */}
+          {headerPhotos.length > 1 && (
+            <View style={styles.headerDots}>
+              {headerPhotos.map((_, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.headerDot,
+                    index === safeHeaderIndex && styles.headerDotActive,
+                  ]}
+                />
+              ))}
+            </View>
+          )}
+
           {/* Back Button */}
           <TouchableOpacity
             style={styles.backButton}
@@ -371,6 +412,7 @@ export default function CafeDetailScreen() {
         <PhotoGallery
           photos={realPhotos}
           visible={showPhotoGallery}
+          initialIndex={safeHeaderIndex}
           onClose={() => setShowPhotoGallery(false)}
         />
       )}
@@ -393,8 +435,30 @@ const styles = StyleSheet.create({
     backgroundColor: '#E5E5EA',
   },
   headerImage: {
-    width: '100%',
-    height: '100%',
+    width: SCREEN_WIDTH,
+    height: SCREEN_WIDTH * 0.75,
+  },
+  headerDots: {
+    position: 'absolute',
+    bottom: 16,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  headerDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  headerDotActive: {
+    backgroundColor: '#FFFFFF',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   backButton: {
     position: 'absolute',

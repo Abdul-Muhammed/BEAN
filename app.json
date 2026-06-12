@@ -10,8 +10,11 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "This app uses your location to show nearby cafes and help you find your way.",
+        "NSCameraUsageDescription": "This app uses your camera so you can take photos for your cafe reviews.",
+        "NSPhotoLibraryUsageDescription": "This app accesses your photo library so you can add photos to your cafe reviews.",
         "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "nz.co.beanapp.app"
@@ -20,7 +23,8 @@
       "package": "nz.co.beanapp.app",
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA"
       ]
     },
     "web": {
@@ -33,7 +37,15 @@
       "expo-font",
       "expo-web-browser",
       "expo-secure-store",
-      "@react-native-community/datetimepicker"
+      "expo-apple-authentication",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "This app accesses your photo library so you can add photos to your cafe reviews.",
+          "cameraPermission": "This app uses your camera so you can take photos for your cafe reviews."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

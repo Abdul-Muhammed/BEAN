@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Bookmark, MapPin, Star, Wifi, Car, Search, X } from 'lucide-react-native';
+import { CoffeeBean } from '../../components/BeanRating';
 import { useReviews } from '../../context/ReviewContext';
 import { useRouter } from 'expo-router';
 import { Badge, BadgeText } from '@gluestack-ui/themed';
@@ -107,11 +108,15 @@ export default function BookmarksScreen() {
                 }}
               >
                 <View style={styles.cafeImageContainer}>
-                  <Image source={{ uri: cafe.image }} style={styles.cafeImage} />
+                  <Image
+                    source={{ uri: cafe.image }}
+                    style={styles.cafeImage}
+                    resizeMode="cover"
+                  />
                 </View>
                 <View style={styles.cafeContent}>
                   <View style={styles.cafeHeader}>
-                    <Text style={styles.cafeName}>{cafe.name}</Text>
+                    <Text style={styles.cafeName} numberOfLines={1}>{cafe.name}</Text>
                     <TouchableOpacity
                       style={styles.bookmarkButton}
                       onPress={(e) => {
@@ -128,7 +133,7 @@ export default function BookmarksScreen() {
                   </View>
                   <View style={styles.cafeLocation}>
                     <MapPin size={14} color="#8E8E93" />
-                    <Text style={styles.locationText}>{cafe.location}</Text>
+                    <Text style={styles.locationText} numberOfLines={1}>{cafe.location}</Text>
                   </View>
                   <View style={styles.cafeFooter}>
                     <View style={styles.cafeTagsWrapper}>
@@ -151,10 +156,12 @@ export default function BookmarksScreen() {
                         </Badge>
                       )}
                     </View>
-                    <View style={styles.ratingContainer}>
-                      <Star size={16} color="#4CAF50" fill="#4CAF50" />
-                      <Text style={styles.ratingText}>{cafe.rating.toFixed(1)}</Text>
-                    </View>
+                    {cafe.rating ? (
+                      <View style={styles.ratingContainer}>
+                        <CoffeeBean size={16} />
+                        <Text style={styles.ratingText}>{cafe.rating.toFixed(1)}</Text>
+                      </View>
+                    ) : null}
                   </View>
                 </View>
               </TouchableOpacity>
@@ -258,6 +265,7 @@ const styles = StyleSheet.create({
   cafeImageContainer: {
     width: 100,
     height: 120,
+    overflow: 'hidden',
   },
   cafeImage: {
     width: '100%',

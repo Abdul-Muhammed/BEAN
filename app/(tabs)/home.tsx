@@ -13,19 +13,20 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { 
-  Search, 
-  MapPin, 
-  Star, 
-  Wifi, 
+import {
+  Search,
+  MapPin,
+  Star,
+  Wifi,
   Bookmark,
   ChevronRight,
-  Plus,
   X,
   Car,
 } from 'lucide-react-native';
-import { 
-  Input, 
+import { SvgXml } from 'react-native-svg';
+import { CoffeeBean } from '@/components/BeanRating';
+import {
+  Input,
   InputField, 
   InputSlot, 
   InputIcon,
@@ -42,9 +43,10 @@ import {
   convertPlaceToCafe,
 } from '../../services/googlePlaces';
 import { useUserProfile } from '../../hooks/useUserProfile';
+import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
 import { colors } from '@/constants/theme';
 
-type FilterType = 'all' | 'open' | 'topRated' | 'wifi' | 'parking';
+type FilterType = 'all' | 'open';
 
 export default function HomeScreen() {
   const { cafes, addCafe, toggleBookmark, isBookmarked } = useReviews();
@@ -54,6 +56,8 @@ export default function HomeScreen() {
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [categories, setCategories] = useState<CafeCategory[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [isLoadingNearby, setIsLoadingNearby] = useState(false);
   const [nearbyError, setNearbyError] = useState<string | null>(null);
   const hasLoadedNearby = useRef(false);
@@ -113,6 +117,29 @@ export default function HomeScreen() {
     loadNearbyCafes();
   }, [addCafe, profileLatitude, profileLocationAddress, profileLongitude]);
 
+  // Load the category metadata (label + icon) so we can render a pill for each
+  // of the user's onboarding selections stored in profiles.preferences.
+  useEffect(() => {
+    let cancelled = false;
+    getCafeCategories()
+      .then((cats) => {
+        if (!cancelled) setCategories(cats);
+      })
+      .catch((err) => {
+        console.warn('Failed to load cafe categories:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const preferenceIds: string[] = Array.isArray(profile?.preferences)
+    ? profile!.preferences
+    : [];
+  const selectedCategories = categories.filter((cat) =>
+    preferenceIds.includes(cat.id)
+  );
+
   const handleCafeClick = (cafe: any) => {
     Keyboard.dismiss();
     addCafe(cafe);
@@ -143,10 +170,6 @@ export default function HomeScreen() {
   };
 
   const filterCafes = (allCafes: any[], filter: FilterType) => {
-    if (filter === 'all') return allCafes;
-    if (filter === 'topRated') return allCafes.filter(cafe => cafe.rating >= 4.5);
-    if (filter === 'wifi') return allCafes.filter(cafe => cafe.amenities?.includes('Has WiFi'));
-    if (filter === 'parking') return allCafes.filter(cafe => cafe.amenities?.includes('Parking'));
     if (filter === 'open') return allCafes.filter(cafe => cafe.hours?.openNow === true);
     return allCafes;
   };
@@ -234,24 +257,22 @@ export default function HomeScreen() {
                   <BadgeText style={activeFilter === 'open' ? styles.activeFilterText : styles.filterText}>Open Now</BadgeText>
                 </Badge>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setActiveFilter(activeFilter === 'topRated' ? 'all' : 'topRated')}>
-                <Badge style={[styles.filterBadge, activeFilter === 'topRated' && styles.activeFilter]}>
-                  <Star size={14} color={activeFilter === 'topRated' ? '#FFFFFF' : '#666'} style={styles.badgeIcon} />
-                  <BadgeText style={activeFilter === 'topRated' ? styles.activeFilterText : styles.filterText}>Top Rated</BadgeText>
-                </Badge>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setActiveFilter(activeFilter === 'wifi' ? 'all' : 'wifi')}>
-                <Badge style={[styles.filterBadge, activeFilter === 'wifi' && styles.activeFilter]}>
-                  <Wifi size={14} color={activeFilter === 'wifi' ? '#FFFFFF' : '#666'} style={styles.badgeIcon} />
-                  <BadgeText style={activeFilter === 'wifi' ? styles.activeFilterText : styles.filterText}>Has WiFi</BadgeText>
-                </Badge>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setActiveFilter(activeFilter === 'parking' ? 'all' : 'parking')}>
-                <Badge style={[styles.filterBadge, activeFilter === 'parking' && styles.activeFilter]}>
-                  <Plus size={14} color={activeFilter === 'parking' ? '#FFFFFF' : '#666'} style={styles.badgeIcon} />
-                  <BadgeText style={activeFilter === 'parking' ? styles.activeFilterText : styles.filterText}>Has Parking</BadgeText>
-                </Badge>
-              </TouchableOpacity>
+              {selectedCategories.map((cat) => {
+                const isSelected = selectedCategoryId === cat.id;
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
+                    onPress={() =>
+                      setSelectedCategoryId(isSelected ? null : cat.id)
+                    }
+                  >
+                    <Badge style={[styles.filterBadge, isSelected && styles.activeFilter]}>
+                      <SvgXml xml={cat.icon_svg_xml} width={14} height={14} style={styles.badgeIcon} />
+                      <BadgeText style={isSelected ? styles.activeFilterText : styles.filterText}>{cat.label}</BadgeText>
+                    </Badge>
+                  </TouchableOpacity>
+                );
+              })}
             </HStack>
           </ScrollView>
         </View>
@@ -317,10 +338,12 @@ export default function HomeScreen() {
                   </View>
                   <View style={styles.cafeFooter}>
                     {renderAmenityTags(cafe)}
-                    <View style={styles.ratingContainer}>
-                      <Star size={16} color="#4CAF50" fill="#4CAF50" />
-                      <Text style={styles.ratingText}>{cafe.rating.toFixed(1)}</Text>
-                    </View>
+                    {cafe.rating ? (
+                      <View style={styles.ratingContainer}>
+                        <CoffeeBean size={16} />
+                        <Text style={styles.ratingText}>{cafe.rating.toFixed(1)}</Text>
+                      </View>
+                    ) : null}
                   </View>
                 </View>
               </TouchableOpacity>

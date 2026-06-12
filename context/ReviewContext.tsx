@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { useUser } from '@clerk/clerk-expo';
+import { useAuth } from './AuthContext';
+import { useUserProfile } from '../hooks/useUserProfile';
 import { Cafe, UserReview, Review } from '../data/mockData';
 import { supabase } from '../lib/supabase';
+import { uploadReviewPhotos } from '../lib/storage';
 
 interface AddReviewInput {
   cafeId: string;
@@ -10,6 +12,10 @@ interface AddReviewInput {
   orderedItem?: string;
   attributes?: string[];
   photos?: string[];
+  // Base64-encoded image data (aligned with `photos`) used to upload the
+  // pictures to Supabase Storage so the persisted review holds durable URLs
+  // instead of fragile local file:// URIs.
+  photoUploads?: { base64: string }[];
   visitDate?: Date;
 }
 
@@ -60,6 +66,7 @@ interface StoredBookmark {
   image: string;
   location: string;
   place_id?: string;
+  rating?: number;
 }
 
 function formatReviewDate(iso: string | null | undefined): string {
@@ -84,8 +91,18 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
   const [storedBookmarks, setStoredBookmarks] = useState<Record<string, StoredBookmark>>({});
   const [favoritedCafeIds, setFavoritedCafeIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const { user } = useUser();
+  const { user } = useAuth();
+  const { profile } = useUserProfile();
   const userId = user?.id;
+  // Reviewer name/avatar come from the profiles table (set during onboarding),
+  // not auth metadata — Apple Sign-In leaves metadata empty, which previously
+  // showed a literal "User" and a stock photo.
+  const profileFullName = [profile?.first_name, profile?.last_name]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+  const displayName = profile?.username || profileFullName || 'User';
+  const displayImage = profile?.profile_image_url || '';
 
   // Load (or clear) all per-user data when the signed-in user changes.
   useEffect(() => {
@@ -111,17 +128,17 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
           supabase
             .from('reviews')
             .select('*')
-            .eq('clerk_user_id', userId)
+            .eq('user_id', userId)
             .order('created_at', { ascending: false }),
           supabase
             .from('bookmarks')
             .select('*')
-            .eq('clerk_user_id', userId)
+            .eq('user_id', userId)
             .order('created_at', { ascending: false }),
           supabase
             .from('favorites')
             .select('*')
-            .eq('clerk_user_id', userId),
+            .eq('user_id', userId),
         ]);
 
         if (cancelled) return;
@@ -162,6 +179,10 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
               image: row.cafe_image || '',
               location: row.cafe_location || '',
               place_id: row.cafe_place_id || undefined,
+              rating:
+                typeof row.cafe_rating === 'string'
+                  ? parseFloat(row.cafe_rating)
+                  : row.cafe_rating ?? undefined,
             };
           }
           setBookmarkedCafeIds(ids);
@@ -206,6 +227,11 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         if (!hasRealPhotos(cafe.photos) && hasRealPhotos(existing.photos)) {
           merged.photos = existing.photos;
         }
+        // Likewise, a recent-search/cold-start entry with rating 0 shouldn't
+        // wipe a real rating already loaded for this cafe.
+        if (!cafe.rating && existing.rating) {
+          merged.rating = existing.rating;
+        }
         const updated = [...prev];
         updated[existingIndex] = merged;
         return updated;
@@ -233,7 +259,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         const { error } = await supabase
           .from('bookmarks')
           .delete()
-          .eq('clerk_user_id', userId)
+          .eq('user_id', userId)
           .eq('cafe_id', cafeId);
         if (error) {
           console.warn('Failed to remove bookmark:', error.message);
@@ -253,18 +279,20 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
             image: cafe.image,
             location: cafe.location,
             place_id: cafe.place_id,
+            rating: cafe.rating,
           },
         }));
         const { error } = await supabase.from('bookmarks').upsert(
           {
-            clerk_user_id: userId,
+            user_id: userId,
             cafe_id: cafeId,
             cafe_place_id: cafe.place_id || null,
             cafe_name: cafe.name,
             cafe_image: cafe.image || null,
             cafe_location: cafe.location || null,
+            cafe_rating: cafe.rating ?? null,
           },
-          { onConflict: 'clerk_user_id,cafe_id' }
+          { onConflict: 'user_id,cafe_id' }
         );
         if (error) {
           console.warn('Failed to save bookmark:', error.message);
@@ -305,7 +333,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         const { error } = await supabase
           .from('favorites')
           .delete()
-          .eq('clerk_user_id', userId)
+          .eq('user_id', userId)
           .eq('cafe_id', cafeId);
         if (error) {
           console.warn('Failed to remove favorite:', error.message);
@@ -322,11 +350,11 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         const cafe = cafes.find((c) => c.id === cafeId);
         const { error } = await supabase.from('favorites').upsert(
           {
-            clerk_user_id: userId,
+            user_id: userId,
             cafe_id: cafeId,
             cafe_place_id: cafe?.place_id || null,
           },
-          { onConflict: 'clerk_user_id,cafe_id' }
+          { onConflict: 'user_id,cafe_id' }
         );
         if (error) {
           console.warn('Failed to save favorite:', error.message);
@@ -347,10 +375,8 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         .filter((review) => review.cafeId === cafeId)
         .map((review) => ({
           id: review.id,
-          userName: user?.fullName || 'User',
-          userImage:
-            user?.imageUrl ||
-            'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+          userName: displayName,
+          userImage: displayImage,
           rating: review.rating,
           text: review.text,
           orderedItem: review.orderedItem,
@@ -358,13 +384,24 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
           attributes: review.attributes,
           photos: review.photos,
         })),
-    [userReviews, user]
+    [userReviews, displayName, displayImage]
   );
 
   const getCafeById = useCallback(
     (cafeId: string): Cafe | undefined => {
       const live = cafes.find((c) => c.id === cafeId);
-      if (live) return live;
+      if (live) {
+        // Live cafes come from Google Places with no personal reviews attached.
+        // Merge in the current user's saved reviews so they show on the detail
+        // page, de-duping anything already present on the live object.
+        const own = buildReviewsForCafe(cafeId);
+        if (own.length === 0) return live;
+        const merged = [
+          ...own,
+          ...live.reviews.filter((r) => !own.some((o) => o.id === r.id)),
+        ];
+        return { ...live, reviews: merged };
+      }
 
       const stored = storedBookmarks[cafeId];
       if (stored) {
@@ -373,7 +410,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
           name: stored.name,
           location: stored.location,
           image: stored.image || DEFAULT_CAFE_IMAGE,
-          rating: 0,
+          rating: stored.rating ?? 0,
           description: stored.location ? `A cafe located at ${stored.location}.` : '',
           reviews: buildReviewsForCafe(cafeId),
           place_id: stored.place_id || cafeId,
@@ -416,6 +453,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
       orderedItem,
       attributes,
       photos,
+      photoUploads,
       visitDate,
     }: AddReviewInput) => {
       const cafe = cafes.find((c) => c.id === cafeId);
@@ -436,10 +474,8 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
 
       const newReview: Review = {
         id: tempId,
-        userName: user?.fullName || 'User',
-        userImage:
-          user?.imageUrl ||
-          'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+        userName: displayName,
+        userImage: displayImage,
         rating,
         text,
         orderedItem,
@@ -478,10 +514,25 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
       );
       setUserReviews((prev) => [newUserReview, ...prev.filter((r) => r.id !== tempId)]);
 
+      // Upload the picked images to Supabase Storage and persist the public
+      // URLs (not the device-local file:// URIs). If upload fails we fall back
+      // to whatever was passed so the review still saves.
+      let photosForInsert = photos || [];
+      if (photoUploads && photoUploads.length > 0) {
+        try {
+          const uploaded = await uploadReviewPhotos(userId, photoUploads);
+          if (uploaded.length > 0) {
+            photosForInsert = uploaded;
+          }
+        } catch (uploadErr) {
+          console.warn('Failed to upload review photos:', uploadErr);
+        }
+      }
+
       const { data, error } = await supabase
         .from('reviews')
         .insert({
-          clerk_user_id: userId,
+          user_id: userId,
           cafe_id: cafeId,
           cafe_place_id: cafe.place_id || null,
           cafe_name: cafe.name,
@@ -490,7 +541,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
           text,
           ordered_item: orderedItem || null,
           attributes: attributes || [],
-          photos: photos || [],
+          photos: photosForInsert,
           visit_date: visitDateString,
         })
         .select()
@@ -536,6 +587,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
               rating: persistedRating,
               date: persistedDisplayDate,
               visitDate: persistedVisitDate,
+              photos: data.photos ?? newUserReview.photos,
             },
             ...filtered,
           ];
@@ -554,6 +606,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
                 id: data.id,
                 rating: persistedRating,
                 date: persistedDisplayDate,
+                photos: data.photos ?? newReview.photos,
               },
             ];
             const avg =

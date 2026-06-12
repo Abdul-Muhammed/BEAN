@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Search, MapPin, Star, Wifi, Navigation2, Coffee } from 'lucide-react-native';
+import { CoffeeBean } from '../../components/BeanRating';
 import MapView, {
   Marker,
   PROVIDER_DEFAULT,
@@ -35,6 +36,7 @@ import {
   isNzCafe,
 } from '../../services/googlePlaces';
 import { colors } from '@/constants/theme';
+import { approximateDistanceMeters } from '../../lib/geo';
 import type { Cafe } from '../../data/mockData';
 
 // Auckland fallback when no profile coords and no permission.
@@ -78,23 +80,6 @@ function radiusFromRegion(region: Region): number {
   return Math.min(Math.max(radius, 600), 50000);
 }
 
-// Equirectangular approximation – plenty accurate at city scales and far
-// cheaper than haversine.
-function approximateDistanceMeters(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number
-): number {
-  const R = 6371000;
-  const meanLat = ((lat1 + lat2) / 2) * (Math.PI / 180);
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const x = dLng * Math.cos(meanLat);
-  const y = dLat;
-  return R * Math.sqrt(x * x + y * y);
-}
-
 interface CachedNearbyCafes {
   latitude: number;
   longitude: number;
@@ -117,7 +102,14 @@ function getPlaceDistanceMeters(
 function mergeCafesById(previous: Cafe[], next: Cafe[]): Cafe[] {
   const merged = new Map(previous.map((cafe) => [cafe.id, cafe]));
   next.forEach((cafe) => {
-    merged.set(cafe.id, { ...merged.get(cafe.id), ...cafe });
+    const existing = merged.get(cafe.id);
+    const combined = { ...existing, ...cafe } as Cafe;
+    // Don't let an incoming rating of 0/undefined wipe a real rating that was
+    // already loaded for this cafe.
+    if (!cafe.rating && existing?.rating) {
+      combined.rating = existing.rating;
+    }
+    merged.set(cafe.id, combined);
   });
   return Array.from(merged.values());
 }
@@ -142,7 +134,7 @@ function CafeMarkerView({ cafe, zoom }: CafeMarkerViewProps) {
   if (zoom === 'medium') {
     return (
       <View style={[styles.markerPill, { backgroundColor: accent }]}>
-        <Star size={11} color={textColor} fill={textColor} />
+        <CoffeeBean size={11} color={textColor} />
         <Text style={[styles.markerPillText, { color: textColor }]}>
           {cafe.rating ? cafe.rating.toFixed(1) : '—'}
         </Text>
@@ -152,7 +144,7 @@ function CafeMarkerView({ cafe, zoom }: CafeMarkerViewProps) {
 
   return (
     <View style={[styles.markerExpanded, { backgroundColor: accent }]}>
-      <Star size={12} color={textColor} fill={textColor} />
+      <CoffeeBean size={12} color={textColor} />
       <Text
         style={[styles.markerExpandedText, { color: textColor }]}
         numberOfLines={1}
