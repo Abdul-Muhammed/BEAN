@@ -96,6 +96,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: colors.surface,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E3E3E3',
     marginBottom: 12,
     overflow: 'hidden',
     shadowColor: '#000',

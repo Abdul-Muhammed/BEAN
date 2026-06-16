@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,168 +6,95 @@ import {
   ScrollView,
   StatusBar,
   TouchableOpacity,
-  Image,
-  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bookmark, MapPin, Star, Wifi, Car, Search, X } from 'lucide-react-native';
-import { CoffeeBean } from '../../components/BeanRating';
-import { useReviews } from '../../context/ReviewContext';
+import { Plus, ChevronRight } from 'lucide-react-native';
+import { SvgXml } from 'react-native-svg';
 import { useRouter } from 'expo-router';
-import { Badge, BadgeText } from '@gluestack-ui/themed';
-import { colors } from '@/constants/theme';
+import ListCafeCard from '../../components/ListCafeCard';
+import CollectionCard from '../../components/CollectionCard';
+import { useReviews } from '../../context/ReviewContext';
+import { colors, fonts } from '@/constants/theme';
+import { FAVORITES_SVG, DIARY_SVG, BOOKMARKS_SVG } from '@/constants/savedScreenIcons';
 
-export default function BookmarksScreen() {
-  const { bookmarkedCafes, toggleBookmark, isBookmarked, addCafe } = useReviews();
+const PREVIEW_COUNT = 3;
+
+export default function ListsScreen() {
+  const { bookmarkedCafes, favoritedCafeIds, favoritedCafes, userReviews } =
+    useReviews();
   const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState('');
 
-  const filteredCafes = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return bookmarkedCafes;
+  // "Where I've Bean" = the unique cafes the user has reviewed. Reviews carry a
+  // cafe image/name snapshot, so the collage is always image-rich.
+  const diaryCafes = useMemo(() => {
+    const seen = new Map<string, { id: string; image: string }>();
+    for (const review of userReviews) {
+      if (!seen.has(review.cafeId)) {
+        seen.set(review.cafeId, { id: review.cafeId, image: review.cafeImage });
+      }
+    }
+    return Array.from(seen.values());
+  }, [userReviews]);
 
-    return bookmarkedCafes.filter((cafe) => {
-      const searchable = [
-        cafe.name,
-        cafe.location,
-        ...(cafe.amenities || []),
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      return searchable.includes(query);
-    });
-  }, [bookmarkedCafes, searchQuery]);
-
-  const hasSavedCafes = bookmarkedCafes.length > 0;
-  const hasSearch = searchQuery.trim().length > 0;
+  const previewCafes = bookmarkedCafes.slice(0, PREVIEW_COUNT);
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Saved</Text>
+        <Text style={styles.headerTitle}>Lists</Text>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => router.push('/list/create')}
+          hitSlop={8}
+        >
+          <Plus size={22} color={colors.primary} />
+        </TouchableOpacity>
       </View>
-
-      {hasSavedCafes && (
-        <View style={styles.searchSection}>
-          <View style={styles.searchInputContainer}>
-            <Search size={20} color="#8E8E93" style={styles.searchIcon} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search saved cafes"
-              placeholderTextColor="#8E8E93"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              returnKeyType="search"
-            />
-            {hasSearch && (
-              <TouchableOpacity
-                style={styles.clearButton}
-                onPress={() => setSearchQuery('')}
-                hitSlop={8}
-              >
-                <X size={18} color="#8E8E93" />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      )}
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={!hasSavedCafes || filteredCafes.length === 0 ? styles.scrollContentEmpty : styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        {!hasSavedCafes ? (
-          <View style={styles.emptyState}>
-            <Bookmark size={64} color="#E5E5EA" />
-            <Text style={styles.emptyTitle}>No saved cafes yet</Text>
-            <Text style={styles.emptyText}>
-              Bookmark your favorite cafes to find them here
-            </Text>
+        {/* Section 1 — user list */}
+        <TouchableOpacity
+          style={styles.listRow}
+          onPress={() => router.push({ pathname: '/list/[id]', params: { id: 'bookmarks' } })}
+          activeOpacity={0.7}
+        >
+          <View style={styles.listRowLeft}>
+            <SvgXml xml={BOOKMARKS_SVG} width={32} height={24} />
+            <Text style={styles.listRowTitle}>Cafes I Want To Try</Text>
           </View>
-        ) : filteredCafes.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Search size={64} color="#E5E5EA" />
-            <Text style={styles.emptyTitle}>No saved cafes found</Text>
-            <Text style={styles.emptyText}>
-              Try searching by cafe name, location, or amenity.
-            </Text>
-          </View>
+          <ChevronRight size={22} color={colors.mutedText} />
+        </TouchableOpacity>
+
+        {previewCafes.length > 0 ? (
+          previewCafes.map((cafe) => <ListCafeCard key={cafe.id} cafe={cafe} />)
         ) : (
-          filteredCafes.map((cafe) => (
-            <View key={cafe.id} style={styles.cafeCard}>
-              <TouchableOpacity
-                style={styles.cafeCardContent}
-                onPress={() => {
-                  addCafe(cafe);
-                  router.push(`/cafe/${cafe.id}`);
-                }}
-              >
-                <View style={styles.cafeImageContainer}>
-                  <Image
-                    source={{ uri: cafe.image }}
-                    style={styles.cafeImage}
-                    resizeMode="cover"
-                  />
-                </View>
-                <View style={styles.cafeContent}>
-                  <View style={styles.cafeHeader}>
-                    <Text style={styles.cafeName} numberOfLines={1}>{cafe.name}</Text>
-                    <TouchableOpacity
-                      style={styles.bookmarkButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        toggleBookmark(cafe.id);
-                      }}
-                    >
-                      <Bookmark
-                        size={20}
-                        color={isBookmarked(cafe.id) ? '#D4AF37' : '#8E8E93'}
-                        fill={isBookmarked(cafe.id) ? '#D4AF37' : 'transparent'}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                  <View style={styles.cafeLocation}>
-                    <MapPin size={14} color="#8E8E93" />
-                    <Text style={styles.locationText} numberOfLines={1}>{cafe.location}</Text>
-                  </View>
-                  <View style={styles.cafeFooter}>
-                    <View style={styles.cafeTagsWrapper}>
-                      {cafe.amenities?.includes('Has WiFi') && (
-                        <Badge style={styles.wifiTag}>
-                          <Wifi size={12} color="#007AFF" style={styles.tagIcon} />
-                          <BadgeText style={styles.wifiTagText}>WiFi</BadgeText>
-                        </Badge>
-                      )}
-                      {(cafe.amenities?.includes('Top Rated') || cafe.rating >= 4.5) && (
-                        <Badge style={styles.ratedTag}>
-                          <Star size={12} color="#D4AF37" style={styles.tagIcon} />
-                          <BadgeText style={styles.ratedTagText}>Top</BadgeText>
-                        </Badge>
-                      )}
-                      {cafe.amenities?.includes('Parking') && (
-                        <Badge style={styles.parkingTag}>
-                          <Car size={12} color="#4CAF50" style={styles.tagIcon} />
-                          <BadgeText style={styles.parkingTagText}>Parking</BadgeText>
-                        </Badge>
-                      )}
-                    </View>
-                    {cafe.rating ? (
-                      <View style={styles.ratingContainer}>
-                        <CoffeeBean size={16} />
-                        <Text style={styles.ratingText}>{cafe.rating.toFixed(1)}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
-              </TouchableOpacity>
-            </View>
-          ))
+          <Text style={styles.emptyHint}>No cafes yet — start saving.</Text>
         )}
+
+        <View style={styles.divider} />
+
+        {/* Collections */}
+        <CollectionCard
+          title="My Favorites"
+          count={favoritedCafeIds.length}
+          images={favoritedCafes.map((c) => c.image).filter(Boolean)}
+          icon={<SvgXml xml={FAVORITES_SVG} width={32} height={24} />}
+          onPress={() => router.push({ pathname: '/list/[id]', params: { id: 'favorites' } })}
+        />
+
+        <CollectionCard
+          title="Where I've Bean"
+          count={diaryCafes.length}
+          images={diaryCafes.map((c) => c.image).filter(Boolean)}
+          icon={<SvgXml xml={DIARY_SVG} width={32} height={24} />}
+          onPress={() => router.push({ pathname: '/list/[id]', params: { id: 'diary' } })}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -179,195 +106,63 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: colors.warmBorder,
   },
   headerTitle: {
     fontSize: 28,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: '#1C1C1E',
+    fontFamily: fonts.heading,
+    color: colors.primary,
   },
-  searchSection: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  searchInputContainer: {
-    flexDirection: 'row',
+  addButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.warmBorder,
     alignItems: 'center',
-    backgroundColor: '#F2F2F7',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    fontFamily: 'Lato-Regular',
-    color: '#1C1C1E',
-    paddingVertical: 13,
-  },
-  clearButton: {
-    padding: 4,
-    marginLeft: 8,
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingVertical: 16,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 32,
   },
-  scrollContentEmpty: {
-    flexGrow: 1,
-    justifyContent: 'center',
+  listRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 40,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 60,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: '#1C1C1E',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 16,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
-    textAlign: 'center',
-    lineHeight: 24,
-  },
-  cafeCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    marginHorizontal: 20,
+    justifyContent: 'space-between',
     marginBottom: 16,
-    overflow: 'hidden',
-    borderWidth: 1.5,
-    borderColor: '#1C1C1E',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
   },
-  cafeImageContainer: {
-    width: 100,
-    height: 120,
-    overflow: 'hidden',
-  },
-  cafeImage: {
-    width: '100%',
-    height: '100%',
-  },
-  cafeCardContent: {
-    flexDirection: 'row',
-  },
-  cafeContent: {
-    flex: 1,
-    padding: 12,
-    paddingLeft: 16,
-  },
-  cafeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 4,
-  },
-  cafeName: {
-    fontSize: 16,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: '#1C1C1E',
-    flex: 1,
-  },
-  bookmarkButton: {
-    padding: 4,
-  },
-  cafeLocation: {
+  listRowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    gap: 10,
+    flex: 1,
   },
-  locationText: {
+  listRowTitle: {
+    fontSize: 18,
+    fontFamily: fonts.bodyBold,
+    color: colors.primary,
+  },
+  emptyHint: {
     fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
-    marginLeft: 4,
+    fontFamily: fonts.body,
+    color: colors.mutedText,
+    paddingVertical: 12,
   },
-  cafeFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 8,
-  },
-  cafeTagsWrapper: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    flex: 1,
-    marginRight: 8,
-  },
-  wifiTag: {
-    backgroundColor: '#E3F2FD',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: '#90CAF9',
-  },
-  wifiTagText: {
-    fontSize: 12,
-    fontFamily: 'Lato-Regular',
-    color: '#007AFF',
-  },
-  ratedTag: {
-    backgroundColor: '#FFF9E6',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: '#FFE082',
-  },
-  ratedTagText: {
-    fontSize: 12,
-    fontFamily: 'Lato-Regular',
-    color: '#D4AF37',
-  },
-  parkingTag: {
-    backgroundColor: '#E8F5E9',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: '#A5D6A7',
-  },
-  parkingTagText: {
-    fontSize: 12,
-    fontFamily: 'Lato-Regular',
-    color: '#4CAF50',
-  },
-  tagIcon: {
-    marginRight: 4,
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  ratingText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Bold',
-    color: '#4CAF50',
+  divider: {
+    height: 1,
+    backgroundColor: colors.warmBorder,
+    marginVertical: 28,
   },
 });

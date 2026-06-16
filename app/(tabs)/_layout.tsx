@@ -49,10 +49,7 @@ export default function TabLayout() {
         },
         tabBarActiveTintColor: colors.gold,
         tabBarInactiveTintColor: colors.mutedText,
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontFamily: 'Lato-Regular',
-        },
+        tabBarShowLabel: false,
       }}>
       <Tabs.Screen
         name="index"
@@ -102,7 +99,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="bookmarks"
         options={{
-          title: 'Saved',
+          title: 'Lists',
           tabBarIcon: ({ focused }) => (
             <TabIcon xml={SAVED_SVG} size={24} focused={focused} />
           ),

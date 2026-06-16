@@ -8,13 +8,21 @@ import {
   ActivityIndicator,
   ScrollView,
   Modal,
+  Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, useRouter } from 'expo-router';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { useAuth } from '../context/AuthContext';
 import { SvgXml } from 'react-native-svg';
 import { supabase } from '../lib/supabase';
-import { getErrorLog } from './_layout';
+import {
+  isGoogleSignInAvailable,
+  signInWithGoogle,
+  isSignInCancelled,
+} from '../lib/googleSignin';
+import { getErrorLog, logError } from './_layout';
 import { colors } from '@/constants/theme';
 
 const logoSvg = `<svg width="320" height="93" viewBox="0 0 320 93" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -24,6 +32,19 @@ const logoSvg = `<svg width="320" height="93" viewBox="0 0 320 93" fill="none" x
 <path d="M242.088 90.5423C242.088 87.0009 242.128 82.7118 242.206 77.6751C242.285 72.5597 242.364 67.0902 242.443 61.2666C242.6 55.3642 242.757 49.4225 242.915 43.4414C243.072 37.3816 243.229 31.6367 243.387 26.2065C243.623 20.6976 243.82 15.8577 243.977 11.6867C244.135 7.43698 244.292 4.21036 244.449 2.00681C246.495 1.84941 249.368 1.73136 253.067 1.65266C256.844 1.57396 261.527 1.53462 267.114 1.53462C273.568 11.0571 280.296 21.2092 287.3 31.9908C294.383 42.6938 301.584 54.1444 308.903 66.3426L306.306 1.41657C308.352 1.41657 310.556 1.49527 312.917 1.65266C315.356 1.73136 317.717 1.84941 320 2.00681C320 8.61745 319.96 15.7003 319.882 23.2553C319.803 30.7316 319.724 38.1686 319.645 45.5663C319.567 52.9639 319.449 59.85 319.291 66.2245C319.134 72.5204 318.977 77.8325 318.819 82.1609C318.74 86.4893 318.622 89.3225 318.465 90.6603C316.812 90.739 314.569 90.8177 311.736 90.8964C308.982 90.9751 306.188 91.0145 303.355 91.0145C300.522 91.0932 298.2 91.1325 296.39 91.1325C290.173 80.9805 283.248 70.2775 275.614 59.0237C268.059 47.7698 260.425 36.5947 252.713 25.4982L255.782 91.2506C251.375 91.2506 246.81 91.0145 242.088 90.5423Z" fill="#0F1312"/>
 </svg>`;
 
+// Official multi-color Google "G" mark.
+const googleGSvg = `<svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path fill="#4285F4" d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"/>
+<path fill="#34A853" d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z"/>
+<path fill="#FBBC05" d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34C2.85 17.09 2 20.45 2 24s.85 6.91 2.34 9.88l7.35-5.7z"/>
+<path fill="#EA4335" d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z"/>
+</svg>`;
+
+// Apple logo glyph (white fill for the dark button).
+const appleSvg = `<svg width="18" height="20" viewBox="0 0 814 1000" xmlns="http://www.w3.org/2000/svg">
+<path fill="#FFFFFF" d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.6-57-155.5-127C46.7 790.7 0 663 0 541.8c0-194.4 126.4-297.5 250.8-297.5 66.1 0 121.2 43.4 162.7 43.4 39.5 0 101.1-46 176.3-46 28.5 0 130.9 2.6 198.3 99.2zM554.1 159.4c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.5-71.3z"/>
+</svg>`;
+
 export default function WelcomeScreen() {
   const { isSignedIn, user, isLoaded } = useAuth();
   const router = useRouter();
@@ -31,6 +52,7 @@ export default function WelcomeScreen() {
   const [shouldRedirect, setShouldRedirect] = useState<string | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [authBusy, setAuthBusy] = useState(false);
 
   useEffect(() => {
     const checkOnboarding = async () => {
@@ -82,6 +104,70 @@ export default function WelcomeScreen() {
 
     checkOnboarding();
   }, [isSignedIn, user, isLoaded]);
+
+  const onGoogleSignIn = async () => {
+    if (authBusy) return;
+    if (!isGoogleSignInAvailable) {
+      Alert.alert(
+        'Not available in Expo Go',
+        'Google Sign-In requires a development build. Run a dev build to sign in with Google.'
+      );
+      return;
+    }
+    setAuthBusy(true);
+    try {
+      const idToken = await signInWithGoogle();
+
+      const { error } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: idToken,
+      });
+      if (error) throw error;
+
+      router.replace('/');
+    } catch (err: any) {
+      if (isSignInCancelled(err)) {
+        return; // user backed out — not an error
+      }
+      logError('GOOGLE_SIGN_IN', err);
+      Alert.alert('Error', err?.message || 'Failed to sign in with Google');
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const onAppleSignIn = async () => {
+    if (authBusy) return;
+    setAuthBusy(true);
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      if (!credential.identityToken) {
+        throw new Error('No identity token returned from Apple');
+      }
+
+      const { error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
+      });
+      if (error) throw error;
+
+      router.replace('/');
+    } catch (err: any) {
+      if (err?.code === 'ERR_REQUEST_CANCELED') {
+        return; // user cancelled the Apple sheet
+      }
+      logError('APPLE_SIGN_IN', err);
+      Alert.alert('Error', err?.message || 'Failed to sign in with Apple');
+    } finally {
+      setAuthBusy(false);
+    }
+  };
 
   if (isSignedIn && checking) {
     return (
@@ -145,18 +231,26 @@ export default function WelcomeScreen() {
 
         <View style={styles.buttonsContainer}>
           <TouchableOpacity
-            style={styles.createAccountButton}
-            onPress={() => router.push('/(auth)/sign-in')}
+            style={[styles.googleButton, authBusy && styles.buttonDisabled]}
+            onPress={onGoogleSignIn}
+            disabled={authBusy}
+            activeOpacity={0.8}
           >
-            <Text style={styles.createAccountText}>Create An Account</Text>
+            <SvgXml xml={googleGSvg} width={20} height={20} />
+            <Text style={styles.googleButtonText}>Continue with Google</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.signInButton}
-            onPress={() => router.push('/(auth)/sign-in')}
-          >
-            <Text style={styles.signInText}>Sign In</Text>
-          </TouchableOpacity>
+          {Platform.OS === 'ios' && (
+            <TouchableOpacity
+              style={[styles.appleButton, authBusy && styles.buttonDisabled]}
+              onPress={onAppleSignIn}
+              disabled={authBusy}
+              activeOpacity={0.8}
+            >
+              <SvgXml xml={appleSvg} width={18} height={20} />
+              <Text style={styles.appleButtonText}>Continue with Apple</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </SafeAreaView>
@@ -190,29 +284,40 @@ const styles = StyleSheet.create({
   buttonsContainer: {
     gap: 16,
   },
-  createAccountButton: {
-    backgroundColor: '#1C1C1E',
-    borderRadius: 12,
-    paddingVertical: 18,
+  googleButton: {
+    backgroundColor: '#FAF9F6',
+    borderWidth: 1,
+    borderColor: 'black',
+    borderRadius: 8,
+    height: 52,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    gap: 10,
   },
-  createAccountText: {
+  googleButtonText: {
     fontSize: 16,
-    fontFamily: 'Lato-Bold',
+    fontWeight: '500',
+    color: '#1A1A1A',
+  },
+  appleButton: {
+    backgroundColor: '#000000',
+    borderRadius: 8,
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    gap: 10,
+  },
+  appleButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
     color: '#FFFFFF',
   },
-  signInButton: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    paddingVertical: 18,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#1C1C1E',
-  },
-  signInText: {
-    fontSize: 16,
-    fontFamily: 'Lato-Bold',
-    color: '#1C1C1E',
+  buttonDisabled: {
+    opacity: 0.5,
   },
   centerContent: {
     justifyContent: 'center',

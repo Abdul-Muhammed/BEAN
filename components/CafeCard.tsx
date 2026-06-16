@@ -67,6 +67,8 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E3E3E3',
     marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: {

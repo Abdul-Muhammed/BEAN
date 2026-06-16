@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import {
   Search,
   MapPin,
@@ -44,9 +44,15 @@ import {
 } from '../../services/googlePlaces';
 import { useUserProfile } from '../../hooks/useUserProfile';
 import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
+import { approximateDistanceMeters } from '../../lib/geo';
 import { colors } from '@/constants/theme';
 
 type FilterType = 'all' | 'open';
+
+// Only refetch the "Near Me" list once the user has moved past this distance
+// from where we last loaded, so a focus that didn't move the user is cheap.
+// Matches the discover map's refresh threshold.
+const LOCATION_REFRESH_THRESHOLD_METERS = 250;
 
 export default function HomeScreen() {
   const { cafes, addCafe, toggleBookmark, isBookmarked } = useReviews();
@@ -60,62 +66,86 @@ export default function HomeScreen() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [isLoadingNearby, setIsLoadingNearby] = useState(false);
   const [nearbyError, setNearbyError] = useState<string | null>(null);
-  const hasLoadedNearby = useRef(false);
+  // Coords of the last successful nearby load, so a re-focus that didn't move
+  // the user doesn't trigger a redundant network round-trip.
+  const lastFetchCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
+  // Guards the address-only fallback (no coords to compare against) so it only
+  // loads once.
+  const hasLoadedAddressRef = useRef(false);
   const profileLatitude = profile?.location_latitude;
   const profileLongitude = profile?.location_longitude;
   const profileLocationAddress = profile?.location_address;
 
-  useEffect(() => {
-    if (hasLoadedNearby.current) return;
-    const hasCoords =
+  const loadNearbyCafes = useCallback(async () => {
+    const hasProfileCoords =
       typeof profileLatitude === 'number' &&
       typeof profileLongitude === 'number';
-    if (!hasCoords && !profileLocationAddress) return;
+    if (!hasProfileCoords && !profileLocationAddress) return;
 
+    // Prefer the device's live location so "Near Me" tracks where the user
+    // actually is (matching the Search/Map screens). Fall back to the saved
+    // profile coordinates, then to the profile address. We avoid Google's
+    // Geocoding API (often REQUEST_DENIED on this project) for the coord path.
     const resolveCoords = async (): Promise<{ lat: number; lng: number } | null> => {
-      if (hasCoords) {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const pos = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          return { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        }
+      } catch {
+        // fall through to the saved profile coords
+      }
+      if (hasProfileCoords) {
         return {
           lat: profileLatitude as number,
           lng: profileLongitude as number,
         };
       }
-      // Fallback for profiles created before coordinates were persisted:
-      // ask the device for its current location instead of using Google's
-      // Geocoding API (which often returns REQUEST_DENIED if it isn't
-      // enabled on the project).
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') return null;
-        const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        return { lat: pos.coords.latitude, lng: pos.coords.longitude };
-      } catch {
-        return null;
-      }
+      return null;
     };
 
-    const loadNearbyCafes = async () => {
-      setIsLoadingNearby(true);
-      setNearbyError(null);
-      try {
-        const coords = await resolveCoords();
-        const results = coords
-          ? await searchCafesNearbyByCoords(coords.lat, coords.lng)
-          : await searchCafesNearby(profileLocationAddress!);
-        const converted = await Promise.all(
-          results.slice(0, 15).map(place => convertPlaceToCafe(place))
-        );
-        converted.forEach(cafe => addCafe(cafe));
-        hasLoadedNearby.current = true;
-      } catch {
-        setNearbyError('Unable to load nearby cafes.');
-      }
-      setIsLoadingNearby(false);
-    };
+    const coords = await resolveCoords();
 
-    loadNearbyCafes();
-  }, [addCafe, profileLatitude, profileLocationAddress, profileLongitude]);
+    // Skip refetching if we already loaded for a nearby location.
+    if (coords && lastFetchCoordsRef.current) {
+      const moved = approximateDistanceMeters(
+        lastFetchCoordsRef.current.lat,
+        lastFetchCoordsRef.current.lng,
+        coords.lat,
+        coords.lng
+      );
+      if (moved < LOCATION_REFRESH_THRESHOLD_METERS) return;
+    }
+    if (!coords && hasLoadedAddressRef.current) return;
+
+    setIsLoadingNearby(true);
+    setNearbyError(null);
+    try {
+      const results = coords
+        ? await searchCafesNearbyByCoords(coords.lat, coords.lng)
+        : await searchCafesNearby(profileLocationAddress!);
+      const converted = await Promise.all(
+        results.slice(0, 15).map(place => convertPlaceToCafe(place))
+      );
+      converted.forEach(cafe => addCafe(cafe));
+      if (coords) lastFetchCoordsRef.current = coords;
+      else hasLoadedAddressRef.current = true;
+    } catch {
+      setNearbyError('Unable to load nearby cafes.');
+    }
+    setIsLoadingNearby(false);
+  }, [addCafe, profileLatitude, profileLongitude, profileLocationAddress]);
+
+  // Re-check location each time the Home tab gains focus so the list refreshes
+  // when the user has moved, without reloading on every render.
+  useFocusEffect(
+    useCallback(() => {
+      loadNearbyCafes();
+    }, [loadNearbyCafes])
+  );
 
   // Load the category metadata (label + icon) so we can render a pill for each
   // of the user's onboarding selections stored in profiles.preferences.
@@ -472,8 +502,8 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginBottom: 16,
     overflow: 'hidden',
-    borderWidth: 1.5,
-    borderColor: '#1C1C1E',
+    borderWidth: 1,
+    borderColor: '#E3E3E3',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -568,7 +598,7 @@ const styles = StyleSheet.create({
   ratingText: {
     fontSize: 14,
     fontFamily: 'Lato-Bold',
-    color: '#4CAF50',
+    color: '#1C1C1E',
     marginLeft: 4,
   },
 });
