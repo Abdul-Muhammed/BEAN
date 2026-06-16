@@ -26,6 +26,17 @@ SplashScreen.preventAutoHideAsync();
 // Global error capture for debugging production issues
 const errorLog: string[] = [];
 
+// A stale/revoked refresh token (e.g. left over from the Supabase Auth cutover)
+// makes the client's background auto-refresh fail on startup. The session is
+// already cleared in AuthContext, so this surfaces as a harmless, un-awaited
+// rejection. Treat it as noise: skip logging it AND don't pass it to the
+// default handler that would render it as a red ERROR. Genuine auth failures
+// (any other message) still flow through normally.
+function isBenignRefreshTokenError(error: any): boolean {
+  const raw = error?.message || error?.toString() || '';
+  return raw.includes('Refresh Token Not Found') || raw.includes('Invalid Refresh Token');
+}
+
 function captureError(prefix: string, error: any) {
   const msg = `[${prefix}] ${error?.message || error?.toString() || 'Unknown error'}`;
   errorLog.push(`${new Date().toISOString()}: ${msg}`);
@@ -36,6 +47,7 @@ function captureError(prefix: string, error: any) {
 // Capture unhandled promise rejections
 const originalHandler = (globalThis as any).ErrorUtils?.getGlobalHandler?.();
 (globalThis as any).ErrorUtils?.setGlobalHandler?.((error: any, isFatal: boolean) => {
+  if (isBenignRefreshTokenError(error)) return;
   captureError(isFatal ? 'FATAL' : 'ERROR', error);
   originalHandler?.(error, isFatal);
 });
@@ -44,7 +56,9 @@ const originalHandler = (globalThis as any).ErrorUtils?.getGlobalHandler?.();
 if (typeof globalThis !== 'undefined') {
   const orig = (globalThis as any).onunhandledrejection;
   (globalThis as any).onunhandledrejection = (event: any) => {
-    captureError('PROMISE', event?.reason || event);
+    const reason = event?.reason || event;
+    if (isBenignRefreshTokenError(reason)) return;
+    captureError('PROMISE', reason);
     orig?.(event);
   };
 }

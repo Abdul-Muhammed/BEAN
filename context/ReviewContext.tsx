@@ -4,6 +4,7 @@ import { useUserProfile } from '../hooks/useUserProfile';
 import { Cafe, UserReview, Review } from '../data/mockData';
 import { supabase } from '../lib/supabase';
 import { uploadReviewPhotos } from '../lib/storage';
+import { triggerSaveHaptic } from '../lib/haptics';
 
 interface AddReviewInput {
   cafeId: string;
@@ -30,6 +31,8 @@ interface ReviewContextType {
   cafes: Cafe[];
   userReviews: UserReview[];
   bookmarkedCafes: Cafe[];
+  favoritedCafeIds: string[];
+  favoritedCafes: Cafe[];
   addReview: (input: AddReviewInput) => Promise<void>;
   addCafe: (cafe: Cafe) => void;
   getCafeById: (cafeId: string) => Cafe | undefined;
@@ -246,6 +249,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         console.warn('Cannot bookmark while signed out');
         return;
       }
+      triggerSaveHaptic();
       const cafe = cafes.find((c) => c.id === cafeId);
       const isCurrentlyBookmarked = bookmarkedCafeIds.includes(cafeId);
 
@@ -319,6 +323,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         console.warn('Cannot favorite while signed out');
         return;
       }
+      triggerSaveHaptic();
       const isCurrentlyFav = favoritedCafeIds.includes(cafeId);
 
       if (isCurrentlyFav) {
@@ -442,6 +447,14 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
   // Build the list of bookmarked cafes by combining stored bookmark data
   // (always available) with the live `cafes` entry (richer info if loaded).
   const bookmarkedCafes: Cafe[] = bookmarkedCafeIds
+    .map((id) => getCafeById(id) || null)
+    .filter((c): c is Cafe => c !== null);
+
+  // Favorites store no metadata snapshot (only the cafe id), so we can only
+  // resolve a full Cafe for the ones currently loaded in `cafes`. The Lists
+  // screen still uses `favoritedCafeIds` for an accurate count and falls back
+  // to placeholders for any cafe we can't resolve.
+  const favoritedCafes: Cafe[] = favoritedCafeIds
     .map((id) => getCafeById(id) || null)
     .filter((c): c is Cafe => c !== null);
 
@@ -629,6 +642,8 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         cafes,
         userReviews,
         bookmarkedCafes,
+        favoritedCafeIds,
+        favoritedCafes,
         addReview,
         addCafe,
         getCafeById,

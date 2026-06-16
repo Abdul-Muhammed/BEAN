@@ -404,7 +404,7 @@ const styles = StyleSheet.create({
   ratingText: {
     fontSize: 14,
     fontFamily: 'Lato-Bold',
-    color: '#4CAF50',
+    color: '#1C1C1E',
   },
   emptyState: {
     flex: 1,

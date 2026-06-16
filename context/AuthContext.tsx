@@ -26,7 +26,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .getSession()
       .then(({ data, error }) => {
         if (error) {
-          supabase.auth.signOut().catch(() => {});
+          // Local scope: just clear the stale token from storage. A network
+          // sign-out would itself fail on a dead refresh token.
+          supabase.auth.signOut({ scope: 'local' }).catch(() => {});
           setSession(null);
         } else {
           setSession(data.session);
@@ -48,7 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
   };
 
   return (

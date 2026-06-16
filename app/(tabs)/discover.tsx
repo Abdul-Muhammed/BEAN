@@ -17,8 +17,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Search, MapPin, Star, Wifi, Navigation2, Coffee } from 'lucide-react-native';
-import { CoffeeBean } from '../../components/BeanRating';
+import { Search, MapPin, Star, Wifi, Navigation2 } from 'lucide-react-native';
+import { SvgXml } from 'react-native-svg';
 import MapView, {
   Marker,
   PROVIDER_DEFAULT,
@@ -36,6 +36,7 @@ import {
   isNzCafe,
 } from '../../services/googlePlaces';
 import { colors } from '@/constants/theme';
+import { MARKER_PALETTE, type MarkerKind } from '../../constants/mapMarkerIcons';
 import { approximateDistanceMeters } from '../../lib/geo';
 import type { Cafe } from '../../data/mockData';
 
@@ -120,22 +121,32 @@ interface CafeMarkerViewProps {
 }
 
 function CafeMarkerView({ cafe, zoom }: CafeMarkerViewProps) {
-  const accent = colors.primary;
-  const textColor = '#FFFFFF';
+  const { isFavorited, isBookmarked } = useReviews();
+  // Priority: favorited (heart) > saved (bookmark) > default (bean).
+  const kind: MarkerKind = isFavorited(cafe.id)
+    ? 'favorite'
+    : isBookmarked(cafe.id)
+    ? 'saved'
+    : 'default';
+  const palette = MARKER_PALETTE[kind];
+  const pillColors = {
+    backgroundColor: palette.bg,
+    borderColor: palette.border,
+  };
 
   if (zoom === 'far') {
     return (
-      <View style={[styles.markerDot, { backgroundColor: accent }]}>
-        <Coffee size={12} color={textColor} />
+      <View style={[styles.markerDot, pillColors]}>
+        <SvgXml xml={palette.icon} width={14} height={14} />
       </View>
     );
   }
 
   if (zoom === 'medium') {
     return (
-      <View style={[styles.markerPill, { backgroundColor: accent }]}>
-        <CoffeeBean size={11} color={textColor} />
-        <Text style={[styles.markerPillText, { color: textColor }]}>
+      <View style={[styles.markerPill, pillColors]}>
+        <SvgXml xml={palette.icon} width={13} height={13} />
+        <Text style={[styles.markerPillText, { color: palette.text }]}>
           {cafe.rating ? cafe.rating.toFixed(1) : '—'}
         </Text>
       </View>
@@ -143,17 +154,19 @@ function CafeMarkerView({ cafe, zoom }: CafeMarkerViewProps) {
   }
 
   return (
-    <View style={[styles.markerExpanded, { backgroundColor: accent }]}>
-      <CoffeeBean size={12} color={textColor} />
+    <View style={[styles.markerExpanded, pillColors]}>
+      <SvgXml xml={palette.icon} width={13} height={13} />
       <Text
-        style={[styles.markerExpandedText, { color: textColor }]}
+        style={[styles.markerExpandedText, { color: palette.text }]}
         numberOfLines={1}
       >
         {cafe.name}
       </Text>
-      <Text style={[styles.markerExpandedRating, { color: textColor }]}>
-        {cafe.rating ? cafe.rating.toFixed(1) : ''}
-      </Text>
+      {cafe.rating ? (
+        <Text style={[styles.markerExpandedRating, { color: palette.text }]}>
+          {cafe.rating.toFixed(1)}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -918,11 +931,10 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 4,
   },
@@ -933,17 +945,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 4,
   },
   markerPillText: {
     fontSize: 12,
-    fontFamily: 'Lato-Bold',
+    fontFamily: 'Lato-Regular',
   },
   markerExpanded: {
     flexDirection: 'row',
@@ -952,23 +963,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderWidth: 1,
     maxWidth: 200,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.25,
     shadowRadius: 6,
     elevation: 6,
   },
   markerExpandedText: {
     fontSize: 12,
-    fontFamily: 'Lato-Bold',
+    fontFamily: 'Lato-Regular',
     maxWidth: 120,
   },
   markerExpandedRating: {
     fontSize: 12,
-    fontFamily: 'Lato-Bold',
+    fontFamily: 'Lato-Regular',
     opacity: 0.85,
   },
 });
