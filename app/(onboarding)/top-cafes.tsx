@@ -1,9 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   StatusBar,
   ScrollView,
@@ -24,7 +23,6 @@ import { approximateDistanceMeters, formatDistance } from '../../lib/geo';
 import {
   searchCafesNearbyByCoords,
   searchCafesNearby,
-  searchCafesByText,
   convertPlaceToCafe,
   isNzCafe,
 } from '../../services/googlePlaces';
@@ -32,8 +30,6 @@ import { colors } from '@/constants/theme';
 
 const REQUIRED_REVIEWS = 3;
 const MAX_CAFES = 12;
-const MIN_QUERY_LENGTH = 3;
-const SEARCH_DEBOUNCE_MS = 800;
 
 // Selection palette (per the onboarding spec). The rest of the screen uses the
 // app's near-black onboarding theme.
@@ -74,11 +70,7 @@ export default function TopCafesScreen() {
 
   const [cafes, setCafes] = useState<OnboardingCafe[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<OnboardingCafe[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const coords = useMemo(() => {
     const lat = latitude ? parseFloat(latitude) : NaN;
@@ -125,33 +117,15 @@ export default function TopCafesScreen() {
     };
   }, [coords, location]);
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-
-    if (query.trim().length < MIN_QUERY_LENGTH) {
-      setSearchResults([]);
-      setIsSearching(false);
-      return;
-    }
-
-    debounceTimerRef.current = setTimeout(async () => {
-      setIsSearching(true);
-      try {
-        const results = await searchCafesByText(query);
-        const converted = await Promise.all(
-          results.slice(0, 20).map((p) => convertPlaceToCafe(p))
-        );
-        setSearchResults(converted.filter(isNzCafe));
-      } catch {
-        // Non-fatal — leave the nearby list in place.
-      }
-      setIsSearching(false);
-    }, SEARCH_DEBOUNCE_MS);
+  // Open the shared, dedicated search page (same nested-page UX as the rest of
+  // the app) rather than searching inline. The onboarding flag is forwarded so
+  // the review screen knows to return here when done.
+  const openSearch = () => {
+    router.push({
+      pathname: '/search-cafes',
+      params: { mode: 'review', onboarding: '1' },
+    });
   };
-
-  const isSearchActive = searchQuery.trim().length >= MIN_QUERY_LENGTH;
-  const displayedCafes = isSearchActive ? searchResults : cafes;
 
   const handleSelectCafe = (cafe: OnboardingCafe) => {
     if (reviewedIds.has(cafe.id)) return; // already reviewed during onboarding
@@ -332,37 +306,29 @@ export default function TopCafesScreen() {
 
         {/* Search */}
         <Text style={styles.searchLabel}>Search for a Cafe</Text>
-        <View style={styles.searchInputWrap}>
+        <TouchableOpacity
+          style={styles.searchInputWrap}
+          onPress={openSearch}
+          activeOpacity={0.7}
+        >
           <Search size={18} color={colors.mutedText} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="e.g. Patch Cafe"
-            placeholderTextColor={colors.mutedText}
-            value={searchQuery}
-            onChangeText={handleSearch}
-            returnKeyType="search"
-            autoCapitalize="none"
-          />
-        </View>
+          <Text style={styles.searchPlaceholder}>e.g. Patch Cafe</Text>
+        </TouchableOpacity>
 
         {/* List */}
-        {loading || (isSearchActive && isSearching) ? (
+        {loading ? (
           <View style={styles.stateBox}>
             <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={styles.stateText}>
-              {isSearchActive ? 'Searching…' : 'Finding cafes near you…'}
-            </Text>
+            <Text style={styles.stateText}>Finding cafes near you…</Text>
           </View>
-        ) : displayedCafes.length === 0 ? (
+        ) : cafes.length === 0 ? (
           <View style={styles.stateBox}>
             <Text style={styles.stateText}>
-              {isSearchActive
-                ? 'No cafes found. Try a different search.'
-                : 'No nearby cafes found. Try searching above.'}
+              No nearby cafes found. Try searching above.
             </Text>
           </View>
         ) : (
-          displayedCafes.map((cafe, index) => renderCard(cafe, index))
+          cafes.map((cafe, index) => renderCard(cafe, index))
         )}
       </ScrollView>
 
@@ -470,12 +436,11 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     marginBottom: 20,
   },
-  searchInput: {
+  searchPlaceholder: {
     flex: 1,
     fontSize: 16,
     fontFamily: 'Lato-Regular',
-    color: '#111111',
-    padding: 0,
+    color: colors.mutedText,
   },
   stateBox: {
     alignItems: 'center',

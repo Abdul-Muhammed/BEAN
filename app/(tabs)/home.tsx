@@ -7,29 +7,22 @@ import {
   Image,
   TouchableOpacity,
   StatusBar,
-  Alert,
   ActivityIndicator,
   Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import {
-  Search,
   MapPin,
   Star,
   Wifi,
   Bookmark,
   ChevronRight,
-  X,
   Car,
 } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import { CoffeeBean } from '@/components/BeanRating';
 import {
-  Input,
-  InputField, 
-  InputSlot, 
-  InputIcon,
   Badge,
   BadgeText,
   HStack,
@@ -37,7 +30,6 @@ import {
 import * as Location from 'expo-location';
 import { useReviews } from '../../context/ReviewContext';
 import {
-  searchCafesByText,
   searchCafesNearby,
   searchCafesNearbyByCoords,
   convertPlaceToCafe,
@@ -57,10 +49,6 @@ const LOCATION_REFRESH_THRESHOLD_METERS = 250;
 export default function HomeScreen() {
   const { cafes, addCafe, toggleBookmark, isBookmarked } = useReviews();
   const { profile } = useUserProfile();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [showSearchResults, setShowSearchResults] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [categories, setCategories] = useState<CafeCategory[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
@@ -176,36 +164,13 @@ export default function HomeScreen() {
     router.push(`/cafe/${cafe.id}`);
   };
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
-
-    setIsSearching(true);
-    try {
-      const results = await searchCafesByText(searchQuery);
-      const convertedCafes = await Promise.all(
-        results.slice(0, 10).map(place => convertPlaceToCafe(place))
-      );
-      setSearchResults(convertedCafes);
-      setShowSearchResults(true);
-    } catch {
-      Alert.alert('Search Error', 'Failed to search for cafes. Please try again.');
-    }
-    setIsSearching(false);
-  };
-
-  const clearSearch = () => {
-    setShowSearchResults(false);
-    setSearchResults([]);
-    setSearchQuery('');
-  };
-
   const filterCafes = (allCafes: any[], filter: FilterType) => {
     if (filter === 'open') return allCafes.filter(cafe => cafe.hours?.openNow === true);
     return allCafes;
   };
 
   const filteredCafes = filterCafes(cafes, activeFilter);
-  const displayCafes = showSearchResults ? searchResults : filteredCafes.slice(0, 10);
+  const displayCafes = filteredCafes.slice(0, 10);
 
   const renderAmenityTags = (cafe: any) => {
     const tags: { label: string; icon: any; bgColor: string; textColor: string; iconColor: string }[] = [];
@@ -249,33 +214,6 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Search Section */}
-        <View style={styles.searchSection}>
-          <Input style={styles.searchInput}>
-            <InputSlot style={styles.searchSlot}>
-              <InputIcon as={Search} size="md" color="#8E8E93" />
-            </InputSlot>
-            <InputField
-              placeholder="Search Cafes"
-              placeholderTextColor="#8E8E93"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              onSubmitEditing={handleSearch}
-              returnKeyType="search"
-              style={styles.searchField}
-            />
-            {isSearching ? (
-              <InputSlot style={styles.clearSlot}>
-                <ActivityIndicator size="small" color="#8E8E93" />
-              </InputSlot>
-            ) : searchQuery.length > 0 && (
-              <InputSlot style={styles.clearSlot} onPress={clearSearch}>
-                <X size={18} color="#8E8E93" />
-              </InputSlot>
-            )}
-          </Input>
-        </View>
-
         {/* Explore Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Explore</Text>
@@ -329,9 +267,9 @@ export default function HomeScreen() {
             </View>
           )}
 
-          {!isLoadingNearby && !nearbyError && displayCafes.length === 0 && !showSearchResults && (
+          {!isLoadingNearby && !nearbyError && displayCafes.length === 0 && (
             <View style={styles.loadingContainer}>
-              <Text style={styles.emptyText}>No cafes found nearby. Try searching above.</Text>
+              <Text style={styles.emptyText}>No cafes found nearby.</Text>
             </View>
           )}
           
@@ -395,32 +333,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 100,
-  },
-  searchSection: {
-    paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  searchInput: {
-    flex: 1,
-    backgroundColor: '#F2F2F7',
-    borderRadius: 12,
-    borderWidth: 0,
-  },
-  searchSlot: {
-    paddingLeft: 16,
-  },
-  clearSlot: {
-    paddingRight: 12,
-  },
-  searchField: {
-    fontSize: 16,
-    fontFamily: 'Lato-Regular',
-    color: '#1C1C1E',
-    paddingLeft: 8,
+    paddingBottom: 100,
   },
   section: {
     marginBottom: 24,

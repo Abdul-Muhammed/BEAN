@@ -13,6 +13,7 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { ReviewProvider } from '@/context/ReviewContext';
+import { ToastProvider } from '@/context/ToastContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { UserProfileProvider, useUserProfile } from '@/hooks/useUserProfile';
 import { GluestackUIProvider } from '@gluestack-ui/themed';
@@ -156,14 +157,16 @@ export default function RootLayout() {
           <UserProfileProvider>
             <GluestackUIProvider config={config}>
               <ReviewProvider>
-                <AuthGate />
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="(auth)" options={{ headerShown: false, gestureEnabled: false }} />
-                  <Stack.Screen name="(onboarding)" options={{ headerShown: false, gestureEnabled: false }} />
-                  <Stack.Screen name="(tabs)" options={{ headerShown: false, gestureEnabled: false }} />
-                  <Stack.Screen name="+not-found" />
-                </Stack>
-                <StatusBar style="auto" />
+                <ToastProvider>
+                  <AuthGate />
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="(auth)" options={{ headerShown: false, gestureEnabled: false }} />
+                    <Stack.Screen name="(onboarding)" options={{ headerShown: false, gestureEnabled: false }} />
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false, gestureEnabled: false }} />
+                    <Stack.Screen name="+not-found" />
+                  </Stack>
+                  <StatusBar style="auto" />
+                </ToastProvider>
               </ReviewProvider>
             </GluestackUIProvider>
           </UserProfileProvider>
