@@ -33,7 +33,10 @@ interface ReviewContextType {
   bookmarkedCafes: Cafe[];
   favoritedCafeIds: string[];
   favoritedCafes: Cafe[];
-  addReview: (input: AddReviewInput) => Promise<void>;
+  // Resolves to the persisted review id on success (or the optimistic temp id /
+  // undefined if the insert was skipped or failed), so callers can deep-link to
+  // the new review.
+  addReview: (input: AddReviewInput) => Promise<string | undefined>;
   addCafe: (cafe: Cafe) => void;
   getCafeById: (cafeId: string) => Cafe | undefined;
   toggleBookmark: (cafeId: string) => Promise<void>;
@@ -631,6 +634,8 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
             };
           })
         );
+
+        return data.id;
       }
     },
     [cafes, userId, user]

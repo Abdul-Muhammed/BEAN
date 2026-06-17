@@ -19,19 +19,12 @@ import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useReviews } from '../../context/ReviewContext';
+import { useToast } from '../../context/ToastContext';
+import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
 import { colors } from '@/constants/theme';
 import SwipeableBeanRating from '@/components/SwipeableBeanRating';
 
 type ReviewStep = 'order' | 'likes' | 'notes' | 'photos';
-
-const ATTRIBUTES = [
-  { id: 'wifi', label: 'Has WiFi' },
-  { id: 'ambient', label: 'Ambient' },
-  { id: 'friendly-staff', label: 'Friendly Staff' },
-  { id: 'ethical', label: 'Ethical' },
-  { id: 'quiet', label: 'Quiet' },
-  { id: 'fast-service', label: 'Fast Service' },
-];
 
 const ORDER_ITEMS = [
   'Flat White',
@@ -59,8 +52,19 @@ function AnimatedSection({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Eyebrow label for the optional review steps. Appends a smaller, muted
+// "(Optional)" tag after the title.
+function StepEyebrow({ title }: { title: string }) {
+  return (
+    <Text style={styles.stepEyebrow}>
+      {title} <Text style={styles.optionalTag}>(Optional)</Text>
+    </Text>
+  );
+}
+
 export default function AddReviewScreen() {
   const { addReview, toggleFavorite, isFavorited } = useReviews();
+  const { showToast } = useToast();
   const params = useLocalSearchParams();
   const scrollRef = useRef<ScrollView>(null);
   const [selectedCafe, setSelectedCafe] = useState<any>(null);
@@ -68,6 +72,7 @@ export default function AddReviewScreen() {
   const [orderedItem, setOrderedItem] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedAttributes, setSelectedAttributes] = useState<string[]>([]);
+  const [likeCategories, setLikeCategories] = useState<CafeCategory[]>([]);
   const [photos, setPhotos] = useState<{ uri: string; base64: string }[]>([]);
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -83,6 +88,22 @@ export default function AddReviewScreen() {
       });
     }
   }, [params.cafeId, params.cafeName, params.cafeImage]);
+
+  // Load the "What did you like?" options from the same cafe_categories table
+  // used during onboarding, so the two stay in sync.
+  useEffect(() => {
+    let cancelled = false;
+    getCafeCategories()
+      .then((cats) => {
+        if (!cancelled) setLikeCategories(cats);
+      })
+      .catch((err) => {
+        console.warn('Failed to load like categories:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (params.selectedCafeId && params.selectedCafeName) {
@@ -274,7 +295,7 @@ export default function AddReviewScreen() {
 
     setSubmitting(true);
     try {
-      await addReview({
+      const reviewId = await addReview({
         cafeId: selectedCafe.id,
         rating,
         text: notes.trim(),
@@ -284,16 +305,22 @@ export default function AddReviewScreen() {
         photoUploads: photos.map((photo) => ({ base64: photo.base64 })),
         visitDate: date,
       });
-      Alert.alert('Success', 'Your review has been added!');
 
       resetForm();
       // During onboarding the user reviews cafes from the "Top Cafes" step;
       // return there (still mounted) so their progress updates, rather than
-      // jumping to Home.
+      // jumping to Home. The success toast is reserved for the normal flow.
       if (params.onboarding === '1') {
         leaveReview();
       } else {
         router.push('/(tabs)/home');
+        showToast({
+          message: 'Logged to your diary!',
+          actionLabel: 'View',
+          onAction: () => {
+            if (reviewId) router.push(`/diary/${reviewId}`);
+          },
+        });
       }
     } finally {
       setSubmitting(false);
@@ -420,7 +447,7 @@ export default function AddReviewScreen() {
                   activeOpacity={0.85}
                 >
                   <View style={styles.collapsedStepText}>
-                    <Text style={styles.stepEyebrow}>What Did You Order?</Text>
+                    <StepEyebrow title="What Did You Order?" />
                     <Text style={styles.stepHint}>Choose one</Text>
                   </View>
                   <ChevronUp size={20} color={colors.mutedText} />
@@ -470,7 +497,7 @@ export default function AddReviewScreen() {
                 activeOpacity={0.85}
               >
                 <View style={styles.collapsedStepText}>
-                  <Text style={styles.stepEyebrow}>What Did You Order?</Text>
+                  <StepEyebrow title="What Did You Order?" />
                   <Text style={orderCompleted ? styles.collapsedSummary : styles.stepHint}>
                     {orderCompleted ? orderedItem : 'Choose what you had'}
                   </Text>
@@ -491,26 +518,26 @@ export default function AddReviewScreen() {
                   activeOpacity={0.85}
                 >
                   <View style={styles.collapsedStepText}>
-                    <Text style={styles.stepEyebrow}>What Did You Like?</Text>
+                    <StepEyebrow title="What Did You Like?" />
                     <Text style={styles.stepHint}>Choose up to 3</Text>
                   </View>
                   <ChevronUp size={20} color={colors.mutedText} />
                 </TouchableOpacity>
 
                 <View style={styles.attributesContainer}>
-                  {ATTRIBUTES.map((attr) => {
-                    const isSelected = selectedAttributes.includes(attr.id);
+                  {likeCategories.map((category) => {
+                    const isSelected = selectedAttributes.includes(category.label);
                     const isDisabled = !isSelected && selectedAttributes.length >= 3;
 
                     return (
                       <TouchableOpacity
-                        key={attr.id}
+                        key={category.id}
                         style={[
                           styles.attributeButton,
                           isSelected && styles.attributeButtonActive,
                           isDisabled && styles.attributeButtonDisabled,
                         ]}
-                        onPress={() => toggleAttribute(attr.id)}
+                        onPress={() => toggleAttribute(category.label)}
                         disabled={isDisabled}
                         activeOpacity={0.8}
                       >
@@ -522,7 +549,7 @@ export default function AddReviewScreen() {
                             isDisabled && styles.attributeTextDisabled,
                           ]}
                         >
-                          {attr.label}
+                          {category.label}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -537,13 +564,10 @@ export default function AddReviewScreen() {
                 activeOpacity={0.85}
               >
                 <View style={styles.collapsedStepText}>
-                  <Text style={styles.stepEyebrow}>What Did You Like?</Text>
+                  <StepEyebrow title="What Did You Like?" />
                   <Text style={selectedAttributes.length > 0 ? styles.collapsedSummary : styles.stepHint}>
                     {selectedAttributes.length > 0
-                      ? selectedAttributes
-                          .map((id) => ATTRIBUTES.find((attr) => attr.id === id)?.label)
-                          .filter(Boolean)
-                          .join(', ')
+                      ? selectedAttributes.join(', ')
                       : 'Choose up to 3'}
                   </Text>
                 </View>
@@ -563,7 +587,7 @@ export default function AddReviewScreen() {
                   activeOpacity={0.85}
                 >
                   <View style={styles.collapsedStepText}>
-                    <Text style={styles.stepEyebrow}>Notes</Text>
+                    <StepEyebrow title="Notes" />
                     <Text style={styles.stepHint}>Optional</Text>
                   </View>
                   <ChevronUp size={20} color={colors.mutedText} />
@@ -587,7 +611,7 @@ export default function AddReviewScreen() {
                 activeOpacity={0.85}
               >
                 <View style={styles.collapsedStepText}>
-                  <Text style={styles.stepEyebrow}>Notes</Text>
+                  <StepEyebrow title="Notes" />
                   <Text style={notes.trim().length > 0 ? styles.collapsedSummary : styles.stepHint}>
                     {notes.trim().length > 0 ? notes.trim() : 'Optional'}
                   </Text>
@@ -608,7 +632,7 @@ export default function AddReviewScreen() {
                   activeOpacity={0.85}
                 >
                   <View style={styles.collapsedStepText}>
-                    <Text style={styles.stepEyebrow}>Upload Photo</Text>
+                    <StepEyebrow title="Upload Photo" />
                     <Text style={styles.stepHint}>Optional</Text>
                   </View>
                   <ChevronUp size={20} color={colors.mutedText} />
@@ -640,7 +664,7 @@ export default function AddReviewScreen() {
                 activeOpacity={0.85}
               >
                 <View style={styles.collapsedStepText}>
-                  <Text style={styles.stepEyebrow}>Upload Photo</Text>
+                  <StepEyebrow title="Upload Photo" />
                   <Text style={photos.length > 0 ? styles.collapsedSummary : styles.stepHint}>
                     {photos.length > 0
                       ? `${photos.length} photo${photos.length === 1 ? '' : 's'} selected`
@@ -748,6 +772,13 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginBottom: 8,
+  },
+  optionalTag: {
+    fontSize: 11,
+    fontFamily: 'Lato-Regular',
+    color: '#707070',
+    textTransform: 'none',
+    letterSpacing: 0,
   },
   stepTitle: {
     fontSize: 24,

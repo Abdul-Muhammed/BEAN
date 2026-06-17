@@ -40,8 +40,21 @@ interface RecentSearch {
 
 export default function SearchCafesScreen() {
   const { addCafe } = useReviews();
-  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const { mode, onboarding } = useLocalSearchParams<{ mode?: string; onboarding?: string }>();
   const isReviewMode = mode === 'review';
+  const isOnboarding = onboarding === '1';
+
+  // During onboarding the review screen is reached via this search page; replace
+  // (rather than push) so the stack stays top-cafes -> add-review and the review
+  // screen's router.dismiss() returns to the still-mounted top-cafes step.
+  const goToReview = (params: { cafeId: string; cafeName: string; cafeImage: string }) => {
+    const navParams = isOnboarding ? { ...params, onboarding: '1' } : params;
+    if (isOnboarding) {
+      router.replace({ pathname: '/(tabs)/add-review', params: navParams });
+    } else {
+      router.push({ pathname: '/(tabs)/add-review', params: navParams });
+    }
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -149,13 +162,10 @@ export default function SearchCafesScreen() {
     addCafe(cafe);
     addToRecent(cafe);
     if (isReviewMode) {
-      router.push({
-        pathname: '/(tabs)/add-review',
-        params: {
-          cafeId: cafe.id,
-          cafeName: cafe.name,
-          cafeImage: cafe.image || '',
-        },
+      goToReview({
+        cafeId: cafe.id,
+        cafeName: cafe.name,
+        cafeImage: cafe.image || '',
       });
       return;
     }
@@ -179,13 +189,10 @@ export default function SearchCafesScreen() {
       photos: [entry.image || DEFAULT_CAFE_IMAGE],
     });
     if (isReviewMode) {
-      router.push({
-        pathname: '/(tabs)/add-review',
-        params: {
-          cafeId: entry.id,
-          cafeName: entry.name,
-          cafeImage: entry.image || '',
-        },
+      goToReview({
+        cafeId: entry.id,
+        cafeName: entry.name,
+        cafeImage: entry.image || '',
       });
       return;
     }
