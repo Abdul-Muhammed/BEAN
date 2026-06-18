@@ -88,6 +88,9 @@ export default function TopCafesScreen() {
   );
   const reviewedCount = Math.min(reviewedIds.size, REQUIRED_REVIEWS);
   const isComplete = reviewedCount >= REQUIRED_REVIEWS;
+  // The CTA unlocks as soon as the user has logged at least one cafe; logging
+  // all three swaps the label to a plain "Continue".
+  const canContinue = reviewedCount >= 1;
 
   // Load the nearby top-rated cafes once on mount.
   useEffect(() => {
@@ -335,17 +338,19 @@ export default function TopCafesScreen() {
       {/* Sticky footer CTA */}
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.cta, !isComplete && styles.ctaDisabled]}
+          style={[styles.cta, !canContinue && styles.ctaDisabled]}
           onPress={completeOnboarding}
-          disabled={!isComplete || submitting}
+          disabled={!canContinue || submitting}
           activeOpacity={0.9}
         >
-          <Text style={[styles.ctaText, !isComplete && styles.ctaTextDisabled]}>
+          <Text style={[styles.ctaText, !canContinue && styles.ctaTextDisabled]}>
             {submitting
               ? 'Setting up…'
               : isComplete
                 ? 'Continue'
-                : `${reviewedCount}/${REQUIRED_REVIEWS} Selected`}
+                : canContinue
+                  ? `Continue with ${reviewedCount}/${REQUIRED_REVIEWS} Cafes`
+                  : `${reviewedCount}/${REQUIRED_REVIEWS} Selected`}
           </Text>
         </TouchableOpacity>
       </View>

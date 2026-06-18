@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,10 @@ import { useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import { colors } from '@/constants/theme';
+import { isUsernameAvailable } from '../../lib/profile';
+import { useAuth } from '../../context/AuthContext';
+
+type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken' | 'error';
 
 const beanLogoSvg = `<svg width="48" height="81" viewBox="0 0 48 81" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M25.6136 68.523C19.0159 70.9613 11.8444 72.1805 4.09929 72.1805C2.665 54.3953 1.01555 25.5303 0.441833 0C8.47384 1.004 4.70884 8.49815 11.7368 12.3707C18.9083 16.2433 36.5859 23.0561 40.8888 28.5064C45.335 33.8133 47.5582 39.2636 47.5582 44.8573C47.5582 50.0207 45.5502 54.6822 41.5342 58.8416C37.5182 62.8576 32.2113 66.0847 25.6136 68.523Z" fill="#0F1312"/>
@@ -28,13 +32,70 @@ const beanLogoSvg = `<svg width="48" height="81" viewBox="0 0 48 81" fill="none"
 
 export default function UsernameScreen() {
   const [username, setUsername] = useState('');
+  const [status, setStatus] = useState<UsernameStatus>('idle');
   const router = useRouter();
+  const { user } = useAuth();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guards against a slow earlier request resolving after a newer one.
+  const requestIdRef = useRef(0);
+
+  const trimmed = username.trim();
+  const tooShort = trimmed.length < 4;
+
+  // Debounced, case-insensitive availability check. The user is signed in by
+  // this point (onboarding follows sign-up), so the authenticated-read RLS on
+  // profiles lets this query run. An inconclusive (error) result doesn't block
+  // progress — the unique index + write-time catch are the real safety net.
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (tooShort) {
+      setStatus('idle');
+      return;
+    }
+
+    setStatus('checking');
+    const reqId = ++requestIdRef.current;
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const available = await isUsernameAvailable(trimmed, user?.id);
+        if (reqId !== requestIdRef.current) return;
+        setStatus(available ? 'available' : 'taken');
+      } catch {
+        if (reqId !== requestIdRef.current) return;
+        setStatus('error');
+      }
+    }, 450);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [trimmed, tooShort, user?.id]);
+
+  const canProceed = !tooShort && status !== 'checking' && status !== 'taken';
+
+  const helperText =
+    status === 'checking'
+      ? 'Checking availability…'
+      : status === 'available'
+        ? 'Username is available!'
+        : status === 'taken'
+          ? 'That username is already taken.'
+          : status === 'error'
+            ? "Couldn't check availability — you can still continue."
+            : 'Must be at least 4 characters.';
+
+  const helperStyle = [
+    styles.helperText,
+    status === 'available' && styles.helperAvailable,
+    status === 'taken' && styles.helperTaken,
+  ];
 
   const handleNext = () => {
-    if (username.trim().length >= 4) {
+    if (canProceed) {
       router.push({
         pathname: '/(onboarding)/location',
-        params: { username: username.trim() }
+        params: { username: trimmed }
       });
     }
   };
@@ -87,20 +148,20 @@ export default function UsernameScreen() {
                 autoCorrect={false}
                 maxLength={20}
               />
-              <Text style={styles.helperText}>Must be at least 4 characters.</Text>
+              <Text style={helperStyle}>{helperText}</Text>
             </View>
 
             <TouchableOpacity
               style={[
                 styles.nextButton,
-                username.trim().length < 4 && styles.nextButtonDisabled
+                !canProceed && styles.nextButtonDisabled
               ]}
               onPress={handleNext}
-              disabled={username.trim().length < 4}
+              disabled={!canProceed}
             >
               <Text style={[
                 styles.nextButtonText,
-                username.trim().length < 4 && styles.nextButtonTextDisabled
+                !canProceed && styles.nextButtonTextDisabled
               ]}>
                 Next
               </Text>
@@ -181,6 +242,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Lato-Regular',
     color: '#8E8E93',
     marginTop: 8,
+  },
+  helperAvailable: {
+    color: '#2E7D32',
+  },
+  helperTaken: {
+    color: '#D1495B',
   },
   nextButton: {
     backgroundColor: '#1C1C1E',
