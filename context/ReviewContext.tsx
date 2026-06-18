@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { router } from 'expo-router';
 import { useAuth } from './AuthContext';
+import { useToast } from './ToastContext';
 import { useUserProfile } from '../hooks/useUserProfile';
 import { Cafe, UserReview, Review } from '../data/mockData';
 import { supabase } from '../lib/supabase';
@@ -16,6 +18,20 @@ interface AddReviewInput {
   // Base64-encoded image data (aligned with `photos`) used to upload the
   // pictures to Supabase Storage so the persisted review holds durable URLs
   // instead of fragile local file:// URIs.
+  photoUploads?: { base64: string }[];
+  visitDate?: Date;
+}
+
+interface UpdateReviewInput {
+  reviewId: string;
+  cafeId: string;
+  rating: number;
+  text: string;
+  orderedItem?: string;
+  attributes?: string[];
+  // Existing photo URLs to keep (already in Storage).
+  photos?: string[];
+  // Newly added images (base64) to upload and append.
   photoUploads?: { base64: string }[];
   visitDate?: Date;
 }
@@ -37,6 +53,8 @@ interface ReviewContextType {
   // undefined if the insert was skipped or failed), so callers can deep-link to
   // the new review.
   addReview: (input: AddReviewInput) => Promise<string | undefined>;
+  // Resolves true when the review was successfully updated in the backend.
+  updateReview: (input: UpdateReviewInput) => Promise<boolean>;
   addCafe: (cafe: Cafe) => void;
   getCafeById: (cafeId: string) => Cafe | undefined;
   toggleBookmark: (cafeId: string) => Promise<void>;
@@ -98,6 +116,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
   const [favoritedCafeIds, setFavoritedCafeIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
+  const { showToast } = useToast();
   const { profile } = useUserProfile();
   const userId = user?.id;
   // Reviewer name/avatar come from the profiles table (set during onboarding),
@@ -277,6 +296,12 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
           console.warn('Cannot bookmark unknown cafe', cafeId);
           return;
         }
+        showToast({
+          variant: 'saved',
+          message: 'Cafe has been saved!',
+          actionLabel: 'View',
+          onAction: () => router.push(`/cafe/${cafeId}`),
+        });
         setBookmarkedCafeIds((prev) => [...prev, cafeId]);
         setStoredBookmarks((prev) => ({
           ...prev,
@@ -312,7 +337,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [userId, cafes, bookmarkedCafeIds]
+    [userId, cafes, bookmarkedCafeIds, showToast]
   );
 
   const isBookmarked = useCallback(
@@ -347,6 +372,12 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
           console.warn('Failed to remove favorite:', error.message);
         }
       } else {
+        showToast({
+          variant: 'favorite',
+          message: 'Cafe has been favorited!',
+          actionLabel: 'View',
+          onAction: () => router.push(`/cafe/${cafeId}`),
+        });
         setFavoritedCafeIds((prev) => [...prev, cafeId]);
         setCafes((prevCafes) =>
           prevCafes.map((c) => {
@@ -369,7 +400,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [userId, cafes, favoritedCafeIds]
+    [userId, cafes, favoritedCafeIds, showToast]
   );
 
   const isFavorited = useCallback(
@@ -641,6 +672,109 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
     [cafes, userId, user]
   );
 
+  const updateReview = useCallback(
+    async ({
+      reviewId,
+      cafeId,
+      rating,
+      text,
+      orderedItem,
+      attributes,
+      photos,
+      photoUploads,
+      visitDate,
+    }: UpdateReviewInput): Promise<boolean> => {
+      if (!userId) {
+        console.warn('Cannot update review while signed out');
+        return false;
+      }
+
+      const visitDateString = visitDate ? formatDateOnly(visitDate) : null;
+
+      // Keep the existing (already-uploaded) URLs and append any freshly added
+      // images. If an upload fails we still save the review with what we have.
+      let finalPhotos = photos ? [...photos] : [];
+      if (photoUploads && photoUploads.length > 0) {
+        try {
+          const uploaded = await uploadReviewPhotos(userId, photoUploads);
+          finalPhotos = [...finalPhotos, ...uploaded];
+        } catch (uploadErr) {
+          console.warn('Failed to upload review photos:', uploadErr);
+        }
+      }
+
+      const { data, error } = await supabase
+        .from('reviews')
+        .update({
+          rating,
+          text,
+          ordered_item: orderedItem || null,
+          attributes: attributes || [],
+          photos: finalPhotos,
+          visit_date: visitDateString,
+        })
+        .eq('id', reviewId)
+        .eq('user_id', userId)
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.warn('Failed to update review:', error?.message);
+        return false;
+      }
+
+      const persistedRating =
+        typeof data.rating === 'string' ? parseFloat(data.rating) : data.rating;
+      const persistedVisitDate: string | undefined =
+        data.visit_date || visitDateString || undefined;
+      const persistedDisplayDate = formatReviewDate(data.visit_date || data.created_at);
+
+      setUserReviews((prev) =>
+        prev.map((r) =>
+          r.id === reviewId
+            ? {
+                ...r,
+                rating: persistedRating,
+                text: data.text ?? text,
+                orderedItem: data.ordered_item ?? (orderedItem || undefined),
+                attributes: data.attributes ?? attributes,
+                photos: data.photos ?? finalPhotos,
+                visitDate: persistedVisitDate,
+                date: persistedDisplayDate,
+              }
+            : r
+        )
+      );
+
+      // Keep the cafe's embedded reviews + average rating consistent.
+      setCafes((prevCafes) =>
+        prevCafes.map((c) => {
+          if (c.id !== cafeId) return c;
+          const updated = c.reviews.map((rv) =>
+            rv.id === reviewId
+              ? {
+                  ...rv,
+                  rating: persistedRating,
+                  text: data.text ?? text,
+                  orderedItem: data.ordered_item ?? (orderedItem || undefined),
+                  attributes: data.attributes ?? attributes,
+                  photos: data.photos ?? finalPhotos,
+                  date: persistedDisplayDate,
+                }
+              : rv
+          );
+          const avg = updated.length
+            ? updated.reduce((sum, r) => sum + r.rating, 0) / updated.length
+            : 0;
+          return { ...c, reviews: updated, rating: Math.round(avg * 10) / 10 };
+        })
+      );
+
+      return true;
+    },
+    [userId]
+  );
+
   return (
     <ReviewContext.Provider
       value={{
@@ -650,6 +784,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         favoritedCafeIds,
         favoritedCafes,
         addReview,
+        updateReview,
         addCafe,
         getCafeById,
         toggleBookmark,

@@ -156,8 +156,8 @@ export default function RootLayout() {
         <AuthProvider>
           <UserProfileProvider>
             <GluestackUIProvider config={config}>
-              <ReviewProvider>
-                <ToastProvider>
+              <ToastProvider>
+                <ReviewProvider>
                   <AuthGate />
                   <Stack screenOptions={{ headerShown: false }}>
                     <Stack.Screen name="(auth)" options={{ headerShown: false, gestureEnabled: false }} />
@@ -166,8 +166,8 @@ export default function RootLayout() {
                     <Stack.Screen name="+not-found" />
                   </Stack>
                   <StatusBar style="auto" />
-                </ToastProvider>
-              </ReviewProvider>
+                </ReviewProvider>
+              </ToastProvider>
             </GluestackUIProvider>
           </UserProfileProvider>
         </AuthProvider>

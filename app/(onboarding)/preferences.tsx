@@ -147,12 +147,7 @@ export default function PreferencesScreen() {
                       ]}
                       onPress={() => toggleCategory(category.id)}
                     >
-                      <View
-                        style={[
-                          styles.categoryIconContainer,
-                          isSelected && styles.categoryIconContainerSelected
-                        ]}
-                      >
+                      <View style={styles.categoryIconContainer}>
                         <SvgXml
                           xml={category.icon_svg_xml}
                           width={16}
@@ -274,12 +269,8 @@ const styles = StyleSheet.create({
   categoryIconContainer: {
     width: 20,
     height: 20,
-    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  categoryIconContainerSelected: {
-    backgroundColor: colors.surface,
   },
   categoryText: {
     fontSize: 14,

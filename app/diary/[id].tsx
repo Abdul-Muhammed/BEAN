@@ -21,6 +21,7 @@ import {
   Heart,
   Tag,
 } from 'lucide-react-native';
+import { SvgXml } from 'react-native-svg';
 import BeanLogo from '../../components/BeanLogo';
 import PhotoGallery from '../../components/PhotoGallery';
 import BeanRating from '../../components/BeanRating';
@@ -29,6 +30,27 @@ import { colors } from '@/constants/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const PHOTO_THUMB_SIZE = (SCREEN_WIDTH - 82) / 2;
+
+// assets/images/edit_pencil.svg — a self-contained pill button (circle + shadow
+// baked in), overlaid on the cafe hero image to enter the edit screen.
+const EDIT_PENCIL_SVG = `<svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g filter="url(#filter0_d_276_4907)">
+<rect x="11" y="11" width="32" height="32" rx="16" fill="#FFFEFB"/>
+<rect x="10.5" y="10.5" width="33" height="33" rx="16.5" stroke="#0F1312" stroke-linejoin="round"/>
+<path d="M27.0003 24.3336L21.667 29.6669V32.3336L24.3337 32.3336L29.667 27.0002M27.0003 24.3336L28.9127 22.4211L28.9139 22.42C29.1772 22.1567 29.309 22.0249 29.461 21.9755C29.5949 21.932 29.7392 21.932 29.873 21.9755C30.0249 22.0249 30.1567 22.1566 30.4195 22.4194L31.5794 23.5793C31.8434 23.8433 31.9755 23.9754 32.0249 24.1276C32.0684 24.2615 32.0684 24.4057 32.0249 24.5396C31.9755 24.6917 31.8436 24.8236 31.58 25.0872L31.5794 25.0878L29.667 27.0002M27.0003 24.3336L29.667 27.0002" stroke="#0F1312" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<defs>
+<filter id="filter0_d_276_4907" x="0" y="0" width="54" height="54" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+<feFlood flood-opacity="0" result="BackgroundImageFix"/>
+<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+<feOffset/>
+<feGaussianBlur stdDeviation="5"/>
+<feColorMatrix type="matrix" values="0 0 0 0 0.14902 0 0 0 0 0.14902 0 0 0 0 0.14902 0 0 0 0.1 0"/>
+<feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_276_4907"/>
+<feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_276_4907" result="shape"/>
+</filter>
+</defs>
+</svg>`;
 
 interface DetailSectionProps {
   icon: React.ReactNode;
@@ -133,6 +155,18 @@ export default function DiaryEntryScreen() {
               <BeanLogo width={42} height={70} color={colors.white} />
             </View>
           )}
+
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() =>
+              // Route types regenerate when the dev server picks up the new file.
+              router.push(`/edit-review/${review.id}` as any)
+            }
+            hitSlop={8}
+            activeOpacity={0.85}
+          >
+            <SvgXml xml={EDIT_PENCIL_SVG} width={44} height={44} />
+          </TouchableOpacity>
 
           <View style={styles.heroContent}>
             <View style={styles.heroTitleRow}>
@@ -326,6 +360,12 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 210,
     backgroundColor: colors.disabled,
+  },
+  editButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 2,
   },
   heroImageFallback: {
     alignItems: 'center',
