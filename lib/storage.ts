@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 
 export const REVIEW_PHOTOS_BUCKET = 'review-photos';
+export const AVATARS_BUCKET = 'avatars';
 
 // Decode a base64 string into an ArrayBuffer. Supabase Storage's `upload`
 // needs binary data; the image picker hands us base64, and React Native's
@@ -59,4 +60,35 @@ export async function uploadReviewPhotos(
   }
 
   return urls;
+}
+
+/**
+ * Upload a single avatar image to the public `avatars` bucket and return its
+ * public URL. Stored under the owner's user id (so storage RLS can scope writes
+ * per-user) with a cache-busting timestamp in the filename so a replaced avatar
+ * isn't served stale from a CDN. Throws on failure so the caller can surface it.
+ */
+export async function uploadAvatar(
+  userId: string,
+  item: { base64: string }
+): Promise<string> {
+  const path = `${userId}/avatar-${Date.now()}.jpg`;
+
+  const { error } = await supabase.storage
+    .from(AVATARS_BUCKET)
+    .upload(path, base64ToArrayBuffer(item.base64), {
+      contentType: 'image/jpeg',
+      upsert: true,
+    });
+
+  if (error) {
+    throw new Error(`Failed to upload avatar: ${error.message}`);
+  }
+
+  const { data } = supabase.storage.from(AVATARS_BUCKET).getPublicUrl(path);
+  if (!data?.publicUrl) {
+    throw new Error('Failed to resolve avatar URL after upload');
+  }
+
+  return data.publicUrl;
 }

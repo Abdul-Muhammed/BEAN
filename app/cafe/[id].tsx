@@ -296,7 +296,16 @@ export default function CafeDetailScreen() {
           {cafe.hours && (
             <View style={styles.infoRow}>
               <Clock size={16} color="#8E8E93" />
-              <Text style={styles.infoText}>{cafe.hours.currentHours || 'Hours not available'}</Text>
+              <Text style={styles.infoText}>
+                {cafe.hours.openNow ? (
+                  <>
+                    <Text style={styles.openNowText}>Open Now</Text>
+                    {(cafe.hours.currentHours || '').replace(/^Open Now/, '')}
+                  </>
+                ) : (
+                  cafe.hours.currentHours || 'Hours not available'
+                )}
+              </Text>
             </View>
           )}
 
@@ -541,6 +550,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Lato-Regular',
     color: '#1C1C1E',
+  },
+  openNowText: {
+    color: '#2CC05E',
   },
   externalIcon: {
     marginLeft: 4,

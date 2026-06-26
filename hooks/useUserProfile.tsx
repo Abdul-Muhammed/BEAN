@@ -15,6 +15,7 @@ export interface UserProfile {
   first_name: string | null;
   last_name: string | null;
   email: string;
+  bio: string | null;
   location_address: string | null;
   location_latitude: number | null;
   location_longitude: number | null;

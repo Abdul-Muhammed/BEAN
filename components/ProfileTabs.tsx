@@ -1,55 +1,79 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, useWindowDimensions } from 'react-native';
 import { colors } from '@/constants/theme';
 
+export type ProfileTab = 'overview' | 'diary';
+
 interface ProfileTabsProps {
-  activeTab: 'profile' | 'diary';
-  onTabChange: (tab: 'profile' | 'diary') => void;
+  activeTab: ProfileTab;
+  onTabChange: (tab: ProfileTab) => void;
 }
 
+const TABS: { key: ProfileTab; label: string }[] = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'diary', label: 'Diary' },
+];
+
+const H_PADDING = 20;
+
 export default function ProfileTabs({ activeTab, onTabChange }: ProfileTabsProps) {
+  const { width } = useWindowDimensions();
+  const tabWidth = (width - H_PADDING * 2) / TABS.length;
+  const activeIndex = TABS.findIndex((t) => t.key === activeTab);
+  const translateX = useRef(new Animated.Value(activeIndex * tabWidth)).current;
+
+  useEffect(() => {
+    Animated.spring(translateX, {
+      toValue: activeIndex * tabWidth,
+      useNativeDriver: true,
+      bounciness: 4,
+      speed: 16,
+    }).start();
+  }, [activeIndex, tabWidth, translateX]);
+
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        style={styles.tab}
-        onPress={() => onTabChange('profile')}
-        activeOpacity={0.7}
-      >
-        <Text style={[styles.tabText, activeTab === 'profile' && styles.tabTextActive]}>
-          Profile
-        </Text>
-        {activeTab === 'profile' && <View style={styles.underline} />}
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.tab}
-        onPress={() => onTabChange('diary')}
-        activeOpacity={0.7}
-      >
-        <Text style={[styles.tabText, activeTab === 'diary' && styles.tabTextActive]}>
-          Diary
-        </Text>
-        {activeTab === 'diary' && <View style={styles.underline} />}
-      </TouchableOpacity>
+      <View style={styles.row}>
+        {TABS.map((tab) => {
+          const isActive = tab.key === activeTab;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={styles.tab}
+              onPress={() => onTabChange(tab.key)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      <Animated.View
+        style={[
+          styles.underline,
+          { width: tabWidth, transform: [{ translateX }] },
+        ]}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 8,
+    paddingHorizontal: H_PADDING,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
     backgroundColor: colors.background,
   },
+  row: {
+    flexDirection: 'row',
+  },
   tab: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 12,
-    position: 'relative',
+    paddingVertical: 14,
   },
   tabText: {
     fontSize: 16,
@@ -61,12 +85,8 @@ const styles = StyleSheet.create({
     color: '#1C1C1E',
   },
   underline: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     height: 2,
     backgroundColor: '#1C1C1E',
-    marginHorizontal: 20,
+    borderRadius: 1,
   },
 });

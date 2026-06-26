@@ -4,6 +4,7 @@ export interface UpdateProfileParams {
   username?: string;
   firstName?: string | null;
   lastName?: string | null;
+  bio?: string | null;
   profileImageUrl?: string | null;
   location?: string | null;
   latitude?: number | null;
@@ -61,6 +62,7 @@ export async function updateProfile(params: UpdateProfileParams) {
     username,
     firstName,
     lastName,
+    bio,
     profileImageUrl,
     location,
     latitude,
@@ -94,6 +96,7 @@ export async function updateProfile(params: UpdateProfileParams) {
   }
   if (firstName !== undefined) updateData.first_name = firstName || null;
   if (lastName !== undefined) updateData.last_name = lastName || null;
+  if (bio !== undefined) updateData.bio = bio?.trim() || null;
   if (profileImageUrl !== undefined) updateData.profile_image_url = profileImageUrl || null;
   if (location !== undefined) updateData.location_address = location || null;
   if (typeof latitude === 'number' && typeof longitude === 'number') {
@@ -120,4 +123,22 @@ export async function updateProfile(params: UpdateProfileParams) {
   }
 
   return data;
+}
+
+/**
+ * Permanently deletes the signed-in user's account. The actual auth-user
+ * deletion requires the service-role key, so it runs in the `delete-account`
+ * Edge Function (which also purges the user's reviews/bookmarks/favorites/profile
+ * rows). The caller's access token is forwarded automatically by
+ * supabase.functions.invoke so the function can identify the user. After this
+ * resolves, the caller should sign out locally to clear the dead session.
+ */
+export async function deleteAccount(): Promise<void> {
+  const { error } = await supabase.functions.invoke('delete-account', {
+    method: 'POST',
+  });
+
+  if (error) {
+    throw new Error(`Failed to delete account: ${error.message}`);
+  }
 }

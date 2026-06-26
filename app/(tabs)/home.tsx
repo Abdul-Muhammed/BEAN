@@ -205,7 +205,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
       
       <ScrollView
@@ -216,7 +216,7 @@ export default function HomeScreen() {
       >
         {/* Explore Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Explore</Text>
+          <Text style={[styles.sectionTitle, styles.sectionTitleStandalone]}>Explore</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
             <HStack space="sm" style={styles.filterContainer}>
               <TouchableOpacity onPress={() => setActiveFilter(activeFilter === 'open' ? 'all' : 'open')}>
@@ -334,7 +334,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingTop: 20,
-    paddingBottom: 100,
+    paddingBottom: 24,
   },
   section: {
     marginBottom: 24,
@@ -344,6 +344,8 @@ const styles = StyleSheet.create({
     fontFamily: 'OtomanopeeOne-Regular',
     color: '#1C1C1E',
     marginBottom: 16,
+  },
+  sectionTitleStandalone: {
     paddingHorizontal: 20,
   },
   sectionHeader: {
