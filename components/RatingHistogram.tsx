@@ -7,10 +7,13 @@ interface RatingHistogramProps {
   ratings: number[];
   averageRating?: number;
   title?: string;
+  /** Roomier variant (taller bars, more spacing) used on the profile dashboard. */
+  large?: boolean;
 }
 
 const NUM_BARS = 10;
 const MAX_BAR_HEIGHT = 64;
+const LARGE_BAR_HEIGHT = 96;
 const MIN_BAR_HEIGHT = 6;
 const BROWN = '#8B5E3C';
 const GREEN = '#4CAF50';
@@ -19,7 +22,9 @@ export default function RatingHistogram({
   ratings,
   averageRating,
   title = 'Ratings',
+  large = false,
 }: RatingHistogramProps) {
+  const maxBarHeight = large ? LARGE_BAR_HEIGHT : MAX_BAR_HEIGHT;
   const { displayMean, heights } = useMemo(() => {
     const valid = ratings.filter((r) => r >= 1 && r <= 5);
 
@@ -63,13 +68,13 @@ export default function RatingHistogram({
         </View>
       </View>
 
-      <View style={styles.barsRow}>
+      <View style={[styles.barsRow, { height: maxBarHeight, gap: large ? 9 : 6 }]}>
         {heights.map((h, i) => (
           <View
             key={i}
             style={[
               styles.bar,
-              { height: Math.max(MIN_BAR_HEIGHT, h * MAX_BAR_HEIGHT) },
+              { height: Math.max(MIN_BAR_HEIGHT, h * maxBarHeight) },
             ]}
           />
         ))}

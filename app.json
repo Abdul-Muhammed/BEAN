@@ -46,7 +46,8 @@
           "cameraPermission": "This app uses your camera so you can take photos for your cafe reviews."
         }
       ],
-      "./plugins/withModularHeaders"
+      "./plugins/withModularHeaders",
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true
