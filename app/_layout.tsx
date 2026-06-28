@@ -13,6 +13,7 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { ReviewProvider } from '@/context/ReviewContext';
+import { FollowProvider } from '@/context/FollowContext';
 import { ToastProvider } from '@/context/ToastContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { UserProfileProvider, useUserProfile } from '@/hooks/useUserProfile';
@@ -157,6 +158,7 @@ export default function RootLayout() {
           <UserProfileProvider>
             <GluestackUIProvider config={config}>
               <ToastProvider>
+                <FollowProvider>
                 <ReviewProvider>
                   <AuthGate />
                   <Stack screenOptions={{ headerShown: false }}>
@@ -168,6 +170,7 @@ export default function RootLayout() {
                   </Stack>
                   <StatusBar style="auto" />
                 </ReviewProvider>
+                </FollowProvider>
               </ToastProvider>
             </GluestackUIProvider>
           </UserProfileProvider>
