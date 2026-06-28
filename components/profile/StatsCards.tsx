@@ -11,6 +11,9 @@ interface StatsCardsProps {
   onPressReviews?: () => void;
   onPressFavourites?: () => void;
   onPressSaved?: () => void;
+  /** When viewing another user, Favourites/Saved are private (RLS) so only the
+   *  Reviews card is shown. */
+  reviewsOnly?: boolean;
 }
 
 function StatCard({
@@ -47,12 +50,17 @@ export default function StatsCards({
   onPressReviews,
   onPressFavourites,
   onPressSaved,
+  reviewsOnly = false,
 }: StatsCardsProps) {
   return (
     <View style={styles.container}>
       <StatCard icon={DIARY_SVG} value={reviewsCount} label="Reviews" onPress={onPressReviews} />
-      <StatCard icon={FAVORITES_SVG} value={favouritesCount} label="Favourites" onPress={onPressFavourites} />
-      <StatCard icon={BOOKMARKS_SVG} value={savedCount} label="Saved" onPress={onPressSaved} />
+      {!reviewsOnly && (
+        <>
+          <StatCard icon={FAVORITES_SVG} value={favouritesCount} label="Favourites" onPress={onPressFavourites} />
+          <StatCard icon={BOOKMARKS_SVG} value={savedCount} label="Saved" onPress={onPressSaved} />
+        </>
+      )}
     </View>
   );
 }

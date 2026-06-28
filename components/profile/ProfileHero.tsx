@@ -12,9 +12,11 @@ interface ProfileHeroProps {
   profileImageUrl?: string | null;
   followingCount: number;
   followersCount: number;
-  onPressEdit: () => void;
+  onPressEdit?: () => void;
   onPressFollowing?: () => void;
   onPressFollowers?: () => void;
+  /** Hidden when viewing another user's profile. */
+  showEditButton?: boolean;
 }
 
 /** Centered identity block: avatar (with edit pencil), name/handle/bio/join date,
@@ -31,6 +33,7 @@ export default function ProfileHero({
   onPressEdit,
   onPressFollowing,
   onPressFollowers,
+  showEditButton = true,
 }: ProfileHeroProps) {
   return (
     <View style={styles.container}>
@@ -44,14 +47,16 @@ export default function ProfileHero({
             </Text>
           </View>
         )}
-        <TouchableOpacity
-          style={styles.editButton}
-          onPress={onPressEdit}
-          activeOpacity={0.85}
-          hitSlop={8}
-        >
-          <SvgXml xml={EDIT_PENCIL_SVG} width={40} height={40} />
-        </TouchableOpacity>
+        {showEditButton && (
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={onPressEdit}
+            activeOpacity={0.85}
+            hitSlop={8}
+          >
+            <SvgXml xml={EDIT_PENCIL_SVG} width={40} height={40} />
+          </TouchableOpacity>
+        )}
       </View>
 
       <Text style={styles.username}>{username}</Text>

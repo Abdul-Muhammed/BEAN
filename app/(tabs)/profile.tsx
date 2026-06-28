@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
 import { useRouter } from 'expo-router';
 import { useReviews } from '../../context/ReviewContext';
+import { useFollows } from '../../context/FollowContext';
 import { useUserProfile } from '../../hooks/useUserProfile';
 import ProfileTabs, { ProfileTab } from '../../components/ProfileTabs';
 import BeanLogo from '../../components/BeanLogo';
@@ -43,6 +44,7 @@ export default function ProfileScreen() {
   const { user } = useAuth();
   const router = useRouter();
   const { profile, isLoading: isProfileLoading } = useUserProfile();
+  const { followersCount, followingCount } = useFollows();
   const [activeTab, setActiveTab] = useState<ProfileTab>('overview');
 
   // Calculate stats
@@ -176,14 +178,16 @@ export default function ProfileScreen() {
             bio={profile?.bio ?? null}
             joinedLabel={formatJoinDate(profile?.created_at)}
             profileImageUrl={profileImageUrl}
-            followingCount={0}
-            followersCount={0}
+            followingCount={followingCount}
+            followersCount={followersCount}
             onPressEdit={() => router.push('/settings/edit-profile')}
+            onPressFollowing={() => router.push('/following')}
+            onPressFollowers={() => router.push('/followers')}
           />
         )}
 
         <View style={styles.friendCardWrap}>
-          <FriendDiscoveryCard />
+          <FriendDiscoveryCard onPress={() => router.push('/connect-friends')} />
         </View>
 
         <ProfileTabs activeTab={activeTab} onTabChange={setActiveTab} />
