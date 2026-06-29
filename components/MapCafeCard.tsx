@@ -7,12 +7,24 @@ import { Cafe } from '../data/mockData';
 import { useReviews } from '../context/ReviewContext';
 import { colors } from '@/constants/theme';
 
+const DEFAULT_CAFE_IMAGE =
+  'https://images.pexels.com/photos/302899/pexels-photo-302899.jpeg?auto=compress&cs=tinysrgb&w=800';
+
 interface MapCafeCardProps {
   cafe: Cafe;
 }
 
 export default function MapCafeCard({ cafe }: MapCafeCardProps) {
   const { toggleBookmark, isBookmarked } = useReviews();
+  const [imageFailed, setImageFailed] = React.useState(false);
+
+  const preferredUri = cafe.photos?.[0] || cafe.image || DEFAULT_CAFE_IMAGE;
+  const imageUri = imageFailed ? DEFAULT_CAFE_IMAGE : preferredUri;
+
+  // A fresh image source (e.g. after lazy enrichment) gets another chance to load.
+  React.useEffect(() => {
+    setImageFailed(false);
+  }, [preferredUri]);
 
   const handlePress = () => {
     router.push(`/cafe/${cafe.id}`);
@@ -43,7 +55,11 @@ export default function MapCafeCard({ cafe }: MapCafeCardProps) {
 
   return (
     <TouchableOpacity style={styles.card} onPress={handlePress}>
-      <Image source={{ uri: cafe.image }} style={styles.image} />
+      <Image
+        source={{ uri: imageUri }}
+        style={styles.image}
+        onError={() => setImageFailed(true)}
+      />
       
       <View style={styles.content}>
         <View style={styles.header}>

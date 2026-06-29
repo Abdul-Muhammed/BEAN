@@ -6,6 +6,7 @@ import {
   Lato_400Regular,
   Lato_700Bold,
   Lato_300Light,
+  Lato_900Black,
 } from '@expo-google-fonts/lato';
 import {
   OtomanopeeOne_400Regular,
@@ -20,6 +21,7 @@ import { UserProfileProvider, useUserProfile } from '@/hooks/useUserProfile';
 import { GluestackUIProvider } from '@gluestack-ui/themed';
 import config from '@/gluestack-ui.config';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // Prevent splash screen from auto-hiding
@@ -136,6 +138,7 @@ export default function RootLayout() {
     'Lato-Regular': Lato_400Regular,
     'Lato-Bold': Lato_700Bold,
     'Lato-Light': Lato_300Light,
+    'Lato-Black': Lato_900Black,
     'OtomanopeeOne-Regular': OtomanopeeOne_400Regular,
   });
 
@@ -154,6 +157,7 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <GestureHandlerRootView style={{ flex: 1 }}>
+        <BottomSheetModalProvider>
         <AuthProvider>
           <UserProfileProvider>
             <GluestackUIProvider config={config}>
@@ -176,6 +180,7 @@ export default function RootLayout() {
             </GluestackUIProvider>
           </UserProfileProvider>
         </AuthProvider>
+        </BottomSheetModalProvider>
       </GestureHandlerRootView>
     </ErrorBoundary>
   );

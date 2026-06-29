@@ -12,6 +12,8 @@ interface BeanRatingProps {
   rating: number;
   size?: number;
   interactive?: boolean;
+  /** When interactive, allow tapping the left/right half of a bean for 0.5 steps. */
+  allowHalf?: boolean;
   onRatingChange?: (rating: number) => void;
 }
 
@@ -66,6 +68,7 @@ export default function BeanRating({
   rating,
   size = 16,
   interactive = false,
+  allowHalf = false,
   onRatingChange,
 }: BeanRatingProps) {
   const handlePress = (value: number) => {
@@ -78,6 +81,26 @@ export default function BeanRating({
     <View style={styles.container}>
       {[1, 2, 3, 4, 5].map((index) => {
         const fill = getFill(index, rating);
+
+        if (interactive && allowHalf) {
+          // Two invisible touch halves overlay the bean so tapping the left
+          // half selects X.5 and the right half selects X.
+          return (
+            <View key={index} style={styles.button}>
+              <BeanCell size={size} fill={fill} />
+              <View style={styles.halfOverlay}>
+                <TouchableOpacity
+                  style={styles.halfTouch}
+                  onPress={() => handlePress(index - 0.5)}
+                />
+                <TouchableOpacity
+                  style={styles.halfTouch}
+                  onPress={() => handlePress(index)}
+                />
+              </View>
+            </View>
+          );
+        }
 
         if (interactive) {
           return (
@@ -105,6 +128,13 @@ const styles = StyleSheet.create({
   },
   button: {
     padding: 2,
+  },
+  halfOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+  },
+  halfTouch: {
+    flex: 1,
   },
   bean: {
     flexDirection: 'row',
