@@ -166,6 +166,7 @@ export default function RootLayout() {
                     <Stack.Screen name="(onboarding)" options={{ headerShown: false, gestureEnabled: false }} />
                     <Stack.Screen name="(tabs)" options={{ headerShown: false, gestureEnabled: false, animation: 'slide_from_bottom' }} />
                     <Stack.Screen name="settings" options={{ headerShown: false }} />
+                    <Stack.Screen name="notifications" options={{ headerShown: false }} />
                     <Stack.Screen name="+not-found" />
                   </Stack>
                   <StatusBar style="auto" />

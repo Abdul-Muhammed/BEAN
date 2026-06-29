@@ -36,8 +36,11 @@ import {
 } from '../../services/googlePlaces';
 import { useUserProfile } from '../../hooks/useUserProfile';
 import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
+import { getUnreadFollowCount } from '../../lib/follows';
+import { getNotificationsLastSeen } from '../../lib/notifications';
 import { approximateDistanceMeters } from '../../lib/geo';
 import { colors } from '@/constants/theme';
+import { NOTIFICATIONS_BELL_SVG } from '@/constants/profileIcons';
 
 type FilterType = 'all' | 'open';
 
@@ -54,6 +57,10 @@ export default function HomeScreen() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [isLoadingNearby, setIsLoadingNearby] = useState(false);
   const [nearbyError, setNearbyError] = useState<string | null>(null);
+  // Whether there are follow notifications newer than the user's last visit to
+  // the Notifications screen, driving the bell dot. Re-checked on focus so it
+  // clears after a visit advances the last-seen timestamp.
+  const [hasUnread, setHasUnread] = useState(false);
   // Coords of the last successful nearby load, so a re-focus that didn't move
   // the user doesn't trigger a redundant network round-trip.
   const lastFetchCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -133,6 +140,26 @@ export default function HomeScreen() {
     useCallback(() => {
       loadNearbyCafes();
     }, [loadNearbyCafes])
+  );
+
+  // Refresh the bell's unread state on focus. Returning from /notifications
+  // (which stamps last-seen) re-runs this and clears the dot.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      (async () => {
+        try {
+          const lastSeen = await getNotificationsLastSeen();
+          const count = await getUnreadFollowCount(lastSeen);
+          if (active) setHasUnread(count > 0);
+        } catch {
+          // Non-fatal: leave the dot in its current state.
+        }
+      })();
+      return () => {
+        active = false;
+      };
+    }, [])
   );
 
   // Load the category metadata (label + icon) so we can render a pill for each
@@ -216,7 +243,17 @@ export default function HomeScreen() {
       >
         {/* Explore Section */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, styles.sectionTitleStandalone]}>Explore</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Explore</Text>
+            <TouchableOpacity
+              onPress={() => router.push('/notifications')}
+              hitSlop={8}
+              style={styles.bellButton}
+            >
+              <SvgXml xml={NOTIFICATIONS_BELL_SVG} width={20} height={22} />
+              {hasUnread && <View style={styles.bellDot} />}
+            </TouchableOpacity>
+          </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
             <HStack space="sm" style={styles.filterContainer}>
               <TouchableOpacity onPress={() => setActiveFilter(activeFilter === 'open' ? 'all' : 'open')}>
@@ -354,6 +391,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     marginBottom: 16,
+  },
+  bellButton: {
+    position: 'relative',
+  },
+  bellDot: {
+    position: 'absolute',
+    top: -1,
+    right: -1,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#E2574C',
+    borderWidth: 1,
+    borderColor: colors.background,
   },
   filterScroll: {
     paddingLeft: 20,

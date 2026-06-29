@@ -7,41 +7,22 @@ import NotificationToggle from '../../components/settings/NotificationToggle';
 import {
   getNotificationsEnabled,
   setNotificationsEnabled,
-  hasNotificationPermission,
-  requestNotificationPermission,
 } from '../../lib/notifications';
-import { useToast } from '../../context/ToastContext';
 import { colors } from '@/constants/theme';
 
 export default function NotificationsScreen() {
-  const { showToast } = useToast();
   const [enabled, setEnabled] = useState(false);
 
-  // Reflect the persisted preference, gated by the actual OS permission: if the
-  // user revoked permission in system settings, the switch should read off.
+  // Reflect the persisted preference. Push delivery isn't wired up yet, so this
+  // is a local-only intent flag — no OS permission is requested here. The real
+  // permission prompt will land with the future push release.
   useEffect(() => {
     (async () => {
-      const [pref, granted] = await Promise.all([
-        getNotificationsEnabled(),
-        hasNotificationPermission(),
-      ]);
-      setEnabled(pref && granted);
+      setEnabled(await getNotificationsEnabled());
     })();
   }, []);
 
   const handleToggle = async (next: boolean) => {
-    if (next) {
-      const granted = await requestNotificationPermission();
-      if (!granted) {
-        showToast({
-          message: 'Enable notifications for Bean in your device settings',
-          variant: 'favorite',
-        });
-        setEnabled(false);
-        await setNotificationsEnabled(false);
-        return;
-      }
-    }
     setEnabled(next);
     await setNotificationsEnabled(next);
   };
@@ -61,7 +42,8 @@ export default function NotificationsScreen() {
         </SettingsSection>
 
         <Text style={styles.description}>
-          More granular controls are on the way. For now, one switch covers everything.
+          Push notifications are coming soon. Flip this on to opt in early — we'll
+          start sending once they're ready.
         </Text>
       </ScrollView>
     </SafeAreaView>
