@@ -17,7 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Search, MapPin, Star, Wifi, Navigation2 } from 'lucide-react-native';
+import { Search, Navigation2 } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import MapView, {
   Marker,
@@ -33,12 +33,22 @@ import { useUserProfile } from '../../hooks/useUserProfile';
 import {
   searchCafesNearbyByCoords,
   convertPlaceToCafe,
+  enrichCafeWithDetails,
   isNzCafe,
 } from '../../services/googlePlaces';
 import { colors } from '@/constants/theme';
+import { SLIDERS_FILTER_SVG } from '@/constants/searchIcons';
 import { MARKER_PALETTE, type MarkerKind } from '../../constants/mapMarkerIcons';
 import { approximateDistanceMeters } from '../../lib/geo';
 import type { Cafe } from '../../data/mockData';
+import FilterPillsRow from '../../components/discover/FilterPillsRow';
+import FiltersBottomSheet, {
+  type FiltersBottomSheetHandle,
+} from '../../components/discover/FiltersBottomSheet';
+import {
+  type Filters,
+  DEFAULT_FILTERS,
+} from '../../components/discover/filterTypes';
 
 // Auckland fallback when no profile coords and no permission.
 const DEFAULT_LATITUDE = -36.8485;
@@ -172,10 +182,11 @@ function CafeMarkerView({ cafe, zoom }: CafeMarkerViewProps) {
 }
 
 export default function DiscoverScreen() {
-  const { addCafe } = useReviews();
+  const { addCafe, isBookmarked, isFavorited, userReviews } = useReviews();
   const { profile } = useUserProfile();
   const mapRef = useRef<MapView | null>(null);
   const bottomSheetRef = useRef<BottomSheet>(null);
+  const filtersSheetRef = useRef<FiltersBottomSheetHandle>(null);
   const trackingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mapFetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastMapFetchRef = useRef<{
@@ -190,11 +201,7 @@ export default function DiscoverScreen() {
   }, [addCafe]);
 
   const [sheetIndex, setSheetIndex] = useState(1);
-  const [filters, setFilters] = useState({
-    openNow: false,
-    topRated: false,
-    hasWifi: false,
-  });
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [zoom, setZoom] = useState<ZoomLevel>('medium');
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
   const [userCoords, setUserCoords] = useState<{
@@ -450,18 +457,91 @@ export default function DiscoverScreen() {
     };
   }, [zoom]);
 
+  // Cafe ids the current user has reviewed — drives the "Already Rated" filter.
+  const reviewedCafeIds = useMemo(
+    () => new Set(userReviews.map((review) => review.cafeId)),
+    [userReviews]
+  );
+
+  // Single client-side predicate, parameterised by a filter set so the sheet can
+  // count matches for an uncommitted draft and the screen can filter on the
+  // committed filters with the same logic.
+  const matchesFilters = useCallback(
+    (cafe: Cafe, f: Filters) => {
+      if (f.openNow && cafe.hours?.openNow !== true) return false;
+      if (f.topRated && cafe.rating < 4.5) return false;
+      if (f.saved && !isBookmarked(cafe.id)) return false;
+      if (f.liked && !isFavorited(cafe.id)) return false;
+      if (f.alreadyRated && !reviewedCafeIds.has(cafe.id)) return false;
+      if (f.minRating > 0 && cafe.rating < f.minRating) return false;
+      if (f.categories.length > 0) {
+        const amenities = cafe.amenities ?? [];
+        if (!f.categories.every((label) => amenities.includes(label))) {
+          return false;
+        }
+      }
+      return true;
+    },
+    [isBookmarked, isFavorited, reviewedCafeIds]
+  );
+
   const passesFilters = useCallback(
-    (cafe: Cafe) =>
-      (!filters.openNow || cafe.hours?.openNow === true) &&
-      (!filters.topRated || cafe.rating >= 4.5) &&
-      (!filters.hasWifi || cafe.amenities?.some((a) => a === 'Has WiFi')),
-    [filters]
+    (cafe: Cafe) => matchesFilters(cafe, filters),
+    [matchesFilters, filters]
+  );
+
+  // Live count for the sheet's "Show XX Cafes" button, over the list set.
+  const countFor = useCallback(
+    (f: Filters) => nearbyCafes.filter((cafe) => matchesFilters(cafe, f)).length,
+    [nearbyCafes, matchesFilters]
   );
 
   const listCafes = useMemo(
     () => nearbyCafes.filter(passesFilters).slice(0, NEARBY_CAFE_LIST_LIMIT),
     [nearbyCafes, passesFilters]
   );
+
+  // Nearby/search results only carry a thumbnail (often missing for cache/DB-
+  // served cafes), so cards can render a blank image. Lazily pull the real photo
+  // for the handful of visible cards via the same details path the cafe page
+  // uses. Details are cached server-side, so repeat calls are cheap.
+  const enrichedImageIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    const pending = listCafes.filter(
+      (cafe) => cafe.place_id && !enrichedImageIdsRef.current.has(cafe.place_id)
+    );
+    if (pending.length === 0) return;
+
+    (async () => {
+      for (const cafe of pending) {
+        const placeId = cafe.place_id as string;
+        enrichedImageIdsRef.current.add(placeId);
+        try {
+          const details = await enrichCafeWithDetails(placeId);
+          if (cancelled || !details) continue;
+          if (!details.image && !details.photos) continue;
+          setNearbyCafes((prev) =>
+            prev.map((c) =>
+              c.id === cafe.id
+                ? {
+                    ...c,
+                    image: details.image || c.image,
+                    photos: details.photos || c.photos,
+                  }
+                : c
+            )
+          );
+        } catch (error) {
+          console.warn('Failed to enrich nearby cafe image:', error);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [listCafes]);
 
   // Markers are driven by the map viewport and stay independent of the sheet.
   const markerCafes = useMemo(
@@ -477,12 +557,25 @@ export default function DiscoverScreen() {
 
   const snapPoints = useMemo(() => ['15%', '30%', '80%'], []);
 
-  const toggleFilter = useCallback(
-    (filterName: 'openNow' | 'topRated' | 'hasWifi') => {
-      setFilters((prev) => ({
-        ...prev,
-        [filterName]: !prev[filterName],
-      }));
+  const toggleOpenNow = useCallback(() => {
+    setFilters((prev) => ({ ...prev, openNow: !prev.openNow }));
+  }, []);
+
+  const removeFilter = useCallback(
+    (
+      key:
+        | 'topRated'
+        | 'saved'
+        | 'liked'
+        | 'alreadyRated'
+        | 'minRating'
+        | 'categories'
+    ) => {
+      setFilters((prev) => {
+        if (key === 'minRating') return { ...prev, minRating: 0 };
+        if (key === 'categories') return { ...prev, categories: [] };
+        return { ...prev, [key]: false };
+      });
     },
     []
   );
@@ -616,77 +709,23 @@ export default function DiscoverScreen() {
         >
           <Search size={20} color="#8E8E93" style={styles.searchIcon} />
           <Text style={styles.searchPlaceholder}>Search Cafes</Text>
+          <TouchableOpacity
+            style={styles.filtersIconButton}
+            onPress={() => filtersSheetRef.current?.open()}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            activeOpacity={0.7}
+          >
+            <SvgXml xml={SLIDERS_FILTER_SVG} width={20} height={18} color={colors.primary} />
+          </TouchableOpacity>
         </TouchableOpacity>
 
-        {/* Filter Pills */}
-        <View style={styles.filtersContainer} pointerEvents="box-none">
-          <TouchableOpacity
-            style={[
-              styles.filterButton,
-              filters.openNow && styles.filterButtonActive,
-            ]}
-            onPress={() => toggleFilter('openNow')}
-            activeOpacity={0.85}
-          >
-            <MapPin
-              size={14}
-              color={filters.openNow ? '#FFFFFF' : '#4CAF50'}
-            />
-            <Text
-              style={[
-                styles.filterButtonText,
-                filters.openNow && styles.filterButtonTextActive,
-              ]}
-            >
-              Open Now
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.filterButton,
-              filters.topRated && styles.filterButtonActive,
-            ]}
-            onPress={() => toggleFilter('topRated')}
-            activeOpacity={0.85}
-          >
-            <Star
-              size={14}
-              color={filters.topRated ? '#FFFFFF' : '#D4AF37'}
-              fill={filters.topRated ? '#FFFFFF' : 'transparent'}
-            />
-            <Text
-              style={[
-                styles.filterButtonText,
-                filters.topRated && styles.filterButtonTextActive,
-              ]}
-            >
-              Top Rated
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.filterButton,
-              filters.hasWifi && styles.filterButtonActive,
-            ]}
-            onPress={() => toggleFilter('hasWifi')}
-            activeOpacity={0.85}
-          >
-            <Wifi
-              size={14}
-              color={filters.hasWifi ? '#FFFFFF' : '#007AFF'}
-            />
-            <Text
-              style={[
-                styles.filterButtonText,
-                filters.hasWifi && styles.filterButtonTextActive,
-              ]}
-            >
-              Has WiFi
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {/* Active filter summary pills */}
+        <FilterPillsRow
+          filters={filters}
+          onOpenSheet={() => filtersSheetRef.current?.open()}
+          onToggleOpenNow={toggleOpenNow}
+          onRemove={removeFilter}
+        />
 
         {/* Loading / error overlay above the sheet */}
         {(isLoadingCafes || cafeError) && (
@@ -747,6 +786,13 @@ export default function DiscoverScreen() {
           }
         />
       </BottomSheet>
+
+      <FiltersBottomSheet
+        ref={filtersSheetRef}
+        committed={filters}
+        onApply={setFilters}
+        countFor={countFor}
+      />
     </SafeAreaView>
   );
 }
@@ -789,38 +835,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Lato-Regular',
     color: '#8E8E93',
   },
-  filtersContainer: {
-    position: 'absolute',
-    top: 80,
-    left: 16,
-    right: 16,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  filterButton: {
-    flexDirection: 'row',
+  filtersIconButton: {
+    marginLeft: 12,
+    paddingLeft: 12,
+    borderLeftWidth: 1,
+    borderLeftColor: colors.border,
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    gap: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  filterButtonActive: {
-    backgroundColor: colors.primary,
-  },
-  filterButtonText: {
-    fontSize: 13,
-    fontFamily: 'Lato-Bold',
-    color: colors.primary,
-  },
-  filterButtonTextActive: {
-    color: '#FFFFFF',
+    justifyContent: 'center',
   },
   statusBubble: {
     position: 'absolute',
