@@ -133,6 +133,46 @@ export async function getFollowers(userId: string): Promise<PublicUser[]> {
   return fetchProfilesByIds((data ?? []).map((r: any) => r.follower_id));
 }
 
+/** A follow event surfaced on the Notifications screen ("@user followed you"). */
+export interface FollowNotification {
+  user: PublicUser;
+  createdAt: string;
+}
+
+/** Follow events targeting the signed-in user, newest first. Unlike
+ *  getFollowers, this keeps the follow timestamp for relative-time display. */
+export async function getFollowNotifications(): Promise<FollowNotification[]> {
+  const me = await getMyId();
+  const { data, error } = await supabase
+    .from('follows')
+    .select('follower_id, created_at')
+    .eq('following_id', me)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(`Failed to load notifications: ${error.message}`);
+  const rows = data ?? [];
+  const profiles = await fetchProfilesByIds(rows.map((r: any) => r.follower_id));
+  const byId = new Map(profiles.map((p) => [p.id, p]));
+  return rows
+    .map((r: any) => ({ user: byId.get(r.follower_id), createdAt: r.created_at as string }))
+    .filter((n): n is FollowNotification => Boolean(n.user));
+}
+
+/** Count of follows targeting the signed-in user newer than `since` (ms epoch),
+ *  i.e. unread follow notifications. Head-only count, mirrors getFollowCounts. */
+export async function getUnreadFollowCount(since: number): Promise<number> {
+  const me = await getMyId();
+  const { count, error } = await supabase
+    .from('follows')
+    .select('*', { count: 'exact', head: true })
+    .eq('following_id', me)
+    .gt('created_at', new Date(since).toISOString());
+  if (error) {
+    console.warn('Failed to count unread follows:', error.message);
+    return 0;
+  }
+  return count ?? 0;
+}
+
 /** Users `userId` follows, newest follow first. */
 export async function getFollowing(userId: string): Promise<PublicUser[]> {
   const { data, error } = await supabase
