@@ -35,6 +35,7 @@ import {
   convertPlaceToCafe,
   enrichCafeWithDetails,
   isNzCafe,
+  DEFAULT_CAFE_IMAGE,
 } from '../../services/googlePlaces';
 import { colors } from '@/constants/theme';
 import { SLIDERS_FILTER_SVG } from '@/constants/searchIcons';
@@ -48,6 +49,8 @@ import FiltersBottomSheet, {
 import {
   type Filters,
   DEFAULT_FILTERS,
+  ACTIVE_CHIP_BG,
+  hasAnyFilter,
 } from '../../components/discover/filterTypes';
 
 // Auckland fallback when no profile coords and no permission.
@@ -128,16 +131,31 @@ function mergeCafesById(previous: Cafe[], next: Cafe[]): Cafe[] {
 interface CafeMarkerViewProps {
   cafe: Cafe;
   zoom: ZoomLevel;
+  /** Active "Saved"/"Liked" quick-filters, so the marker style matches the
+   *  filter the user is viewing (a cafe can be both saved and favorited). */
+  savedActive: boolean;
+  likedActive: boolean;
 }
 
-function CafeMarkerView({ cafe, zoom }: CafeMarkerViewProps) {
+const CafeMarkerView = React.memo(function CafeMarkerView({
+  cafe,
+  zoom,
+  savedActive,
+  likedActive,
+}: CafeMarkerViewProps) {
   const { isFavorited, isBookmarked } = useReviews();
-  // Priority: favorited (heart) > saved (bookmark) > default (bean).
-  const kind: MarkerKind = isFavorited(cafe.id)
-    ? 'favorite'
-    : isBookmarked(cafe.id)
-    ? 'saved'
-    : 'default';
+  const favorited = isFavorited(cafe.id);
+  const bookmarked = isBookmarked(cafe.id);
+  // When exactly one of Saved/Liked is filtered, style by that filter so the map
+  // reads consistently. Otherwise fall back to favorited > saved > default.
+  let kind: MarkerKind;
+  if (savedActive && !likedActive && bookmarked) {
+    kind = 'saved';
+  } else if (likedActive && !savedActive && favorited) {
+    kind = 'favorite';
+  } else {
+    kind = favorited ? 'favorite' : bookmarked ? 'saved' : 'default';
+  }
   const palette = MARKER_PALETTE[kind];
   const pillColors = {
     backgroundColor: palette.bg,
@@ -179,7 +197,7 @@ function CafeMarkerView({ cafe, zoom }: CafeMarkerViewProps) {
       ) : null}
     </View>
   );
-}
+});
 
 export default function DiscoverScreen() {
   const { addCafe, isBookmarked, isFavorited, userReviews } = useReviews();
@@ -202,6 +220,9 @@ export default function DiscoverScreen() {
 
   const [sheetIndex, setSheetIndex] = useState(1);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  // Drives the filters button's inverted state so it's obvious the map results
+  // are being narrowed, now that the icon no longer sits inside the search bar.
+  const filtersActive = useMemo(() => hasAnyFilter(filters), [filters]);
   const [zoom, setZoom] = useState<ZoomLevel>('medium');
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
   const [userCoords, setUserCoords] = useState<{
@@ -501,15 +522,19 @@ export default function DiscoverScreen() {
     [nearbyCafes, passesFilters]
   );
 
-  // Nearby/search results only carry a thumbnail (often missing for cache/DB-
-  // served cafes), so cards can render a blank image. Lazily pull the real photo
-  // for the handful of visible cards via the same details path the cafe page
-  // uses. Details are cached server-side, so repeat calls are cheap.
+  // Cache/DB-served cafes can arrive without a stored photo, so their cards
+  // would render the placeholder. Lazily pull the real photo for just those
+  // cards via the details path (a one-time paid Google fetch per cafe, then
+  // cached in Storage forever). Cafes that already have a thumbnail must never
+  // hit this path — that would bill a Place Details call per cafe per session.
   const enrichedImageIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     let cancelled = false;
     const pending = listCafes.filter(
-      (cafe) => cafe.place_id && !enrichedImageIdsRef.current.has(cafe.place_id)
+      (cafe) =>
+        cafe.place_id &&
+        !enrichedImageIdsRef.current.has(cafe.place_id) &&
+        (!cafe.image || cafe.image === DEFAULT_CAFE_IMAGE)
     );
     if (pending.length === 0) return;
 
@@ -696,28 +721,40 @@ export default function DiscoverScreen() {
               tracksViewChanges={tracksViewChanges}
               anchor={{ x: 0.5, y: 0.5 }}
             >
-              <CafeMarkerView cafe={cafe} zoom={zoom} />
+              <CafeMarkerView
+                cafe={cafe}
+                zoom={zoom}
+                savedActive={filters.saved}
+                likedActive={filters.liked}
+              />
             </Marker>
           ))}
         </MapView>
 
-        {/* Search Bar */}
-        <TouchableOpacity
-          style={styles.searchContainer}
-          onPress={() => router.push('/search-cafes')}
-          activeOpacity={0.85}
-        >
-          <Search size={20} color="#8E8E93" style={styles.searchIcon} />
-          <Text style={styles.searchPlaceholder}>Search Cafes</Text>
+        {/* Search bar + filters button — siblings on one row, never nested */}
+        <View style={styles.searchRow}>
           <TouchableOpacity
-            style={styles.filtersIconButton}
+            style={styles.searchContainer}
+            onPress={() => router.push('/search-cafes')}
+            activeOpacity={0.85}
+          >
+            <Search size={20} color="#8E8E93" style={styles.searchIcon} />
+            <Text style={styles.searchPlaceholder}>Search Cafes</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filtersButton, filtersActive && styles.filtersButtonActive]}
             onPress={() => filtersSheetRef.current?.open()}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             activeOpacity={0.7}
           >
-            <SvgXml xml={SLIDERS_FILTER_SVG} width={20} height={18} color={colors.primary} />
+            <SvgXml
+              xml={SLIDERS_FILTER_SVG}
+              width={20}
+              height={18}
+              color={filtersActive ? colors.surface : colors.primary}
+            />
           </TouchableOpacity>
-        </TouchableOpacity>
+        </View>
 
         {/* Active filter summary pills */}
         <FilterPillsRow
@@ -809,11 +846,17 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
   },
-  searchContainer: {
+  searchRow: {
     position: 'absolute',
     top: 16,
     left: 16,
     right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  searchContainer: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
@@ -835,13 +878,23 @@ const styles = StyleSheet.create({
     fontFamily: 'Lato-Regular',
     color: '#8E8E93',
   },
-  filtersIconButton: {
-    marginLeft: 12,
-    paddingLeft: 12,
-    borderLeftWidth: 1,
-    borderLeftColor: colors.border,
+  // Standalone control beside the search bar. Mirrors the search pill's
+  // surface, radius and shadow so the two read as a deliberate pair.
+  filtersButton: {
+    width: 48,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  filtersButtonActive: {
+    backgroundColor: ACTIVE_CHIP_BG,
   },
   statusBubble: {
     position: 'absolute',

@@ -8,6 +8,7 @@ import {
   isNzPlace,
   jsonResponse,
   PlaceLike,
+  requireUser,
   upsertCafeFromPlace,
 } from '../_shared/places.ts';
 
@@ -72,6 +73,9 @@ serve(async (req) => {
   }
   if (req.method !== 'POST') {
     return jsonResponse({ error: 'Method not allowed' }, 405);
+  }
+  if (!(await requireUser(req))) {
+    return jsonResponse({ error: 'Unauthorized', results: [] }, 401);
   }
 
   try {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, StatusBar, TouchableOpacity, Text } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { SvgXml } from 'react-native-svg';
 import { User, Bell, Info, LogOut } from 'lucide-react-native';
@@ -16,6 +16,7 @@ import { colors } from '@/constants/theme';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { signOut } = useAuth();
   const { showToast } = useToast();
 
@@ -88,7 +89,7 @@ export default function SettingsScreen() {
         </SettingsSection>
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 8 }]}>
         <TouchableOpacity
           style={styles.deleteRow}
           onPress={() => setDeleteVisible(true)}
@@ -139,7 +140,7 @@ const styles = StyleSheet.create({
     height: 24,
   },
   footer: {
-    paddingVertical: 16,
+    paddingTop: 16,
     paddingHorizontal: 16,
     alignItems: 'flex-start',
   },

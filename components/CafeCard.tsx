@@ -39,7 +39,7 @@ function extractSuburb(address: string): string {
   const parts = address.split(',');
   return parts.length > 1 ? parts[1].trim() : address;
 }
-export default function CafeCard({ cafe }: CafeCardProps) {
+function CafeCard({ cafe }: CafeCardProps) {
   const handlePress = () => {
     router.push(`/cafe/${cafe.id}`);
   };
@@ -62,6 +62,8 @@ export default function CafeCard({ cafe }: CafeCardProps) {
     </TouchableOpacity>
   );
 }
+
+export default React.memo(CafeCard);
 
 const styles = StyleSheet.create({
   card: {

@@ -62,9 +62,9 @@ export default function ProfileHero({
       <Text style={styles.username}>{username}</Text>
       {bio ? (
         <Text style={styles.bio}>{bio}</Text>
-      ) : (
+      ) : showEditButton ? (
         <Text style={[styles.bio, styles.bioEmpty]}>Add a short bio</Text>
-      )}
+      ) : null}
       <Text style={styles.joined}>{joinedLabel}</Text>
 
       <View style={styles.statsRow}>

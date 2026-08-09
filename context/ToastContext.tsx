@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -36,13 +37,18 @@ const SAVED_SVG = `<svg width="14" height="19" viewBox="0 0 14 19" fill="none" x
 <path d="M1 4.2002V13.6854C1 15.0464 1 15.7268 1.20412 16.1433C1.58245 16.9151 2.41157 17.3588 3.26367 17.2454C3.7234 17.1842 4.28964 16.8067 5.4221 16.0518L5.42481 16.0499C5.87368 15.7507 6.09815 15.6011 6.33295 15.5181C6.76421 15.3656 7.23476 15.3656 7.66602 15.5181C7.90129 15.6012 8.12664 15.7515 8.57732 16.0519C9.70978 16.8069 10.2767 17.1841 10.7364 17.2452C11.5885 17.3586 12.4176 16.9151 12.7959 16.1433C13 15.7269 13 15.0462 13 13.6854V4.19691C13 3.07899 13 2.5192 12.7822 2.0918C12.5905 1.71547 12.2837 1.40973 11.9074 1.21799C11.4796 1 10.9203 1 9.8002 1H4.2002C3.08009 1 2.51962 1 2.0918 1.21799C1.71547 1.40973 1.40973 1.71547 1.21799 2.0918C1 2.51962 1 3.08009 1 4.2002Z" fill="#ADAFA4" stroke="#0F1312" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
 
+// Green checkmark — used by the "success" toast (e.g. profile saved).
+const CHECK_SVG = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M2.5 8.5L6 12L13.5 4" stroke="#1E6B3E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
 // Height of the bottom tab bar (see app/(tabs)/_layout.tsx). The toast floats
 // just above it so it reads as "above the navbar".
 const TAB_BAR_HEIGHT = 80;
 const AUTO_HIDE_MS = 6000;
 const HIDDEN_OFFSET = 40;
 
-export type ToastVariant = 'diary' | 'favorite' | 'saved';
+export type ToastVariant = 'diary' | 'favorite' | 'saved' | 'success';
 
 interface VariantStyle {
   bg: string;
@@ -79,6 +85,14 @@ const VARIANT_STYLES: Record<ToastVariant, VariantStyle> = {
     icon: SAVED_SVG,
     iconWidth: 15,
     iconHeight: 20,
+  },
+  success: {
+    bg: '#E4F0E7',
+    border: '#1E6B3E',
+    text: '#1E6B3E',
+    icon: CHECK_SVG,
+    iconWidth: 16,
+    iconHeight: 16,
   },
 };
 
@@ -161,8 +175,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     action?.();
   }, [hideToast, toast]);
 
+  // Stable value so showing/hiding a toast never re-renders every consumer.
+  const value = useMemo(() => ({ showToast, hideToast }), [showToast, hideToast]);
+
   return (
-    <ToastContext.Provider value={{ showToast, hideToast }}>
+    <ToastContext.Provider value={value}>
       {children}
       {toast && (() => {
         const variant = VARIANT_STYLES[toast.variant ?? 'diary'];

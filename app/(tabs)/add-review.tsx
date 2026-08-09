@@ -43,18 +43,8 @@ export default function AddReviewScreen() {
     });
   };
 
-  // During onboarding this screen is pushed from the "Top Cafes" step, which
-  // lives in the (onboarding) group. A plain router.back() gets absorbed by the
-  // Tabs navigator and lands on the home tab, which the AuthGate then bounces to
-  // the username screen. dismiss() pops the whole pushed (tabs) entry and reveals
-  // the still-mounted top-cafes screen beneath it, preserving its loaded list.
   const leaveReview = () => {
-    if (params.onboarding === '1') {
-      if (router.canDismiss()) router.dismiss();
-      else router.replace('/(onboarding)/top-cafes');
-    } else {
-      router.back();
-    }
+    router.back();
   };
 
   const handleSubmit = async (values: ReviewFormValues) => {
@@ -86,21 +76,14 @@ export default function AddReviewScreen() {
       setSelectedCafe(null);
       setFormKey((k) => k + 1);
 
-      // During onboarding the user reviews cafes from the "Top Cafes" step;
-      // return there (still mounted) so their progress updates, rather than
-      // jumping to Home. The success toast is reserved for the normal flow.
-      if (params.onboarding === '1') {
-        leaveReview();
-      } else {
-        router.push('/(tabs)/home');
-        showToast({
-          message: 'Logged to your diary!',
-          actionLabel: 'View',
-          onAction: () => {
-            if (reviewId) router.push(`/diary/${reviewId}`);
-          },
-        });
-      }
+      router.push('/(tabs)/home');
+      showToast({
+        message: 'Logged to your diary!',
+        actionLabel: 'View',
+        onAction: () => {
+          if (reviewId) router.push(`/diary/${reviewId}`);
+        },
+      });
     } finally {
       setSubmitting(false);
     }

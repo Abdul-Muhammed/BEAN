@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { router } from 'expo-router';
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
@@ -480,17 +480,25 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
 
   // Build the list of bookmarked cafes by combining stored bookmark data
   // (always available) with the live `cafes` entry (richer info if loaded).
-  const bookmarkedCafes: Cafe[] = bookmarkedCafeIds
-    .map((id) => getCafeById(id) || null)
-    .filter((c): c is Cafe => c !== null);
+  const bookmarkedCafes: Cafe[] = useMemo(
+    () =>
+      bookmarkedCafeIds
+        .map((id) => getCafeById(id) || null)
+        .filter((c): c is Cafe => c !== null),
+    [bookmarkedCafeIds, getCafeById]
+  );
 
   // Favorites store no metadata snapshot (only the cafe id), so we can only
   // resolve a full Cafe for the ones currently loaded in `cafes`. The Lists
   // screen still uses `favoritedCafeIds` for an accurate count and falls back
   // to placeholders for any cafe we can't resolve.
-  const favoritedCafes: Cafe[] = favoritedCafeIds
-    .map((id) => getCafeById(id) || null)
-    .filter((c): c is Cafe => c !== null);
+  const favoritedCafes: Cafe[] = useMemo(
+    () =>
+      favoritedCafeIds
+        .map((id) => getCafeById(id) || null)
+        .filter((c): c is Cafe => c !== null),
+    [favoritedCafeIds, getCafeById]
+  );
 
   const addReview = useCallback(
     async ({
@@ -775,28 +783,44 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
     [userId]
   );
 
-  return (
-    <ReviewContext.Provider
-      value={{
-        cafes,
-        userReviews,
-        bookmarkedCafes,
-        favoritedCafeIds,
-        favoritedCafes,
-        addReview,
-        updateReview,
-        addCafe,
-        getCafeById,
-        toggleBookmark,
-        isBookmarked,
-        toggleFavorite,
-        isFavorited,
-        loading,
-      }}
-    >
-      {children}
-    </ReviewContext.Provider>
+  // Memoized so consumers only re-render when context data actually changes,
+  // not on every provider render.
+  const value = useMemo(
+    () => ({
+      cafes,
+      userReviews,
+      bookmarkedCafes,
+      favoritedCafeIds,
+      favoritedCafes,
+      addReview,
+      updateReview,
+      addCafe,
+      getCafeById,
+      toggleBookmark,
+      isBookmarked,
+      toggleFavorite,
+      isFavorited,
+      loading,
+    }),
+    [
+      cafes,
+      userReviews,
+      bookmarkedCafes,
+      favoritedCafeIds,
+      favoritedCafes,
+      addReview,
+      updateReview,
+      addCafe,
+      getCafeById,
+      toggleBookmark,
+      isBookmarked,
+      toggleFavorite,
+      isFavorited,
+      loading,
+    ]
   );
+
+  return <ReviewContext.Provider value={value}>{children}</ReviewContext.Provider>;
 }
 
 export function useReviews() {

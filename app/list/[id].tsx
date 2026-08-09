@@ -3,7 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
+  FlatList,
   StatusBar,
   TouchableOpacity,
 } from 'react-native';
@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import ListCafeCard from '../../components/ListCafeCard';
+import { type CafeBadgeKind } from '../../components/CafeStatusBadges';
 import { useReviews } from '../../context/ReviewContext';
 import { Cafe } from '../../data/mockData';
 import { colors, fonts } from '@/constants/theme';
@@ -50,6 +51,11 @@ export default function ListDetailScreen() {
       ? diaryCafes
       : bookmarkedCafes;
 
+  // On a single-state list every card carries the same badge, which tells the
+  // user nothing. Hide the implied one so only the cross-state stands out.
+  const hiddenBadges: CafeBadgeKind[] | undefined =
+    listId === 'favorites' ? ['liked'] : listId === 'diary' ? undefined : ['saved'];
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
@@ -64,17 +70,19 @@ export default function ListDetailScreen() {
         <View style={styles.iconButtonPlaceholder} />
       </View>
 
-      <ScrollView
+      <FlatList
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-      >
-        {cafes.length > 0 ? (
-          cafes.map((cafe) => <ListCafeCard key={cafe.id} cafe={cafe} />)
-        ) : (
-          <Text style={styles.emptyHint}>No cafes in this list yet.</Text>
+        data={cafes}
+        keyExtractor={(cafe) => cafe.id}
+        renderItem={({ item }) => (
+          <ListCafeCard cafe={item} hideBadges={hiddenBadges} />
         )}
-      </ScrollView>
+        ListEmptyComponent={
+          <Text style={styles.emptyHint}>No cafes in this list yet.</Text>
+        }
+      />
     </SafeAreaView>
   );
 }

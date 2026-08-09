@@ -97,13 +97,6 @@ function AuthGate() {
     const inAuth = group === '(auth)';
     const inTabs = group === '(tabs)';
     const inOnboarding = group === '(onboarding)';
-    // The add-review screen (and the cafe picker it opens) is part of the
-    // onboarding "review 3 cafes" step even though it lives outside the
-    // (onboarding) group. Allow a not-yet-onboarded user to visit it so the
-    // guard below doesn't bounce them mid-review.
-    const inReviewFlow =
-      (group === '(tabs)' && segments[1] === 'add-review') ||
-      group === 'search-cafes';
 
     if (!isSignedIn) {
       // Welcome screen (root index) and the (auth) group are valid signed-out
@@ -123,7 +116,7 @@ function AuthGate() {
     // fallback) and sent into the app rather than back through onboarding.
     if (onboarded || !profile) {
       if (inAuth) router.replace('/(tabs)/home');
-    } else if (!inOnboarding && !inReviewFlow) {
+    } else if (!inOnboarding) {
       router.replace('/(onboarding)/username');
     }
   }, [isLoaded, isSignedIn, profile, profileLoading, segments, router]);

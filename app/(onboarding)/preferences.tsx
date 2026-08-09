@@ -76,11 +76,13 @@ export default function PreferencesScreen() {
       return;
     }
 
-    // The profile write + onboarding completion now happens on the final
-    // "Top Cafes" step; carry everything gathered so far through the params.
-    router.push({
+    // The profile write + onboarding completion happens on the "curating"
+    // loading screen; carry everything gathered so far through the params.
+    // Replace rather than push: the write is irreversible, so there must be
+    // nothing behind it to navigate back into.
+    router.replace({
       // Route types regenerate when the dev server picks up the new file.
-      pathname: '/(onboarding)/top-cafes' as any,
+      pathname: '/(onboarding)/curating' as any,
       params: {
         username: trimmedUsername,
         location: (location as string) ?? '',
@@ -108,7 +110,7 @@ export default function PreferencesScreen() {
         </TouchableOpacity>
 
         <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: '66%' }]} />
+          <View style={[styles.progressFill, { width: '100%' }]} />
         </View>
       </View>
 

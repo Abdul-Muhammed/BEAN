@@ -39,7 +39,7 @@ export default function ListsScreen() {
   const previewCafes = bookmarkedCafes.slice(0, PREVIEW_COUNT);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
       <View style={styles.header}>
@@ -72,7 +72,11 @@ export default function ListsScreen() {
         </TouchableOpacity>
 
         {previewCafes.length > 0 ? (
-          previewCafes.map((cafe) => <ListCafeCard key={cafe.id} cafe={cafe} />)
+          // Every cafe in this preview is bookmarked by definition, so the
+          // saved badge would be noise; a heart still marks the ones also liked.
+          previewCafes.map((cafe) => (
+            <ListCafeCard key={cafe.id} cafe={cafe} hideBadges={['saved']} />
+          ))
         ) : (
           <Text style={styles.emptyHint}>No cafes yet — start saving.</Text>
         )}

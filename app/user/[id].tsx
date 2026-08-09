@@ -110,7 +110,7 @@ export default function UserProfileScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
-      <ConnectionsHeader title={username} />
+      <ConnectionsHeader title={(profile?.first_name || '').trim() || 'Profile'} />
 
       {loading ? (
         <ActivityIndicator size="large" color="#1C1C1E" style={styles.loader} />
@@ -144,8 +144,12 @@ export default function UserProfileScreen() {
             />
           </View>
 
-          <TopCafesSection reviews={reviews} onPressCafe={(r) => goToCafe(r.cafeId)} />
-          <PreferencesSection preferenceIds={preferenceIds} />
+          <TopCafesSection
+            reviews={reviews}
+            onPressCafe={(r) => goToCafe(r.cafeId)}
+            editable={false}
+          />
+          <PreferencesSection preferenceIds={preferenceIds} editable={false} />
           <RatingsSection
             ratings={reviews.map((r) => r.rating)}
             averageRating={averageRating}

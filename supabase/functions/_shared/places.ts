@@ -12,6 +12,7 @@ import {
 export const GOOGLE_PLACES_API_KEY = Deno.env.get('GOOGLE_PLACES_API_KEY');
 export const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 export const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+export const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
 
 export const PHOTO_BUCKET = 'cafe-photos';
 
@@ -36,6 +37,21 @@ export function createServiceClient(): SupabaseClient {
     throw new Error('Missing Supabase function environment');
   }
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+}
+
+// Reject callers that are not signed-in users. The anon key ships in the app
+// bundle, so without this check anyone on the internet could invoke these
+// functions and burn the Google Places budget. The anon key alone is not a
+// user token, so `getUser()` fails for it.
+export async function requireUser(req: Request): Promise<boolean> {
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
+  const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false },
+  });
+  const { data, error } = await client.auth.getUser();
+  return !error && !!data?.user;
 }
 
 // Minimal place shape the client consumes (matches convertPlaceToCafe input).
