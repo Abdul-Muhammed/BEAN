@@ -6,6 +6,7 @@ import {
   DetailsLike,
   GOOGLE_PLACES_API_KEY,
   jsonResponse,
+  requireUser,
 } from '../_shared/places.ts';
 
 const DETAILS_TTL_DAYS = 30;
@@ -84,6 +85,9 @@ serve(async (req) => {
   if (req.method !== 'POST') {
     return jsonResponse({ error: 'Method not allowed' }, 405);
   }
+  if (!(await requireUser(req))) {
+    return jsonResponse({ error: 'Unauthorized', result: null }, 401);
+  }
 
   try {
     const { placeId } = parseRequest(await req.json());
@@ -96,11 +100,14 @@ serve(async (req) => {
       .eq('place_id', placeId)
       .maybeSingle();
 
+    // `details_expires_at` is only ever set after a successful Google Details
+    // fetch, so freshness alone proves we already paid for these details.
+    // Gating on phone/hours presence here would re-bill Google on every call
+    // for cafes whose listing legitimately has neither.
     const fresh =
       row?.details_expires_at && new Date(row.details_expires_at).getTime() > Date.now();
-    const hasDetails = !!(row?.phone || row?.opening_hours);
 
-    if (row && fresh && hasDetails) {
+    if (row && fresh) {
       const photos = await readStoredPhotos(supabase, placeId);
       // Fall back to the cached thumbnail when no full-size detail photos have
       // been stored yet, so a search-sourced cafe still returns a real image

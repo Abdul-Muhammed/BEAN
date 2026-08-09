@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase';
 // the source of truth. The client never calls Google directly, so there is no
 // Places API key in the app bundle and photos are served from our own bucket.
 
-const DEFAULT_CAFE_IMAGE =
+export const DEFAULT_CAFE_IMAGE =
   'https://images.pexels.com/photos/302899/pexels-photo-302899.jpeg?auto=compress&cs=tinysrgb&w=800';
 
 export interface PlacePhoto {

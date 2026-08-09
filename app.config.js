@@ -2,12 +2,16 @@
 // values (like the Android Google Maps API key) from environment variables so
 // we never commit secrets to source control.
 //
-// Prefer `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` if set; otherwise fall back to
-// `EXPO_PUBLIC_GOOGLE_PLACES_API_KEY` (same Google Cloud project).
+// Only `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` may be embedded in the bundle. The
+// Places-capable key must never ship in the app — Places calls happen
+// server-side in the Supabase Edge Functions.
 module.exports = ({ config }) => {
-  const googleMapsApiKey =
-    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
-    process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY;
+  const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+  if (!googleMapsApiKey) {
+    console.warn(
+      'EXPO_PUBLIC_GOOGLE_MAPS_API_KEY is not set - the Android map will not load.'
+    );
+  }
 
   // The reversed iOS OAuth client id (e.g. com.googleusercontent.apps.123-abc),
   // required by the native Google Sign-In plugin for the iOS URL scheme.

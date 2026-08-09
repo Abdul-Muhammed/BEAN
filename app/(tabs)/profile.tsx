@@ -75,6 +75,10 @@ export default function ProfileScreen() {
     ? `@${profile!.username.trim()}`
     : `@${(profile?.first_name || metaFirstName || 'user').toString().toLowerCase()}`;
 
+  // Top header shows the first name (not the handle), falling back to "Profile".
+  const headerName =
+    (profile?.first_name || meta.first_name || '').toString().trim() || 'Profile';
+
   const profileImageUrl =
     profile?.profile_image_url || meta.avatar_url || meta.picture;
   const userName =
@@ -158,7 +162,7 @@ export default function ProfileScreen() {
 
       {/* Sticky header */}
       <ProfileHeader
-        username={username}
+        username={headerName}
         onPressSettings={() => router.push('/settings')}
         onPressOverflow={handleShareProfile}
       />

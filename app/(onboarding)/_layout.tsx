@@ -6,7 +6,9 @@ export default function OnboardingLayout() {
       <Stack.Screen name="username" />
       <Stack.Screen name="location" />
       <Stack.Screen name="preferences" />
-      <Stack.Screen name="top-cafes" />
+      {/* Terminal step: writes the profile behind the loading animation. There
+          is nothing to go back to, so the swipe gesture is disabled. */}
+      <Stack.Screen name="curating" options={{ gestureEnabled: false }} />
     </Stack>
   );
 }

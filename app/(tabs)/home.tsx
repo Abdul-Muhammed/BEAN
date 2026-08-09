@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
+  FlatList,
   Image,
   TouchableOpacity,
   StatusBar,
@@ -22,6 +23,7 @@ import {
 } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import { CoffeeBean } from '@/components/BeanRating';
+import CafeStatusBadges from '@/components/CafeStatusBadges';
 import {
   Badge,
   BadgeText,
@@ -48,6 +50,104 @@ type FilterType = 'all' | 'open';
 // from where we last loaded, so a focus that didn't move the user is cheap.
 // Matches the discover map's refresh threshold.
 const LOCATION_REFRESH_THRESHOLD_METERS = 250;
+
+// Minimum interval between unread-notification checks so rapid tab switches
+// don't queue redundant network round-trips.
+const NOTIFICATIONS_CHECK_INTERVAL_MS = 30_000;
+
+function AmenityTags({ cafe }: { cafe: any }) {
+  const tags: { label: string; icon: any; bgColor: string; textColor: string; iconColor: string }[] = [];
+
+  if (cafe.amenities?.includes('Has WiFi')) {
+    tags.push({ label: 'WiFi', icon: Wifi, bgColor: '#E3F2FD', textColor: '#007AFF', iconColor: '#007AFF' });
+  }
+  if (cafe.amenities?.includes('Top Rated') || cafe.rating >= 4.5) {
+    tags.push({ label: 'Top', icon: Star, bgColor: '#FFF8E1', textColor: '#D4AF37', iconColor: '#D4AF37' });
+  }
+  if (cafe.amenities?.includes('Parking')) {
+    tags.push({ label: 'Parking', icon: Car, bgColor: '#E8F5E9', textColor: '#4CAF50', iconColor: '#4CAF50' });
+  }
+
+  const extraCount = (cafe.amenities?.length || 0) - tags.length;
+
+  return (
+    <View style={styles.cafeTagsWrapper}>
+      {tags.map((tag, i) => (
+        <Badge key={i} style={[styles.amenityTag, { backgroundColor: tag.bgColor }]}>
+          <tag.icon size={12} color={tag.iconColor} style={styles.tagIcon} />
+          <BadgeText style={[styles.amenityTagText, { color: tag.textColor }]}>{tag.label}</BadgeText>
+        </Badge>
+      ))}
+      {extraCount > 0 && (
+        <Badge style={styles.countTag}>
+          <BadgeText style={styles.countTagText}>+{extraCount}</BadgeText>
+        </Badge>
+      )}
+    </View>
+  );
+}
+
+// Memoized so scrolling / unrelated screen state changes don't re-render every
+// visible card.
+const HomeCafeCard = React.memo(function HomeCafeCard({
+  cafe,
+  bookmarked,
+  onPress,
+  onToggleBookmark,
+}: {
+  cafe: any;
+  bookmarked: boolean;
+  onPress: (cafe: any) => void;
+  onToggleBookmark: (cafe: any) => void;
+}) {
+  return (
+    <View style={styles.cafeCardWrapper}>
+      <View style={styles.cafeCard}>
+        <TouchableOpacity
+          style={styles.cafeCardContent}
+          onPress={() => onPress(cafe)}
+        >
+          <View style={styles.cafeImageContainer}>
+            <Image source={{ uri: cafe.image }} style={styles.cafeImage} />
+          </View>
+          <View style={styles.cafeContent}>
+            <View style={styles.cafeHeader}>
+              <Text style={styles.cafeName} numberOfLines={1}>{cafe.name}</Text>
+              <TouchableOpacity
+                style={styles.bookmarkButton}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  onToggleBookmark(cafe);
+                }}
+              >
+                <Bookmark
+                  size={20}
+                  color={bookmarked ? '#D4AF37' : '#8E8E93'}
+                  fill={bookmarked ? '#D4AF37' : 'transparent'}
+                />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.cafeLocation}>
+              <MapPin size={14} color="#8E8E93" />
+              <Text style={styles.locationText} numberOfLines={1}>{cafe.location}</Text>
+            </View>
+            <View style={styles.cafeFooter}>
+              <AmenityTags cafe={cafe} />
+              {cafe.rating ? (
+                <View style={styles.ratingContainer}>
+                  <CoffeeBean size={16} />
+                  <Text style={styles.ratingText}>{cafe.rating.toFixed(1)}</Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      <CafeStatusBadges cafeId={cafe.id} />
+    </View>
+  );
+});
 
 export default function HomeScreen() {
   const { cafes, addCafe, toggleBookmark, isBookmarked } = useReviews();
@@ -143,9 +243,16 @@ export default function HomeScreen() {
   );
 
   // Refresh the bell's unread state on focus. Returning from /notifications
-  // (which stamps last-seen) re-runs this and clears the dot.
+  // (which stamps last-seen) re-runs this and clears the dot. Throttled so
+  // rapid tab switches within the interval don't re-query.
+  const lastUnreadCheckRef = useRef(0);
   useFocusEffect(
     useCallback(() => {
+      const now = Date.now();
+      if (now - lastUnreadCheckRef.current < NOTIFICATIONS_CHECK_INTERVAL_MS) {
+        return;
+      }
+      lastUnreadCheckRef.current = now;
       let active = true;
       (async () => {
         try {
@@ -185,63 +292,36 @@ export default function HomeScreen() {
     preferenceIds.includes(cat.id)
   );
 
-  const handleCafeClick = (cafe: any) => {
-    Keyboard.dismiss();
-    addCafe(cafe);
-    router.push(`/cafe/${cafe.id}`);
-  };
+  const handleCafeClick = useCallback(
+    (cafe: any) => {
+      Keyboard.dismiss();
+      addCafe(cafe);
+      router.push(`/cafe/${cafe.id}`);
+    },
+    [addCafe]
+  );
 
-  const filterCafes = (allCafes: any[], filter: FilterType) => {
-    if (filter === 'open') return allCafes.filter(cafe => cafe.hours?.openNow === true);
-    return allCafes;
-  };
+  const handleToggleBookmark = useCallback(
+    (cafe: any) => {
+      addCafe(cafe);
+      toggleBookmark(cafe.id);
+    },
+    [addCafe, toggleBookmark]
+  );
 
-  const filteredCafes = filterCafes(cafes, activeFilter);
-  const displayCafes = filteredCafes.slice(0, 10);
+  const displayCafes = useMemo(() => {
+    const filtered =
+      activeFilter === 'open'
+        ? cafes.filter((cafe) => cafe.hours?.openNow === true)
+        : cafes;
+    return filtered.slice(0, 10);
+  }, [cafes, activeFilter]);
 
-  const renderAmenityTags = (cafe: any) => {
-    const tags: { label: string; icon: any; bgColor: string; textColor: string; iconColor: string }[] = [];
-
-    if (cafe.amenities?.includes('Has WiFi')) {
-      tags.push({ label: 'WiFi', icon: Wifi, bgColor: '#E3F2FD', textColor: '#007AFF', iconColor: '#007AFF' });
-    }
-    if (cafe.amenities?.includes('Top Rated') || cafe.rating >= 4.5) {
-      tags.push({ label: 'Top', icon: Star, bgColor: '#FFF8E1', textColor: '#D4AF37', iconColor: '#D4AF37' });
-    }
-    if (cafe.amenities?.includes('Parking')) {
-      tags.push({ label: 'Parking', icon: Car, bgColor: '#E8F5E9', textColor: '#4CAF50', iconColor: '#4CAF50' });
-    }
-
-    const extraCount = (cafe.amenities?.length || 0) - tags.length;
-
-    return (
-      <View style={styles.cafeTagsWrapper}>
-        {tags.map((tag, i) => (
-          <Badge key={i} style={[styles.amenityTag, { backgroundColor: tag.bgColor }]}>  
-            <tag.icon size={12} color={tag.iconColor} style={styles.tagIcon} />
-            <BadgeText style={[styles.amenityTagText, { color: tag.textColor }]}>{tag.label}</BadgeText>
-          </Badge>
-        ))}
-        {extraCount > 0 && (
-          <Badge style={styles.countTag}>
-            <BadgeText style={styles.countTagText}>+{extraCount}</BadgeText>
-          </Badge>
-        )}
-      </View>
-    );
-  };
-
-  return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
-      
-      <ScrollView
-        style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Explore Section */}
+  // Everything above the cafe cards renders as the FlatList header so the
+  // whole page scrolls together while the cards stay virtualized.
+  const listHeader = (
+    <>
+      {/* Explore Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Explore</Text>
@@ -282,81 +362,57 @@ export default function HomeScreen() {
           </ScrollView>
         </View>
 
-        {/* Near Me Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Near Me</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/discover')}>
-              <ChevronRight size={20} color="#8E8E93" />
-            </TouchableOpacity>
-          </View>
+      {/* Near Me Section header + status states; the cards themselves are the
+          FlatList items below. */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Near Me</Text>
+        <TouchableOpacity onPress={() => router.push('/(tabs)/discover')}>
+          <ChevronRight size={20} color="#8E8E93" />
+        </TouchableOpacity>
+      </View>
 
-          {isLoadingNearby && displayCafes.length === 0 && (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#1C1C1E" />
-              <Text style={styles.loadingText}>Finding cafes near you...</Text>
-            </View>
-          )}
-
-          {nearbyError && displayCafes.length === 0 && (
-            <View style={styles.loadingContainer}>
-              <Text style={styles.errorText}>{nearbyError}</Text>
-            </View>
-          )}
-
-          {!isLoadingNearby && !nearbyError && displayCafes.length === 0 && (
-            <View style={styles.loadingContainer}>
-              <Text style={styles.emptyText}>No cafes found nearby.</Text>
-            </View>
-          )}
-          
-          {displayCafes.map((cafe) => (
-            <View key={cafe.id} style={styles.cafeCard}>
-              <TouchableOpacity
-                style={styles.cafeCardContent}
-                onPress={() => handleCafeClick(cafe)}
-              >
-                <View style={styles.cafeImageContainer}>
-                  <Image source={{ uri: cafe.image }} style={styles.cafeImage} />
-                </View>
-                <View style={styles.cafeContent}>
-                  <View style={styles.cafeHeader}>
-                    <Text style={styles.cafeName} numberOfLines={1}>{cafe.name}</Text>
-                    <TouchableOpacity
-                      style={styles.bookmarkButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        addCafe(cafe);
-                        toggleBookmark(cafe.id);
-                      }}
-                    >
-                      <Bookmark
-                        size={20}
-                        color={isBookmarked(cafe.id) ? '#D4AF37' : '#8E8E93'}
-                        fill={isBookmarked(cafe.id) ? '#D4AF37' : 'transparent'}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                  <View style={styles.cafeLocation}>
-                    <MapPin size={14} color="#8E8E93" />
-                    <Text style={styles.locationText} numberOfLines={1}>{cafe.location}</Text>
-                  </View>
-                  <View style={styles.cafeFooter}>
-                    {renderAmenityTags(cafe)}
-                    {cafe.rating ? (
-                      <View style={styles.ratingContainer}>
-                        <CoffeeBean size={16} />
-                        <Text style={styles.ratingText}>{cafe.rating.toFixed(1)}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
-              </TouchableOpacity>
-            </View>
-          ))}
+      {isLoadingNearby && displayCafes.length === 0 && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#1C1C1E" />
+          <Text style={styles.loadingText}>Finding cafes near you...</Text>
         </View>
+      )}
 
-      </ScrollView>
+      {nearbyError && displayCafes.length === 0 && (
+        <View style={styles.loadingContainer}>
+          <Text style={styles.errorText}>{nearbyError}</Text>
+        </View>
+      )}
+
+      {!isLoadingNearby && !nearbyError && displayCafes.length === 0 && (
+        <View style={styles.loadingContainer}>
+          <Text style={styles.emptyText}>No cafes found nearby.</Text>
+        </View>
+      )}
+    </>
+  );
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+
+      <FlatList
+        style={styles.scrollView}
+        data={displayCafes}
+        keyExtractor={(cafe) => cafe.id}
+        renderItem={({ item }) => (
+          <HomeCafeCard
+            cafe={item}
+            bookmarked={isBookmarked(item.id)}
+            onPress={handleCafeClick}
+            onToggleBookmark={handleToggleBookmark}
+          />
+        )}
+        ListHeaderComponent={listHeader}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      />
     </SafeAreaView>
   );
 }
@@ -463,11 +519,19 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     textAlign: 'center',
   },
+  // Padding reserves room for the status badge to overhang the card's corner.
+  // The card clips its own children, so the badge has to live out here. The
+  // 8+12 split keeps the card's left edge at the original 20px.
+  cafeCardWrapper: {
+    marginLeft: 8,
+    marginRight: 20,
+    paddingTop: 12,
+    paddingLeft: 12,
+    marginBottom: 4,
+  },
   cafeCard: {
     backgroundColor: colors.surface,
     borderRadius: 16,
-    marginHorizontal: 20,
-    marginBottom: 16,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#E3E3E3',

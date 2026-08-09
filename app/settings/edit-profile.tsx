@@ -111,7 +111,7 @@ export default function EditProfileScreen() {
       });
 
       await refetch();
-      showToast({ message: 'Profile updated', variant: 'saved' });
+      showToast({ message: 'Changes have been saved!', variant: 'success' });
       router.back();
     } catch (err) {
       setSaving(false);

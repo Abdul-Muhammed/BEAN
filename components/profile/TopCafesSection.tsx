@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions } from 'react-native';
 import { Pencil } from 'lucide-react-native';
 import BeanRating from '../BeanRating';
 import BeanLogo from '../BeanLogo';
@@ -7,10 +7,16 @@ import SectionHeader from './SectionHeader';
 import { UserReview } from '../../data/mockData';
 import { colors } from '@/constants/theme';
 
+// A card is sized to the 3-up grid width (container has 20px side padding, the
+// grid uses two 10px gaps) so a single card stays 1/3 width instead of stretching.
+const CARD_WIDTH = (Dimensions.get('window').width - 40 - 20) / 3;
+
 interface TopCafesSectionProps {
   reviews: UserReview[];
   onPressCafe?: (review: UserReview) => void;
   onPressEdit?: () => void;
+  /** Hidden when viewing another user's profile. */
+  editable?: boolean;
 }
 
 interface TopCafe {
@@ -45,6 +51,7 @@ export default function TopCafesSection({
   reviews,
   onPressCafe,
   onPressEdit,
+  editable = true,
 }: TopCafesSectionProps) {
   const topCafes = useMemo(() => deriveTopCafes(reviews), [reviews]);
 
@@ -54,7 +61,7 @@ export default function TopCafesSection({
     <View style={styles.container}>
       <SectionHeader
         title="Top Cafes"
-        action={<Pencil size={18} color="#8E8E93" />}
+        action={editable ? <Pencil size={18} color="#8E8E93" /> : undefined}
         onPressAction={onPressEdit}
       />
       <View style={styles.grid}>
@@ -96,7 +103,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   card: {
-    flex: 1,
+    width: CARD_WIDTH,
     backgroundColor: colors.surface,
     borderRadius: 14,
     borderWidth: 1,

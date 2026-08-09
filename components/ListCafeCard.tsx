@@ -7,10 +7,13 @@ import { Cafe } from '../data/mockData';
 import { useReviews } from '../context/ReviewContext';
 import { useUserProfile } from '../hooks/useUserProfile';
 import { approximateDistanceMeters, formatDistance } from '../lib/geo';
+import CafeStatusBadges, { type CafeBadgeKind } from './CafeStatusBadges';
 import { colors, fonts } from '@/constants/theme';
 
 interface ListCafeCardProps {
   cafe: Cafe;
+  /** Suppress badges whose state the surrounding list already implies. */
+  hideBadges?: CafeBadgeKind[];
 }
 
 // Extract a short suburb/city label from a full address string. Mirrors the
@@ -33,7 +36,7 @@ const AMENITY_ICONS: Record<string, React.ReactNode> = {
   Parking: <Car size={12} color="#8E8E93" />,
 };
 
-export default function ListCafeCard({ cafe }: ListCafeCardProps) {
+function ListCafeCard({ cafe, hideBadges }: ListCafeCardProps) {
   const { addCafe } = useReviews();
   const { profile } = useUserProfile();
 
@@ -67,51 +70,69 @@ export default function ListCafeCard({ cafe }: ListCafeCardProps) {
   const remainingCount = Math.max(0, amenities.length - 2);
 
   return (
-    <TouchableOpacity style={styles.card} onPress={handlePress} activeOpacity={0.85}>
-      <Image source={{ uri: cafe.image }} style={styles.image} resizeMode="cover" />
+    <View style={styles.cardWrapper}>
+      <TouchableOpacity style={styles.card} onPress={handlePress} activeOpacity={0.85}>
+        <Image source={{ uri: cafe.image }} style={styles.image} resizeMode="cover" />
 
-      <View style={styles.content}>
-        <Text style={styles.name} numberOfLines={1}>
-          {cafe.name}
-        </Text>
+        <View style={styles.content}>
+          <Text style={styles.name} numberOfLines={1}>
+            {cafe.name}
+          </Text>
 
-        {!!city && (
-          <View style={styles.locationRow}>
-            <MapPin size={14} color={colors.mutedText} />
-            <Text style={styles.locationText} numberOfLines={1}>
-              {distanceLabel ? `${city} • ${distanceLabel}` : city}
-            </Text>
-          </View>
-        )}
+          {!!city && (
+            <View style={styles.locationRow}>
+              <MapPin size={14} color={colors.mutedText} />
+              <Text style={styles.locationText} numberOfLines={1}>
+                {distanceLabel ? `${city} • ${distanceLabel}` : city}
+              </Text>
+            </View>
+          )}
 
-        {amenities.length > 0 && (
-          <View style={styles.amenitiesRow}>
-            {visibleAmenities.map((amenity, index) => (
-              <View key={index} style={styles.chip}>
-                {AMENITY_ICONS[amenity]}
-                <Text style={styles.chipText}>{amenity}</Text>
-              </View>
-            ))}
-            {remainingCount > 0 && (
-              <View style={styles.chip}>
-                <Text style={styles.chipText}>+{remainingCount}</Text>
-              </View>
-            )}
-          </View>
-        )}
+          {amenities.length > 0 && (
+            <View style={styles.amenitiesRow}>
+              {visibleAmenities.map((amenity, index) => (
+                <View key={index} style={styles.chip}>
+                  {AMENITY_ICONS[amenity]}
+                  <Text style={styles.chipText}>{amenity}</Text>
+                </View>
+              ))}
+              {remainingCount > 0 && (
+                <View style={styles.chip}>
+                  <Text style={styles.chipText}>+{remainingCount}</Text>
+                </View>
+              )}
+            </View>
+          )}
 
-        {!!cafe.rating && (
-          <View style={styles.ratingRow}>
-            <CoffeeBean size={16} />
-            <Text style={styles.ratingText}>{cafe.rating.toFixed(1)}</Text>
-          </View>
-        )}
-      </View>
-    </TouchableOpacity>
+          {!!cafe.rating && (
+            <View style={styles.ratingRow}>
+              <CoffeeBean size={16} />
+              <Text style={styles.ratingText}>{cafe.rating.toFixed(1)}</Text>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+
+      <CafeStatusBadges cafeId={cafe.id} hide={hideBadges} />
+    </View>
   );
 }
 
+export default React.memo(ListCafeCard);
+
 const styles = StyleSheet.create({
+  // Padding reserves room for the status badge to overhang the card's corner.
+  // The card itself clips its children, so the badge has to live out here.
+  cardWrapper: {
+    paddingTop: 12,
+    paddingLeft: 12,
+    // Bleed back into the list's 20px horizontal padding so the card keeps its
+    // original width and left edge; the reclaimed 12px is where the badge sits.
+    marginLeft: -12,
+    // The card's old marginBottom moves here as the wrapper's paddingTop, so
+    // the gap between cards is unchanged.
+    marginBottom: 0,
+  },
   card: {
     flexDirection: 'row',
     height: 120,
@@ -119,7 +140,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#E3E3E3',
-    marginBottom: 12,
     overflow: 'hidden',
   },
   image: {

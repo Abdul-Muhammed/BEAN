@@ -5,6 +5,7 @@ import { MapPin, Bookmark, Star, Wifi } from 'lucide-react-native';
 import { CoffeeBean } from './BeanRating';
 import { Cafe } from '../data/mockData';
 import { useReviews } from '../context/ReviewContext';
+import CafeStatusBadges, { type CafeBadgeKind } from './CafeStatusBadges';
 import { colors } from '@/constants/theme';
 
 const DEFAULT_CAFE_IMAGE =
@@ -12,9 +13,11 @@ const DEFAULT_CAFE_IMAGE =
 
 interface MapCafeCardProps {
   cafe: Cafe;
+  /** Suppress badges whose state the surrounding list already implies. */
+  hideBadges?: CafeBadgeKind[];
 }
 
-export default function MapCafeCard({ cafe }: MapCafeCardProps) {
+function MapCafeCard({ cafe, hideBadges }: MapCafeCardProps) {
   const { toggleBookmark, isBookmarked } = useReviews();
   const [imageFailed, setImageFailed] = React.useState(false);
 
@@ -54,67 +57,84 @@ export default function MapCafeCard({ cafe }: MapCafeCardProps) {
   const isBooked = isBookmarked(cafe.id);
 
   return (
-    <TouchableOpacity style={styles.card} onPress={handlePress}>
-      <Image
-        source={{ uri: imageUri }}
-        style={styles.image}
-        onError={() => setImageFailed(true)}
-      />
-      
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.name} numberOfLines={1}>{cafe.name}</Text>
-          <TouchableOpacity
-            style={styles.bookmarkButton}
-            onPress={handleBookmarkPress}
-          >
-            <Bookmark
-              size={20}
-              color={isBooked ? '#D4AF37' : '#8E8E93'}
-              fill={isBooked ? '#D4AF37' : 'transparent'}
-            />
-          </TouchableOpacity>
-        </View>
+    <View style={styles.cardWrapper}>
+      <TouchableOpacity style={styles.card} onPress={handlePress}>
+        <Image
+          source={{ uri: imageUri }}
+          style={styles.image}
+          onError={() => setImageFailed(true)}
+        />
 
-        <View style={styles.locationRow}>
-          <MapPin size={14} color="#8E8E93" />
-          <Text style={styles.locationText} numberOfLines={1}>{location}</Text>
-        </View>
-
-        <View style={styles.footer}>
-          <View style={styles.amenitiesRow}>
-            {visibleAmenities.map((amenity, index) => (
-              <View key={index} style={styles.amenityTag}>
-                {amenity === 'Has WiFi' && <Wifi size={12} color="#007AFF" />}
-                {amenity === 'Top Rated' && <Star size={12} color="#D4AF37" fill="#D4AF37" />}
-                <Text style={styles.amenityText}>{amenity}</Text>
-              </View>
-            ))}
-            {remainingCount > 0 && (
-              <View style={styles.moreTag}>
-                <Text style={styles.moreText}>+{remainingCount}</Text>
-              </View>
-            )}
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <Text style={styles.name} numberOfLines={1}>{cafe.name}</Text>
+            <TouchableOpacity
+              style={styles.bookmarkButton}
+              onPress={handleBookmarkPress}
+            >
+              <Bookmark
+                size={20}
+                color={isBooked ? '#D4AF37' : '#8E8E93'}
+                fill={isBooked ? '#D4AF37' : 'transparent'}
+              />
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.ratingRow}>
-            <CoffeeBean size={16} />
-            <Text style={styles.ratingText}>{cafe.rating.toFixed(1)}</Text>
+          <View style={styles.locationRow}>
+            <MapPin size={14} color="#8E8E93" />
+            <Text style={styles.locationText} numberOfLines={1}>{location}</Text>
+          </View>
+
+          <View style={styles.footer}>
+            <View style={styles.amenitiesRow}>
+              {visibleAmenities.map((amenity, index) => (
+                <View key={index} style={styles.amenityTag}>
+                  {amenity === 'Has WiFi' && <Wifi size={12} color="#007AFF" />}
+                  {amenity === 'Top Rated' && <Star size={12} color="#D4AF37" fill="#D4AF37" />}
+                  <Text style={styles.amenityText}>{amenity}</Text>
+                </View>
+              ))}
+              {remainingCount > 0 && (
+                <View style={styles.moreTag}>
+                  <Text style={styles.moreText}>+{remainingCount}</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.ratingRow}>
+              <CoffeeBean size={16} />
+              <Text style={styles.ratingText}>{cafe.rating.toFixed(1)}</Text>
+            </View>
           </View>
         </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+
+      <CafeStatusBadges cafeId={cafe.id} hide={hideBadges} />
+    </View>
   );
 }
 
+export default React.memo(MapCafeCard);
+
 const styles = StyleSheet.create({
+  // Padding reserves room for the status badge to overhang the card's corner.
+  // The card itself clips its children, so the badge has to live out here.
+  cardWrapper: {
+    paddingTop: 12,
+    paddingLeft: 12,
+    // Bleed back into the sheet's 20px horizontal padding so the card keeps its
+    // original width and left edge; the reclaimed 12px is where the badge sits.
+    marginLeft: -12,
+    // The card's old marginBottom moves here as the wrapper's paddingTop, so
+    // the gap between cards is unchanged.
+    marginBottom: 0,
+  },
   card: {
     flexDirection: 'row',
     backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E3E3E3',
-    marginBottom: 12,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: {

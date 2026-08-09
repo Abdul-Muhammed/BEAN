@@ -40,20 +40,11 @@ interface RecentSearch {
 
 export default function SearchCafesScreen() {
   const { addCafe } = useReviews();
-  const { mode, onboarding } = useLocalSearchParams<{ mode?: string; onboarding?: string }>();
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
   const isReviewMode = mode === 'review';
-  const isOnboarding = onboarding === '1';
 
-  // During onboarding the review screen is reached via this search page; replace
-  // (rather than push) so the stack stays top-cafes -> add-review and the review
-  // screen's router.dismiss() returns to the still-mounted top-cafes step.
   const goToReview = (params: { cafeId: string; cafeName: string; cafeImage: string }) => {
-    const navParams = isOnboarding ? { ...params, onboarding: '1' } : params;
-    if (isOnboarding) {
-      router.replace({ pathname: '/(tabs)/add-review', params: navParams });
-    } else {
-      router.push({ pathname: '/(tabs)/add-review', params: navParams });
-    }
+    router.push({ pathname: '/(tabs)/add-review', params });
   };
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);

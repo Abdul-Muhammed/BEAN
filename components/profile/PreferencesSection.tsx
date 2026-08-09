@@ -9,6 +9,8 @@ import { colors } from '@/constants/theme';
 interface PreferencesSectionProps {
   preferenceIds: string[];
   onPressEdit?: () => void;
+  /** Hidden when viewing another user's profile. */
+  editable?: boolean;
 }
 
 /** Renders the user's selected preferences as pill chips. Chips are derived from
@@ -17,6 +19,7 @@ interface PreferencesSectionProps {
 export default function PreferencesSection({
   preferenceIds,
   onPressEdit,
+  editable = true,
 }: PreferencesSectionProps) {
   const [categories, setCategories] = useState<CafeCategory[]>([]);
 
@@ -44,7 +47,7 @@ export default function PreferencesSection({
     <View style={styles.container}>
       <SectionHeader
         title="Preferences"
-        action={<Pencil size={18} color="#8E8E93" />}
+        action={editable ? <Pencil size={18} color="#8E8E93" /> : undefined}
         onPressAction={onPressEdit}
       />
       <View style={styles.chips}>
