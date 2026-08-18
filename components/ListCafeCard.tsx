@@ -6,7 +6,7 @@ import { CoffeeBean } from './BeanRating';
 import { Cafe } from '../data/mockData';
 import { useReviews } from '../context/ReviewContext';
 import { useUserProfile } from '../hooks/useUserProfile';
-import { approximateDistanceMeters, formatDistance } from '../lib/geo';
+import { approximateDistanceMeters, extractLocation, formatDistance } from '../lib/geo';
 import CafeStatusBadges, { type CafeBadgeKind } from './CafeStatusBadges';
 import { colors, fonts } from '@/constants/theme';
 
@@ -14,20 +14,6 @@ interface ListCafeCardProps {
   cafe: Cafe;
   /** Suppress badges whose state the surrounding list already implies. */
   hideBadges?: CafeBadgeKind[];
-}
-
-// Extract a short suburb/city label from a full address string. Mirrors the
-// logic used by MapCafeCard so the Lists screen reads consistently.
-function extractLocation(address: string): string {
-  if (!address) return '';
-  const parts = address.split(',');
-  if (parts.length > 1) {
-    const suburb = parts[parts.length - 2]?.trim();
-    if (suburb && !suburb.includes('Auckland')) {
-      return suburb;
-    }
-  }
-  return 'Auckland';
 }
 
 const AMENITY_ICONS: Record<string, React.ReactNode> = {

@@ -15,6 +15,8 @@ interface BeanRatingProps {
   /** When interactive, allow tapping the left/right half of a bean for 0.5 steps. */
   allowHalf?: boolean;
   onRatingChange?: (rating: number) => void;
+  /** Tint override for contrast on a colored background (e.g. the story sticker). */
+  color?: string;
 }
 
 type Fill = 'empty' | 'half' | 'full';
@@ -70,6 +72,7 @@ export default function BeanRating({
   interactive = false,
   allowHalf = false,
   onRatingChange,
+  color,
 }: BeanRatingProps) {
   const handlePress = (value: number) => {
     if (interactive && onRatingChange) {
@@ -87,7 +90,7 @@ export default function BeanRating({
           // half selects X.5 and the right half selects X.
           return (
             <View key={index} style={styles.button}>
-              <BeanCell size={size} fill={fill} />
+              <BeanCell size={size} fill={fill} color={color} />
               <View style={styles.halfOverlay}>
                 <TouchableOpacity
                   style={styles.halfTouch}
@@ -109,12 +112,12 @@ export default function BeanRating({
               onPress={() => handlePress(index)}
               style={styles.button}
             >
-              <BeanCell size={size} fill={fill} />
+              <BeanCell size={size} fill={fill} color={color} />
             </TouchableOpacity>
           );
         }
 
-        return <BeanCell key={index} size={size} fill={fill} />;
+        return <BeanCell key={index} size={size} fill={fill} color={color} />;
       })}
     </View>
   );

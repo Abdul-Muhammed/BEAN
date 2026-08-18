@@ -25,3 +25,17 @@ export function formatDistance(meters: number): string {
   if (meters < 1000) return `${Math.round(meters)} m`;
   return `${(meters / 1000).toFixed(1)} km`;
 }
+
+// Extract a short suburb/city label from a full address string. Shared by the
+// cafe list/map cards and the review detail screen so they read consistently.
+export function extractLocation(address: string): string {
+  if (!address) return '';
+  const parts = address.split(',');
+  if (parts.length > 1) {
+    const suburb = parts[parts.length - 2]?.trim();
+    if (suburb && !suburb.includes('Auckland')) {
+      return suburb;
+    }
+  }
+  return 'Auckland';
+}

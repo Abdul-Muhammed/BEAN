@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments, usePathname } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import {
@@ -84,24 +85,40 @@ export function logError(prefix: string, error: any) {
  * swiping back into authenticated screens: the moment the session flips to null,
  * any (tabs)/(onboarding) screen is replaced with the sign-in screen.
  */
+// Where a deep link was heading when it hit the sign-in wall. Reviews are
+// readable only by authenticated users, so a shared link opened while signed
+// out has to detour through auth and come back.
+const PENDING_DEEP_LINK_KEY = 'bean.pendingDeepLink';
+
+/** Route groups a signed-out visitor may not stay on. */
+const AUTH_ONLY_GROUPS = ['(tabs)', '(onboarding)', 'diary', 'share-review'];
+
 function AuthGate() {
   const { isLoaded, isSignedIn } = useAuth();
   const { profile, isLoading: profileLoading } = useUserProfile();
   const segments = useSegments();
+  const pathname = usePathname();
   const router = useRouter();
 
   useEffect(() => {
     if (!isLoaded) return;
 
-    const group = segments[0];
+    // Widened to string on purpose: expo-router types `segments` as a union of
+    // known routes, which only regenerates once the dev server has seen a new
+    // file. Comparing as plain strings keeps this check honest either way.
+    const group: string = segments[0];
     const inAuth = group === '(auth)';
-    const inTabs = group === '(tabs)';
     const inOnboarding = group === '(onboarding)';
 
     if (!isSignedIn) {
       // Welcome screen (root index) and the (auth) group are valid signed-out
       // destinations. Anything else means a stale authenticated stack — bounce.
-      if (inTabs || inOnboarding) {
+      if (AUTH_ONLY_GROUPS.includes(group)) {
+        // A shared review link is a legitimate arrival point, not a stale
+        // stack, so remember it and return the visitor there after they sign in.
+        if (group === 'diary' || group === 'share-review') {
+          AsyncStorage.setItem(PENDING_DEEP_LINK_KEY, pathname).catch(() => {});
+        }
         router.replace('/(auth)/sign-in');
       }
       return;
@@ -115,11 +132,24 @@ function AuthGate() {
     // A missing profile is treated as an existing user (matches index.tsx
     // fallback) and sent into the app rather than back through onboarding.
     if (onboarded || !profile) {
-      if (inAuth) router.replace('/(tabs)/home');
+      if (inAuth) {
+        AsyncStorage.getItem(PENDING_DEEP_LINK_KEY)
+          .then((pending) => {
+            if (pending) {
+              // Clear first: a failed navigation shouldn't trap every later
+              // sign-in on the same stale route.
+              return AsyncStorage.removeItem(PENDING_DEEP_LINK_KEY).then(() => {
+                router.replace(pending as any);
+              });
+            }
+            router.replace('/(tabs)/home');
+          })
+          .catch(() => router.replace('/(tabs)/home'));
+      }
     } else if (!inOnboarding) {
       router.replace('/(onboarding)/username');
     }
-  }, [isLoaded, isSignedIn, profile, profileLoading, segments, router]);
+  }, [isLoaded, isSignedIn, profile, profileLoading, segments, pathname, router]);
 
   return null;
 }

@@ -15,7 +15,12 @@
         "NSLocationWhenInUseUsageDescription": "This app uses your location to show nearby cafes and help you find your way.",
         "NSCameraUsageDescription": "This app uses your camera so you can take photos for your cafe reviews.",
         "NSPhotoLibraryUsageDescription": "This app accesses your photo library so you can add photos to your cafe reviews.",
-        "ITSAppUsesNonExemptEncryption": false
+        "NSPhotoLibraryAddUsageDescription": "This app saves your review story cards to your photo library.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "LSApplicationQueriesSchemes": [
+          "instagram",
+          "instagram-stories"
+        ]
       },
       "bundleIdentifier": "nz.co.beanapp.app"
     },
@@ -25,6 +30,22 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "CAMERA"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": false,
+          "data": [
+            {
+              "scheme": "beanapp",
+              "host": "diary"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
       ]
     },
     "web": {
@@ -47,7 +68,23 @@
         }
       ],
       "./plugins/withModularHeaders",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "This app accesses your photo library so you can add photos to your cafe reviews.",
+          "savePhotosPermission": "This app saves your review story cards to your photo library.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ],
+      [
+        "react-native-share",
+        {
+          "android": [
+            "com.instagram.android"
+          ]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
@@ -56,7 +93,8 @@
       "router": {},
       "eas": {
         "projectId": "b0321901-9605-4a17-9c83-72cd04baf8a6"
-      }
+      },
+      "facebookAppId": ""
     },
     "owner": "abdul-muhammed"
   }
