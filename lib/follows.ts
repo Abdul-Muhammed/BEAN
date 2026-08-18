@@ -264,3 +264,52 @@ export async function getUserReviews(userId: string): Promise<UserReview[]> {
   }));
   return Array.from(new Map(mapped.map((r) => [r.id, r])).values());
 }
+
+/** A single review plus the profile of whoever wrote it. Backs shared review
+ *  links: the recipient isn't the author, so `/diary/[id]` can't find the row
+ *  in the local `userReviews` cache and has to fetch it. */
+export interface ReviewWithAuthor {
+  review: UserReview;
+  author: PublicUser | null;
+}
+
+/** Fetch one review by id, regardless of who wrote it. Returns null when the
+ *  review doesn't exist (deleted, or a bad link). Requires a signed-in session:
+ *  the reviews/profiles RLS policies are both `TO authenticated`. */
+export async function getReviewById(reviewId: string): Promise<ReviewWithAuthor | null> {
+  const { data, error } = await supabase
+    .from('reviews')
+    .select('*')
+    .eq('id', reviewId)
+    .maybeSingle();
+  if (error) throw new Error(`Failed to load review: ${error.message}`);
+  if (!data) return null;
+
+  const row = data as any;
+  const review: UserReview = {
+    id: row.id,
+    cafeId: row.cafe_id,
+    cafePlaceId: row.cafe_place_id || undefined,
+    cafeName: row.cafe_name,
+    cafeImage: row.cafe_image || '',
+    rating: typeof row.rating === 'string' ? parseFloat(row.rating) : row.rating,
+    text: row.text || '',
+    orderedItem: row.ordered_item || undefined,
+    date: formatReviewDate(row.visit_date || row.created_at),
+    visitDate: row.visit_date || undefined,
+    attributes: row.attributes || undefined,
+    photos: row.photos || undefined,
+  };
+
+  // A missing author profile shouldn't sink the whole screen — the byline just
+  // gets omitted.
+  let author: PublicUser | null = null;
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select(PUBLIC_USER_COLUMNS)
+    .eq('id', row.user_id)
+    .maybeSingle();
+  if (profile) author = profile as PublicUser;
+
+  return { review, author };
+}

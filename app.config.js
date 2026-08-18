@@ -24,9 +24,23 @@ module.exports = ({ config }) => {
       : ['@react-native-google-signin/google-signin']),
   ];
 
+  // Instagram refuses a story share without a registered Facebook app id. It is
+  // not a secret (it ships in every Instagram-sharing app), but it differs per
+  // environment, so it comes from the env rather than app.json.
+  const facebookAppId = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID;
+  if (!facebookAppId) {
+    console.warn(
+      'EXPO_PUBLIC_FACEBOOK_APP_ID is not set - sharing to Instagram Stories will be disabled.'
+    );
+  }
+
   return {
     ...config,
     plugins,
+    extra: {
+      ...config.extra,
+      ...(facebookAppId ? { facebookAppId } : {}),
+    },
     android: {
       ...config.android,
       config: {
