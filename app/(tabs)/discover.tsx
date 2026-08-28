@@ -25,11 +25,12 @@ import MapView, {
   PROVIDER_GOOGLE,
   Region,
 } from 'react-native-maps';
-import * as Location from 'expo-location';
 import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import MapCafeCard from '../../components/MapCafeCard';
 import { useReviews } from '../../context/ReviewContext';
 import { useUserProfile } from '../../hooks/useUserProfile';
+import { AUCKLAND_CBD, useLocation } from '../../hooks/useLocation';
+import LocationGateOverlay from '../../components/discover/LocationGateOverlay';
 import {
   searchCafesNearbyByCoords,
   convertPlaceToCafe,
@@ -54,8 +55,8 @@ import {
 } from '../../components/discover/filterTypes';
 
 // Auckland fallback when no profile coords and no permission.
-const DEFAULT_LATITUDE = -36.8485;
-const DEFAULT_LONGITUDE = 174.7633;
+const DEFAULT_LATITUDE = AUCKLAND_CBD.latitude;
+const DEFAULT_LONGITUDE = AUCKLAND_CBD.longitude;
 const DEFAULT_LATITUDE_DELTA = 0.0422;
 const DEFAULT_LONGITUDE_DELTA = 0.0211;
 const NEARBY_CAFE_LIST_LIMIT = 7;
@@ -202,6 +203,13 @@ const CafeMarkerView = React.memo(function CafeMarkerView({
 export default function DiscoverScreen() {
   const { addCafe, isBookmarked, isFavorited, userReviews } = useReviews();
   const { profile } = useUserProfile();
+  const {
+    coords: locationCoords,
+    status: locationStatus,
+    isFallback,
+    canAskAgain,
+    requestPermission,
+  } = useLocation();
   const mapRef = useRef<MapView | null>(null);
   const bottomSheetRef = useRef<BottomSheet>(null);
   const filtersSheetRef = useRef<FiltersBottomSheetHandle>(null);
@@ -229,7 +237,8 @@ export default function DiscoverScreen() {
     latitude: number;
     longitude: number;
   } | null>(null);
-  const [hasLocationPermission, setHasLocationPermission] = useState(false);
+  const hasLocationPermission = locationStatus === 'granted';
+  const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [isLoadingCafes, setIsLoadingCafes] = useState(false);
   const [cafeError, setCafeError] = useState<string | null>(null);
   const [nearbyCafes, setNearbyCafes] = useState<Cafe[]>([]);
@@ -322,30 +331,24 @@ export default function DiscoverScreen() {
       setIsLoadingCafes(true);
       setCafeError(null);
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (cancelled) return;
-        if (status !== 'granted') {
-          setHasLocationPermission(false);
-          setCafeError('Location permission is needed to find nearby cafes.');
-          return;
+        // Permission and the device fix are owned by the LocationProvider, so
+        // Discover never triggers the OS dialog itself. That single iOS prompt
+        // is spent only by the Home primer's Enable button (or this screen's
+        // gate CTA), which is what keeps it available after a "Not now".
+        const coords = locationCoords ?? AUCKLAND_CBD;
+
+        if (locationCoords) {
+          const userRegion = {
+            ...coords,
+            latitudeDelta: DEFAULT_LATITUDE_DELTA,
+            longitudeDelta: DEFAULT_LONGITUDE_DELTA,
+          };
+          setUserCoords(coords);
+          setCurrentRegion(userRegion);
+          mapRef.current?.animateToRegion(userRegion, 600);
+        } else {
+          setUserCoords(null);
         }
-        setHasLocationPermission(true);
-        const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        if (cancelled) return;
-        const coords = {
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-        };
-        const userRegion = {
-          ...coords,
-          latitudeDelta: DEFAULT_LATITUDE_DELTA,
-          longitudeDelta: DEFAULT_LONGITUDE_DELTA,
-        };
-        setUserCoords(coords);
-        setCurrentRegion(userRegion);
-        mapRef.current?.animateToRegion(userRegion, 600);
 
         const cached = await readCachedCafes(coords);
         if (cancelled) return;
@@ -364,12 +367,15 @@ export default function DiscoverScreen() {
         );
         if (cancelled) return;
 
-        const closestPlaces = [...results]
-          .sort(
-            (a, b) =>
-              getPlaceDistanceMeters(a, coords) - getPlaceDistanceMeters(b, coords)
-          )
-          .slice(0, NEARBY_CAFE_LIST_LIMIT);
+        // Distance ordering only means something when the coordinate is the
+        // user's own. Anchored to the CBD it is arbitrary, so rank by rating.
+        const ranked = locationCoords
+          ? [...results].sort(
+              (a, b) =>
+                getPlaceDistanceMeters(a, coords) - getPlaceDistanceMeters(b, coords)
+            )
+          : [...results].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+        const closestPlaces = ranked.slice(0, NEARBY_CAFE_LIST_LIMIT);
         const converted = await Promise.all(
           closestPlaces.map((place) => convertPlaceToCafe(place))
         );
@@ -400,7 +406,9 @@ export default function DiscoverScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
+    // Re-runs when the provider resolves a fix (or the user grants permission
+    // from the gate), swapping the Auckland fallback for the real location.
+  }, [locationCoords]);
 
   // Map markers remain viewport-aware. This does not feed the bottom sheet,
   // which stays anchored to the cached user-location list above.
@@ -639,30 +647,10 @@ export default function DiscoverScreen() {
       );
       return;
     }
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
-      setHasLocationPermission(true);
-      const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      const coords = {
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-      };
-      setUserCoords(coords);
-      mapRef.current?.animateToRegion(
-        {
-          ...coords,
-          latitudeDelta: 0.012,
-          longitudeDelta: 0.006,
-        },
-        500
-      );
-    } catch {
-      // Silent: keep current view.
-    }
-  }, [userCoords]);
+    // No fix yet: hand off to the provider, which prompts or opens Settings
+    // as appropriate. The mount effect re-runs once coords arrive.
+    await requestPermission();
+  }, [userCoords, requestPermission]);
 
   const renderSheetHandle = useCallback(
     () => (
@@ -683,6 +671,12 @@ export default function DiscoverScreen() {
     [listCafes.length, handleSheetHeaderPress]
   );
 
+  const handleEnableLocation = useCallback(async () => {
+    setIsRequestingLocation(true);
+    await requestPermission();
+    setIsRequestingLocation(false);
+  }, [requestPermission]);
+
   const mapProvider = Platform.OS === 'android' ? PROVIDER_GOOGLE : PROVIDER_DEFAULT;
 
   return (
@@ -694,6 +688,7 @@ export default function DiscoverScreen() {
           ref={mapRef}
           provider={mapProvider}
           style={styles.map}
+          pointerEvents={isFallback ? 'none' : 'auto'}
           initialRegion={initialRegion}
           showsUserLocation={hasLocationPermission}
           showsMyLocationButton={false}
@@ -791,6 +786,14 @@ export default function DiscoverScreen() {
             fill={userCoords ? colors.primary : 'transparent'}
           />
         </TouchableOpacity>
+
+        {isFallback && (
+          <LocationGateOverlay
+            requesting={isRequestingLocation}
+            mustUseSettings={!canAskAgain}
+            onEnable={handleEnableLocation}
+          />
+        )}
       </View>
 
       <BottomSheet

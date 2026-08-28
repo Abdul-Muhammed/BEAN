@@ -29,14 +29,18 @@ import {
   BadgeText,
   HStack,
 } from '@gluestack-ui/themed';
-import * as Location from 'expo-location';
 import { useReviews } from '../../context/ReviewContext';
 import {
-  searchCafesNearby,
   searchCafesNearbyByCoords,
   convertPlaceToCafe,
 } from '../../services/googlePlaces';
 import { useUserProfile } from '../../hooks/useUserProfile';
+import {
+  AUCKLAND_CBD,
+  LOCATION_REFRESH_THRESHOLD_METERS,
+  useLocation,
+} from '../../hooks/useLocation';
+import LocationPrimerSheet from '@/components/LocationPrimerSheet';
 import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
 import { getUnreadFollowCount } from '../../lib/follows';
 import { getNotificationsLastSeen } from '../../lib/notifications';
@@ -46,10 +50,8 @@ import { NOTIFICATIONS_BELL_SVG } from '@/constants/profileIcons';
 
 type FilterType = 'all' | 'open';
 
-// Only refetch the "Near Me" list once the user has moved past this distance
-// from where we last loaded, so a focus that didn't move the user is cheap.
-// Matches the discover map's refresh threshold.
-const LOCATION_REFRESH_THRESHOLD_METERS = 250;
+// How many top-rated Auckland cafes to show when we have no location.
+const FALLBACK_CAFE_COUNT = 10;
 
 // Minimum interval between unread-notification checks so rapid tab switches
 // don't queue redundant network round-trips.
@@ -152,11 +154,23 @@ const HomeCafeCard = React.memo(function HomeCafeCard({
 export default function HomeScreen() {
   const { cafes, addCafe, toggleBookmark, isBookmarked } = useReviews();
   const { profile } = useUserProfile();
+  const {
+    coords,
+    isFallback,
+    shouldShowPrimer,
+    requestPermission,
+    dismissPrimer,
+  } = useLocation();
+  const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [categories, setCategories] = useState<CafeCategory[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [isLoadingNearby, setIsLoadingNearby] = useState(false);
   const [nearbyError, setNearbyError] = useState<string | null>(null);
+  // Ids from the most recent fetch, in the order the server returned them.
+  // `cafes` from ReviewContext accumulates every cafe the app has ever seen, so
+  // rendering it directly would dilute "top 10 in Auckland" with unrelated rows.
+  const [nearbyIds, setNearbyIds] = useState<string[]>([]);
   // Whether there are follow notifications newer than the user's last visit to
   // the Notifications screen, driving the bell dot. Re-checked on focus so it
   // clears after a visit advances the last-seen timestamp.
@@ -164,75 +178,61 @@ export default function HomeScreen() {
   // Coords of the last successful nearby load, so a re-focus that didn't move
   // the user doesn't trigger a redundant network round-trip.
   const lastFetchCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
-  // Guards the address-only fallback (no coords to compare against) so it only
-  // loads once.
-  const hasLoadedAddressRef = useRef(false);
-  const profileLatitude = profile?.location_latitude;
-  const profileLongitude = profile?.location_longitude;
-  const profileLocationAddress = profile?.location_address;
+  // Whether that last fetch was the Auckland fallback. Without this, a user
+  // standing in the CBD who grants permission stays on the rating-sorted
+  // fallback list, because the distance guard sees they barely moved.
+  const lastFetchWasFallbackRef = useRef<boolean | null>(null);
 
   const loadNearbyCafes = useCallback(async () => {
-    const hasProfileCoords =
-      typeof profileLatitude === 'number' &&
-      typeof profileLongitude === 'number';
-    if (!hasProfileCoords && !profileLocationAddress) return;
+    // With no coordinates we still show something useful: the best-rated cafes
+    // around the Auckland CBD, which is where this app's users are.
+    const target = coords ?? AUCKLAND_CBD;
+    const usingFallback = coords === null;
 
-    // Prefer the device's live location so "Near Me" tracks where the user
-    // actually is (matching the Search/Map screens). Fall back to the saved
-    // profile coordinates, then to the profile address. We avoid Google's
-    // Geocoding API (often REQUEST_DENIED on this project) for the coord path.
-    const resolveCoords = async (): Promise<{ lat: number; lng: number } | null> => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
-          const pos = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-          });
-          return { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        }
-      } catch {
-        // fall through to the saved profile coords
-      }
-      if (hasProfileCoords) {
-        return {
-          lat: profileLatitude as number,
-          lng: profileLongitude as number,
-        };
-      }
-      return null;
-    };
-
-    const coords = await resolveCoords();
-
-    // Skip refetching if we already loaded for a nearby location.
-    if (coords && lastFetchCoordsRef.current) {
+    // Skip refetching if we already loaded for somewhere close by — unless we
+    // just crossed between fallback and real-location mode, which changes how
+    // the list is ranked regardless of distance.
+    const modeChanged = lastFetchWasFallbackRef.current !== usingFallback;
+    if (lastFetchCoordsRef.current && !modeChanged) {
       const moved = approximateDistanceMeters(
         lastFetchCoordsRef.current.lat,
         lastFetchCoordsRef.current.lng,
-        coords.lat,
-        coords.lng
+        target.latitude,
+        target.longitude
       );
       if (moved < LOCATION_REFRESH_THRESHOLD_METERS) return;
     }
-    if (!coords && hasLoadedAddressRef.current) return;
 
     setIsLoadingNearby(true);
     setNearbyError(null);
     try {
-      const results = coords
-        ? await searchCafesNearbyByCoords(coords.lat, coords.lng)
-        : await searchCafesNearby(profileLocationAddress!);
-      const converted = await Promise.all(
-        results.slice(0, 15).map(place => convertPlaceToCafe(place))
+      const results = await searchCafesNearbyByCoords(
+        target.latitude,
+        target.longitude
       );
-      converted.forEach(cafe => addCafe(cafe));
-      if (coords) lastFetchCoordsRef.current = coords;
-      else hasLoadedAddressRef.current = true;
+
+      // The nearby endpoint returns distance-ordered results, which is what we
+      // want when the user is actually here. In fallback mode distance from a
+      // CBD point the user has no relationship with is meaningless, so rank by
+      // rating instead and keep it to a short, curated list.
+      const ranked = usingFallback
+        ? [...results]
+            .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+            .slice(0, FALLBACK_CAFE_COUNT)
+        : results.slice(0, 15);
+
+      const converted = await Promise.all(
+        ranked.map((place) => convertPlaceToCafe(place))
+      );
+      converted.forEach((cafe) => addCafe(cafe));
+      setNearbyIds(converted.map((cafe) => cafe.id));
+      lastFetchCoordsRef.current = { lat: target.latitude, lng: target.longitude };
+      lastFetchWasFallbackRef.current = usingFallback;
     } catch {
       setNearbyError('Unable to load nearby cafes.');
     }
     setIsLoadingNearby(false);
-  }, [addCafe, profileLatitude, profileLongitude, profileLocationAddress]);
+  }, [addCafe, coords]);
 
   // Re-check location each time the Home tab gains focus so the list refreshes
   // when the user has moved, without reloading on every render.
@@ -310,12 +310,26 @@ export default function HomeScreen() {
   );
 
   const displayCafes = useMemo(() => {
+    // Render the last fetch's results, in its order. Falls back to the whole
+    // context list only before the first fetch resolves.
+    const byId = new Map(cafes.map((cafe) => [cafe.id, cafe]));
+    const ordered = nearbyIds
+      .map((id) => byId.get(id))
+      .filter((cafe): cafe is (typeof cafes)[number] => !!cafe);
+    const source = ordered.length > 0 ? ordered : cafes;
+
     const filtered =
       activeFilter === 'open'
-        ? cafes.filter((cafe) => cafe.hours?.openNow === true)
-        : cafes;
-    return filtered.slice(0, 10);
-  }, [cafes, activeFilter]);
+        ? source.filter((cafe) => cafe.hours?.openNow === true)
+        : source;
+    return filtered.slice(0, FALLBACK_CAFE_COUNT);
+  }, [cafes, nearbyIds, activeFilter]);
+
+  const handleEnableLocation = useCallback(async () => {
+    setIsRequestingLocation(true);
+    await requestPermission();
+    setIsRequestingLocation(false);
+  }, [requestPermission]);
 
   // Everything above the cafe cards renders as the FlatList header so the
   // whole page scrolls together while the cards stay virtualized.
@@ -365,11 +379,27 @@ export default function HomeScreen() {
       {/* Near Me Section header + status states; the cards themselves are the
           FlatList items below. */}
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Near Me</Text>
+        <Text style={styles.sectionTitle}>
+          {isFallback ? 'Top Cafes in Auckland' : 'Near Me'}
+        </Text>
         <TouchableOpacity onPress={() => router.push('/(tabs)/discover')}>
           <ChevronRight size={20} color="#8E8E93" />
         </TouchableOpacity>
       </View>
+
+      {isFallback && (
+        <TouchableOpacity
+          style={styles.locationBanner}
+          onPress={handleEnableLocation}
+          activeOpacity={0.85}
+        >
+          <MapPin size={16} color={colors.ink} />
+          <Text style={styles.locationBannerText}>
+            Turn on location to see cafes near you
+          </Text>
+          <ChevronRight size={16} color={colors.mutedText} />
+        </TouchableOpacity>
+      )}
 
       {isLoadingNearby && displayCafes.length === 0 && (
         <View style={styles.loadingContainer}>
@@ -386,7 +416,9 @@ export default function HomeScreen() {
 
       {!isLoadingNearby && !nearbyError && displayCafes.length === 0 && (
         <View style={styles.loadingContainer}>
-          <Text style={styles.emptyText}>No cafes found nearby.</Text>
+          <Text style={styles.emptyText}>
+            {isFallback ? 'No cafes found.' : 'No cafes found nearby.'}
+          </Text>
         </View>
       )}
     </>
@@ -413,6 +445,13 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       />
+
+      <LocationPrimerSheet
+        visible={shouldShowPrimer}
+        requesting={isRequestingLocation}
+        onEnable={handleEnableLocation}
+        onDismiss={dismissPrimer}
+      />
     </SafeAreaView>
   );
 }
@@ -424,6 +463,25 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  locationBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: colors.cream,
+    borderWidth: 1,
+    borderColor: colors.creamBorder,
+  },
+  locationBannerText: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: 'Lato-Regular',
+    color: colors.ink,
   },
   scrollContent: {
     paddingTop: 20,

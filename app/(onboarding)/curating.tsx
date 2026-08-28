@@ -27,14 +27,10 @@ import { colors } from '@/constants/theme';
 export default function CuratingScreen() {
   const router = useRouter();
   const { refetch: refetchProfile } = useUserProfile();
-  const { username, location, latitude, longitude, preferences } =
-    useLocalSearchParams<{
-      username?: string;
-      location?: string;
-      latitude?: string;
-      longitude?: string;
-      preferences?: string;
-    }>();
+  const { username, preferences } = useLocalSearchParams<{
+    username?: string;
+    preferences?: string;
+  }>();
 
   const [error, setError] = useState<string | null>(null);
 
@@ -62,14 +58,10 @@ export default function CuratingScreen() {
     }
 
     try {
-      const parsedLat = latitude ? parseFloat(latitude) : NaN;
-      const parsedLng = longitude ? parseFloat(longitude) : NaN;
-
+      // Location is no longer collected here — it is requested in context on
+      // the first Home visit and written by the LocationProvider.
       await updateProfile({
         username: trimmedUsername,
-        location: location ?? null,
-        latitude: Number.isFinite(parsedLat) ? parsedLat : null,
-        longitude: Number.isFinite(parsedLng) ? parsedLng : null,
         preferences: (preferences ?? '').split(',').filter(Boolean),
         onboardingCompleted: true,
       });
@@ -89,15 +81,7 @@ export default function CuratingScreen() {
           : 'There was an error setting up your profile. Please try again.'
       );
     }
-  }, [
-    username,
-    location,
-    latitude,
-    longitude,
-    preferences,
-    refetchProfile,
-    finishIfReady,
-  ]);
+  }, [username, preferences, refetchProfile, finishIfReady]);
 
   useEffect(() => {
     runWrite();
@@ -128,13 +112,10 @@ export default function CuratingScreen() {
       pathname: '/(onboarding)/username',
       params: {
         username: username ?? '',
-        location: location ?? '',
-        latitude: latitude ?? '',
-        longitude: longitude ?? '',
         preferences: preferences ?? '',
       },
     });
-  }, [router, username, location, latitude, longitude, preferences]);
+  }, [router, username, preferences]);
 
   return (
     <SafeAreaView style={styles.container}>

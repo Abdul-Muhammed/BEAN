@@ -94,7 +94,7 @@ export default function UsernameScreen() {
   const handleNext = () => {
     if (canProceed) {
       router.push({
-        pathname: '/(onboarding)/location',
+        pathname: '/(onboarding)/preferences',
         params: { username: trimmed }
       });
     }
@@ -125,7 +125,7 @@ export default function UsernameScreen() {
           </TouchableOpacity>
 
           <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: '33%' }]} />
+            <View style={[styles.progressFill, { width: '50%' }]} />
           </View>
         </View>
 

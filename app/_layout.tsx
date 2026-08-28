@@ -19,6 +19,7 @@ import { FollowProvider } from '@/context/FollowContext';
 import { ToastProvider } from '@/context/ToastContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { UserProfileProvider, useUserProfile } from '@/hooks/useUserProfile';
+import { LocationProvider } from '@/hooks/useLocation';
 import { GluestackUIProvider } from '@gluestack-ui/themed';
 import config from '@/gluestack-ui.config';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -183,6 +184,7 @@ export default function RootLayout() {
         <BottomSheetModalProvider>
         <AuthProvider>
           <UserProfileProvider>
+            <LocationProvider>
             <GluestackUIProvider config={config}>
               <ToastProvider>
                 <FollowProvider>
@@ -201,6 +203,7 @@ export default function RootLayout() {
                 </FollowProvider>
               </ToastProvider>
             </GluestackUIProvider>
+            </LocationProvider>
           </UserProfileProvider>
         </AuthProvider>
         </BottomSheetModalProvider>
