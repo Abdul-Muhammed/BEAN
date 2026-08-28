@@ -6,7 +6,7 @@ export interface UpdateProfileParams {
   lastName?: string | null;
   bio?: string | null;
   profileImageUrl?: string | null;
-  location?: string | null;
+  /** Written together or not at all; see updateProfile. */
   latitude?: number | null;
   longitude?: number | null;
   preferences?: string[];
@@ -64,7 +64,6 @@ export async function updateProfile(params: UpdateProfileParams) {
     lastName,
     bio,
     profileImageUrl,
-    location,
     latitude,
     longitude,
     preferences,
@@ -98,7 +97,6 @@ export async function updateProfile(params: UpdateProfileParams) {
   if (lastName !== undefined) updateData.last_name = lastName || null;
   if (bio !== undefined) updateData.bio = bio?.trim() || null;
   if (profileImageUrl !== undefined) updateData.profile_image_url = profileImageUrl || null;
-  if (location !== undefined) updateData.location_address = location || null;
   if (typeof latitude === 'number' && typeof longitude === 'number') {
     updateData.location_latitude = latitude;
     updateData.location_longitude = longitude;

@@ -32,7 +32,7 @@ export default function PreferencesScreen() {
   const [isLoadingCategories, setIsLoadingCategories] = useState(true);
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const router = useRouter();
-  const { username, location, latitude, longitude } = useLocalSearchParams();
+  const { username } = useLocalSearchParams();
 
   const loadCategories = useCallback(async () => {
     setIsLoadingCategories(true);
@@ -85,9 +85,6 @@ export default function PreferencesScreen() {
       pathname: '/(onboarding)/curating' as any,
       params: {
         username: trimmedUsername,
-        location: (location as string) ?? '',
-        latitude: (latitude as string) ?? '',
-        longitude: (longitude as string) ?? '',
         preferences: selectedCategories.join(','),
       },
     });
