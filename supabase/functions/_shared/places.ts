@@ -54,15 +54,24 @@ export async function requireUser(req: Request): Promise<boolean> {
   return !error && !!data?.user;
 }
 
+/** One community tag on a cafe: the category id plus how many distinct
+ *  people applied it in a review. */
+export interface CafeCategoryTag {
+  id: string;
+  count: number;
+}
+
 // Minimal place shape the client consumes (matches convertPlaceToCafe input).
 export interface PlaceLike {
   place_id: string;
   name: string | null;
   formatted_address: string | null;
   rating: number | null;
+  user_ratings_total: number | null;
   types: string[] | null;
   geometry: { location: { lat: number | null; lng: number | null } };
   thumbnail_url: string | null;
+  category_tags: CafeCategoryTag[];
 }
 
 // Detailed shape the client consumes (matches getPlaceDetails / enrich input).
@@ -220,6 +229,8 @@ export async function upsertCafeFromPlace(
     name: place.name ?? null,
     formatted_address: place.formatted_address || place.vicinity || null,
     rating: typeof place.rating === 'number' ? place.rating : null,
+    user_ratings_total:
+      typeof place.user_ratings_total === 'number' ? place.user_ratings_total : null,
     latitude: lat,
     longitude: lng,
     types: Array.isArray(place.types) ? place.types : null,
@@ -238,13 +249,16 @@ export async function upsertCafeFromPlace(
 // Build the client-facing place shape from a Google result + cached thumbnail.
 export function googlePlaceToPlaceLike(
   place: Record<string, any>,
-  thumbnailUrl: string | null
+  thumbnailUrl: string | null,
+  categoryTags: CafeCategoryTag[] = []
 ): PlaceLike {
   return {
     place_id: place.place_id || place.id,
     name: place.name ?? null,
     formatted_address: place.formatted_address || place.vicinity || null,
     rating: typeof place.rating === 'number' ? place.rating : null,
+    user_ratings_total:
+      typeof place.user_ratings_total === 'number' ? place.user_ratings_total : null,
     types: Array.isArray(place.types) ? place.types : null,
     geometry: {
       location: {
@@ -253,6 +267,7 @@ export function googlePlaceToPlaceLike(
       },
     },
     thumbnail_url: thumbnailUrl,
+    category_tags: categoryTags,
   };
 }
 
@@ -263,6 +278,8 @@ export function cafeRowToPlaceLike(row: Record<string, any>): PlaceLike {
     name: row.name ?? null,
     formatted_address: row.formatted_address ?? null,
     rating: typeof row.rating === 'number' ? row.rating : row.rating ?? null,
+    user_ratings_total:
+      typeof row.user_ratings_total === 'number' ? row.user_ratings_total : null,
     types: Array.isArray(row.types) ? row.types : null,
     geometry: {
       location: {
@@ -271,5 +288,44 @@ export function cafeRowToPlaceLike(row: Record<string, any>): PlaceLike {
       },
     },
     thumbnail_url: row.thumbnail_url ?? null,
+    // cafes_nearby aggregates these; a plain cafes select will not have them.
+    category_tags: Array.isArray(row.category_tags) ? row.category_tags : [],
   };
+}
+
+/**
+ * Fetch community tags for a set of place ids in one round trip.
+ *
+ * The Google path upserts cafes it has just discovered, but some of them may
+ * already carry tags from earlier reviews. Without this they would render
+ * untagged until the next DB-served fetch, which reads as tags flickering in
+ * and out.
+ */
+export async function fetchCategoryTags(
+  supabase: SupabaseClient,
+  placeIds: string[]
+): Promise<Map<string, CafeCategoryTag[]>> {
+  const tags = new Map<string, CafeCategoryTag[]>();
+  if (placeIds.length === 0) return tags;
+
+  const { data, error } = await supabase
+    .from('cafe_category_tags')
+    .select('place_id, category_id, vote_count')
+    .in('place_id', placeIds);
+
+  if (error) {
+    console.warn('cafe_category_tags lookup failed:', error.message);
+    return tags;
+  }
+
+  for (const row of data ?? []) {
+    const list = tags.get(row.place_id) ?? [];
+    list.push({ id: row.category_id, count: row.vote_count });
+    tags.set(row.place_id, list);
+  }
+  for (const list of tags.values()) {
+    list.sort((a, b) => b.count - a.count || a.id.localeCompare(b.id));
+  }
+
+  return tags;
 }

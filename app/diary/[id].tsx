@@ -28,7 +28,7 @@ import { useReviews } from '../../context/ReviewContext';
 import { useToast } from '../../context/ToastContext';
 import ConfirmationModal from '../../components/settings/ConfirmationModal';
 import { useUserProfile } from '../../hooks/useUserProfile';
-import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
+import { useCafeCategories } from '../../hooks/useCafeCategories';
 import { getReviewById } from '../../lib/follows';
 import type { PublicUser } from '../../lib/follows';
 import { approximateDistanceMeters, extractLocation, formatDistance } from '../../lib/geo';
@@ -121,31 +121,9 @@ export default function DiaryEntryScreen() {
   const photos = useMemo(() => review?.photos?.filter(Boolean) ?? [], [review?.photos]);
   const attributes = useMemo(() => review?.attributes?.filter(Boolean) ?? [], [review?.attributes]);
 
-  // Attribute chips carry the same icon the category was picked with. Only
-  // fetched when the review actually has attributes.
-  const [categories, setCategories] = useState<CafeCategory[]>([]);
-  useEffect(() => {
-    if (attributes.length === 0) return;
-    let cancelled = false;
-    getCafeCategories()
-      .then((rows) => {
-        if (!cancelled) setCategories(rows);
-      })
-      .catch(() => {
-        /* Chips fall back to label-only. */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [attributes.length]);
-
-  const iconByLabel = useMemo(() => {
-    const map = new Map<string, string>();
-    categories.forEach((category) => {
-      if (category.icon_svg_xml) map.set(category.label, category.icon_svg_xml);
-    });
-    return map;
-  }, [categories]);
+  // Attributes are stored as cafe_categories ids, so both the label and the
+  // icon are looked up. Backed by the session-level category cache.
+  const { byId: categoryById } = useCafeCategories();
 
   const [photoIndex, setPhotoIndex] = useState(0);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
@@ -390,11 +368,17 @@ export default function DiaryEntryScreen() {
           {attributes.length > 0 && (
             <View style={styles.attributeRow}>
               {attributes.map((attribute) => {
-                const icon = iconByLabel.get(attribute);
+                const category = categoryById.get(attribute);
                 return (
                   <View key={attribute} style={styles.attributeChip}>
-                    {!!icon && <SvgXml xml={icon} width={12} height={12} />}
-                    <Text style={styles.attributeChipText}>{attribute}</Text>
+                    {!!category?.icon_svg_xml && (
+                      <SvgXml xml={category.icon_svg_xml} width={12} height={12} />
+                    )}
+                    <Text style={styles.attributeChipText}>
+                      {/* Fall back to the raw id so an unknown or
+                          not-yet-loaded value still renders. */}
+                      {category?.label ?? attribute}
+                    </Text>
                   </View>
                 );
               })}

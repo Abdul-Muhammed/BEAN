@@ -89,12 +89,13 @@ const FiltersBottomSheet = forwardRef<
     setDraft((d) => ({ ...d, minRating: 0 }));
   }, []);
 
-  const toggleCategory = useCallback((label: string) => {
+  // Selection is by id; the chip still displays the label.
+  const toggleCategory = useCallback((id: string) => {
     setDraft((d) => ({
       ...d,
-      categories: d.categories.includes(label)
-        ? d.categories.filter((c) => c !== label)
-        : [...d.categories, label],
+      categories: d.categories.includes(id)
+        ? d.categories.filter((c) => c !== id)
+        : [...d.categories, id],
     }));
   }, []);
 
@@ -121,6 +122,14 @@ const FiltersBottomSheet = forwardRef<
   );
 
   const count = countFor(draft);
+
+  // Categories are filtered server-side, so a draft whose categories differ
+  // from the committed set describes a query we have not run yet — countFor
+  // would report the CURRENT results and be wrong. Drop the number rather than
+  // show a figure the next screen will contradict.
+  const categoriesDiffer =
+    [...draft.categories].sort().join(",") !==
+    [...committed.categories].sort().join(",");
   const visibleCategories = showAllCategories
     ? categories
     : categories.slice(0, CATEGORY_COLLAPSED_COUNT);
@@ -181,13 +190,13 @@ const FiltersBottomSheet = forwardRef<
           <Text style={styles.sectionTitle}>Categories</Text>
           <View style={styles.categoriesWrap}>
             {visibleCategories.map((category) => {
-              const selected = draft.categories.includes(category.label);
+              const selected = draft.categories.includes(category.id);
               return (
                 <FilterChip
                   key={category.id}
                   label={category.label}
                   active={selected}
-                  onPress={() => toggleCategory(category.label)}
+                  onPress={() => toggleCategory(category.id)}
                   leadingIcon={
                     !selected && category.icon_svg_xml ? (
                       <SvgXml
@@ -224,7 +233,11 @@ const FiltersBottomSheet = forwardRef<
             activeOpacity={0.9}
           >
             <Text style={styles.showButtonText}>
-              {count === 1 ? 'Show 1 Cafe' : `Show ${count} Cafes`}
+              {categoriesDiffer
+                ? 'Show Cafes'
+                : count === 1
+                  ? 'Show 1 Cafe'
+                  : `Show ${count} Cafes`}
             </Text>
           </TouchableOpacity>
         </View>

@@ -3,6 +3,7 @@ import {
   cafeRowToPlaceLike,
   corsHeaders,
   createServiceClient,
+  fetchCategoryTags,
   GOOGLE_PLACES_API_KEY,
   googlePlaceToPlaceLike,
   isNzPlace,
@@ -27,6 +28,8 @@ interface NearbyRequest {
   address?: string;
   radius: number;
   maxPages: number;
+  /** Community category ids. Matching is ANY-of, not all-of. */
+  categoryIds?: string[];
 }
 
 function delay(ms: number): Promise<void> {
@@ -46,6 +49,9 @@ function parseNearbyRequest(input: Partial<NearbyRequest>): NearbyRequest {
   const radius = Number(input.radius ?? 5000);
   const maxPages = Number(input.maxPages ?? 1);
   const address = typeof input.address === 'string' ? input.address.trim() : undefined;
+  const categoryIds = Array.isArray(input.categoryIds)
+    ? input.categoryIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    : undefined;
 
   if (!Number.isFinite(radius) || radius <= 0 || radius > 50000) {
     throw new Error('radius must be a number between 1 and 50000');
@@ -66,11 +72,11 @@ function parseNearbyRequest(input: Partial<NearbyRequest>): NearbyRequest {
     if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
       throw new Error('lng must be a number between -180 and 180');
     }
-    return { lat, lng, radius, maxPages };
+    return { lat, lng, radius, maxPages, categoryIds };
   }
 
   if (address) {
-    return { address, radius, maxPages };
+    return { address, radius, maxPages, categoryIds };
   }
 
   throw new Error('Provide either lat/lng or an address');
@@ -222,13 +228,24 @@ serve(async (req) => {
       body.maxPages
     );
 
+    // A category filter is a DB-only concern. Google Nearby Search cannot
+    // filter on community tags, and any cafe that HAS tags is by definition
+    // already a row in `cafes` — so a filtered request never falls through to
+    // Google. The filter is also deliberately kept OUT of the viewport cache
+    // key: including it would mint a fresh cache entry per category
+    // combination and drive Places spend for no benefit.
+    const categoryIds = body.categoryIds ?? [];
+    const filtering = categoryIds.length > 0;
+
     // 1. Shared viewport cache (fast path for repeated map areas).
-    const { data: cached, error: cacheError } = await supabase
-      .from('nearby_places_cache')
-      .select('results, expires_at')
-      .eq('cache_key', cacheKey)
-      .gt('expires_at', new Date().toISOString())
-      .maybeSingle();
+    const { data: cached, error: cacheError } = filtering
+      ? { data: null, error: null }
+      : await supabase
+          .from('nearby_places_cache')
+          .select('results, expires_at')
+          .eq('cache_key', cacheKey)
+          .gt('expires_at', new Date().toISOString())
+          .maybeSingle();
     if (cacheError) {
       console.warn('Nearby cache lookup failed:', cacheError.message);
     }
@@ -246,6 +263,7 @@ serve(async (req) => {
       p_lng: lng,
       p_radius_meters: roundedRadius,
       p_limit: pages * 20,
+      p_category_ids: filtering ? categoryIds : null,
     });
     if (dbError) {
       console.warn('cafes_nearby RPC failed:', dbError.message);
@@ -254,6 +272,17 @@ serve(async (req) => {
     const nzDbRows = Array.isArray(dbRows)
       ? dbRows.filter((row: Record<string, any>) => isNzPlace(row))
       : [];
+    // Filtered requests always return whatever the DB knows, however few —
+    // an empty result is the honest answer ("nobody has tagged a cafe here",
+    // which the client renders as an empty state), not a reason to bill a
+    // Google search that cannot answer the question anyway.
+    if (filtering) {
+      const results: PlaceLike[] = nzDbRows.map((row: Record<string, any>) =>
+        cafeRowToPlaceLike(row)
+      );
+      return jsonResponse({ results, cache: 'db_filtered' });
+    }
+
     if (nzDbRows.length >= MIN_DB_RESULTS) {
       const results: PlaceLike[] = nzDbRows.map((row: Record<string, any>) =>
         cafeRowToPlaceLike(row)
@@ -274,12 +303,29 @@ serve(async (req) => {
       (place) => isNzPlace(place)
     );
 
-    const results: PlaceLike[] = [];
+    const thumbs: (string | null)[] = [];
     for (let i = 0; i < googleResults.length; i++) {
-      const place = googleResults[i];
-      const thumb = await upsertCafeFromPlace(supabase, place, i < MAX_THUMBNAILS);
-      results.push(googlePlaceToPlaceLike(place, thumb));
+      thumbs.push(
+        await upsertCafeFromPlace(supabase, googleResults[i], i < MAX_THUMBNAILS)
+      );
     }
+
+    // Some of these may already carry tags from earlier reviews; one batched
+    // lookup stops them rendering untagged until the next DB-served fetch.
+    const tagsByPlaceId = await fetchCategoryTags(
+      supabase,
+      googleResults
+        .map((place) => place.place_id || place.id)
+        .filter((id: unknown): id is string => typeof id === 'string')
+    );
+
+    const results: PlaceLike[] = googleResults.map((place, i) =>
+      googlePlaceToPlaceLike(
+        place,
+        thumbs[i],
+        tagsByPlaceId.get(place.place_id || place.id) ?? []
+      )
+    );
 
     await writeNearbyCache(supabase, {
       cacheKey,

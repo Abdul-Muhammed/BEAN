@@ -1,13 +1,14 @@
 import React from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
-import { MapPin, Star, Wifi, Car } from 'lucide-react-native';
+import { MapPin } from 'lucide-react-native';
 import { CoffeeBean } from './BeanRating';
 import { Cafe } from '../data/mockData';
 import { useReviews } from '../context/ReviewContext';
 import { useUserProfile } from '../hooks/useUserProfile';
 import { approximateDistanceMeters, extractLocation, formatDistance } from '../lib/geo';
 import CafeStatusBadges, { type CafeBadgeKind } from './CafeStatusBadges';
+import CafeTagChips from './CafeTagChips';
 import { colors, fonts } from '@/constants/theme';
 
 interface ListCafeCardProps {
@@ -16,11 +17,6 @@ interface ListCafeCardProps {
   hideBadges?: CafeBadgeKind[];
 }
 
-const AMENITY_ICONS: Record<string, React.ReactNode> = {
-  'Has WiFi': <Wifi size={12} color="#8E8E93" />,
-  'Top Rated': <Star size={12} color={colors.gold} fill={colors.gold} />,
-  Parking: <Car size={12} color="#8E8E93" />,
-};
 
 function ListCafeCard({ cafe, hideBadges }: ListCafeCardProps) {
   const { addCafe } = useReviews();
@@ -51,9 +47,6 @@ function ListCafeCard({ cafe, hideBadges }: ListCafeCardProps) {
     distanceLabel = formatDistance(meters);
   }
 
-  const amenities = cafe.amenities || [];
-  const visibleAmenities = amenities.slice(0, 2);
-  const remainingCount = Math.max(0, amenities.length - 2);
 
   return (
     <View style={styles.cardWrapper}>
@@ -74,21 +67,7 @@ function ListCafeCard({ cafe, hideBadges }: ListCafeCardProps) {
             </View>
           )}
 
-          {amenities.length > 0 && (
-            <View style={styles.amenitiesRow}>
-              {visibleAmenities.map((amenity, index) => (
-                <View key={index} style={styles.chip}>
-                  {AMENITY_ICONS[amenity]}
-                  <Text style={styles.chipText}>{amenity}</Text>
-                </View>
-              ))}
-              {remainingCount > 0 && (
-                <View style={styles.chip}>
-                  <Text style={styles.chipText}>+{remainingCount}</Text>
-                </View>
-              )}
-            </View>
-          )}
+          <CafeTagChips tags={cafe.tags} style={styles.amenitiesRow} />
 
           {!!cafe.rating && (
             <View style={styles.ratingRow}>
@@ -161,22 +140,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 6,
     marginBottom: 8,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderWidth: 1,
-    borderColor: colors.warmBorder,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  chipText: {
-    fontSize: 12,
-    fontFamily: fonts.body,
-    color: colors.primary,
   },
   ratingRow: {
     flexDirection: 'row',

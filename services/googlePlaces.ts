@@ -1,5 +1,7 @@
 import { CafeHours } from '../data/mockData';
 import { supabase } from '../lib/supabase';
+import { getCafeTags, type CafeTag } from '../lib/cafeTags';
+export type { CafeTag };
 
 // All Google Places access now goes through Supabase Edge Functions, which own
 // the server-side Google key and treat the Postgres `cafes` table + Storage as
@@ -17,14 +19,18 @@ export interface PlacePhoto {
 
 // Shape returned by the search/nearby Edge Functions (matches `PlaceLike` in
 // the function `_shared/places.ts`).
+
 export interface PlaceDetails {
   place_id: string;
   name: string | null;
   formatted_address?: string | null;
   rating?: number | null;
+  user_ratings_total?: number | null;
   types?: string[] | null;
   geometry?: { location: { lat: number | null; lng: number | null } };
   thumbnail_url?: string | null;
+  opening_hours?: { open_now?: boolean } | null;
+  category_tags?: CafeTag[] | null;
 }
 
 const NZ_BOUNDS = {
@@ -69,15 +75,26 @@ export function isNzCafe(cafe: any): boolean {
 // Search cafes around an explicit coordinate through the Supabase Edge
 // Function. The function reads the shared DB/cache first and only calls Google
 // on a miss. `maxPages` is capped server-side to limit Google Places spend.
+//
+// `categoryIds` filters by community tags. That path is answered purely from
+// the DB server-side — Google cannot filter on our taxonomy, and a tagged cafe
+// is always already stored — so it never costs a Places call.
 export async function searchCafesNearbyByCoords(
   lat: number,
   lng: number,
   radius: number = 5000,
-  maxPages: number = 1
+  maxPages: number = 1,
+  categoryIds?: string[]
 ): Promise<PlaceDetails[]> {
   try {
     const { data, error } = await supabase.functions.invoke('nearby-cafes', {
-      body: { lat, lng, radius, maxPages },
+      body: {
+        lat,
+        lng,
+        radius,
+        maxPages,
+        ...(categoryIds && categoryIds.length > 0 ? { categoryIds } : {}),
+      },
     });
     if (error) {
       console.warn('Nearby cafes function error:', error.message);
@@ -191,39 +208,11 @@ export function parseOpeningHours(openingHours: any): CafeHours | null {
   };
 }
 
-// Determine amenities from Google Places types
-export function determineAmenities(types: string[], rating?: number): string[] {
-  const amenities: string[] = [];
-
-  // Check for WiFi (common in cafe types)
-  if (types.some(type => 
-    type.includes('cafe') || 
-    type.includes('restaurant') || 
-    type.includes('food')
-  )) {
-    amenities.push('Has WiFi'); // Assume cafes have WiFi
-  }
-
-  // Check for parking
-  if (types.some(type => type.includes('parking'))) {
-    amenities.push('Parking');
-  }
-
-  // Top Rated (if rating >= 4.5)
-  if (rating && rating >= 4.5) {
-    amenities.push('Top Rated');
-  }
-
-  return amenities;
-}
 
 // Convert a search/nearby result to our Cafe format. Photos are already cached
 // Storage URLs (no Google photo call here); falls back to a placeholder image.
 export async function convertPlaceToCafe(place: any): Promise<any> {
   const photoUrl = place?.thumbnail_url || DEFAULT_CAFE_IMAGE;
-
-  const types = place.types || [];
-  const amenities = determineAmenities(types, place.rating);
 
   const geoLat = place?.geometry?.location?.lat;
   const geoLng = place?.geometry?.location?.lng;
@@ -242,8 +231,16 @@ export async function convertPlaceToCafe(place: any): Promise<any> {
     reviews: [],
     place_id: place.place_id || place.id,
     phone: undefined,
-    hours: undefined,
-    amenities: amenities.length > 0 ? amenities : undefined,
+    // cafes_nearby returns cached opening_hours, so a list cafe can already
+    // know whether it is open. Only the detail fetch fills in weekly hours.
+    hours:
+      place?.opening_hours && typeof place.opening_hours.open_now === 'boolean'
+        ? { openNow: place.opening_hours.open_now }
+        : undefined,
+    // Community tags, aggregated from reviews. Replaces the old `amenities`
+    // array, which was fabricated client-side from Google `types` and could
+    // only ever say "Has WiFi", "Parking" or "Top Rated".
+    tags: Array.isArray(place?.category_tags) ? place.category_tags : [],
     favoritesCount: 0,
     savedCount: 0,
     photos: [photoUrl],
@@ -276,8 +273,9 @@ export async function enrichCafeWithDetails(placeId: string): Promise<any | null
     ? parseOpeningHours(placeDetails.opening_hours)
     : null;
 
-  const types = placeDetails.types || [];
-  const amenities = determineAmenities(types, placeDetails.rating);
+  // Community tags come straight from the DB rather than the details function,
+  // so the detail screen shows the same tags the list cards do.
+  const tags = await getCafeTags(placeId);
 
   const geoLat = placeDetails?.geometry?.location?.lat;
   const geoLng = placeDetails?.geometry?.location?.lng;
@@ -293,7 +291,7 @@ export async function enrichCafeWithDetails(placeId: string): Promise<any | null
     image: photos[0] || undefined,
     phone: placeDetails.formatted_phone_number || undefined,
     hours: hours || undefined,
-    amenities: amenities.length > 0 ? amenities : undefined,
+    tags,
     photos: photos.length > 0 ? photos : undefined,
     rating: placeDetails.rating || undefined,
     latitude,

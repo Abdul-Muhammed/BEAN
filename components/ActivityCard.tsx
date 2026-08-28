@@ -3,6 +3,7 @@ import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
 import { Bookmark } from 'lucide-react-native';
 import BeanRating from './BeanRating';
 import { UserReview } from '../data/mockData';
+import { useCafeCategories } from '../hooks/useCafeCategories';
 import { colors } from '@/constants/theme';
 
 interface ActivityCardProps {
@@ -13,7 +14,9 @@ interface ActivityCardProps {
 }
 
 export default function ActivityCard({ review, userName, userImage, onPress }: ActivityCardProps) {
-  // Show first 2 attributes, then "+X" for remaining
+  // Show first 2 attributes, then "+X" for remaining. Attributes are stored
+  // as cafe_categories ids, so they need resolving to a label before display.
+  const { byId: categoryById } = useCafeCategories();
   const attributes = review.attributes || [];
   const visibleAttributes = attributes.slice(0, 2);
   const remainingCount = Math.max(0, attributes.length - 2);
@@ -50,7 +53,9 @@ export default function ActivityCard({ review, userName, userImage, onPress }: A
         <View style={styles.tagsContainer}>
           {visibleAttributes.map((attr, index) => (
             <View key={index} style={styles.tag}>
-              <Text style={styles.tagText}>{attr}</Text>
+              <Text style={styles.tagText}>
+                {categoryById.get(attr)?.label ?? attr}
+              </Text>
             </View>
           ))}
           {remainingCount > 0 && (

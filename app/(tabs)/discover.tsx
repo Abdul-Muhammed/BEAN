@@ -228,6 +228,12 @@ export default function DiscoverScreen() {
 
   const [sheetIndex, setSheetIndex] = useState(1);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  // Array identity changes on every setFilters; the sorted join gives the
+  // fetch effect a stable primitive to depend on.
+  const categoryFilterKey = useMemo(
+    () => [...filters.categories].sort().join(','),
+    [filters.categories]
+  );
   // Drives the filters button's inverted state so it's obvious the map results
   // are being narrowed, now that the icon no longer sits inside the search bar.
   const filtersActive = useMemo(() => hasAnyFilter(filters), [filters]);
@@ -350,20 +356,28 @@ export default function DiscoverScreen() {
           setUserCoords(null);
         }
 
-        const cached = await readCachedCafes(coords);
-        if (cancelled) return;
-        if (cached) {
-          setNearbyCafes(cached);
-          setMapCafes((prev) => mergeCafesById(prev, cached));
-          cached.forEach((cafe) => addCafeRef.current(cafe));
-          return;
+        // The on-device cache holds an UNFILTERED nearby list, so it can only
+        // answer an unfiltered request. Reading it while a category filter is
+        // active would serve cafes that do not match it.
+        const filtering = filters.categories.length > 0;
+
+        if (!filtering) {
+          const cached = await readCachedCafes(coords);
+          if (cancelled) return;
+          if (cached) {
+            setNearbyCafes(cached);
+            setMapCafes((prev) => mergeCafesById(prev, cached));
+            cached.forEach((cafe) => addCafeRef.current(cafe));
+            return;
+          }
         }
 
         const results = await searchCafesNearbyByCoords(
           coords.latitude,
           coords.longitude,
           NEARBY_CAFE_SEARCH_RADIUS_METERS,
-          1
+          1,
+          filters.categories
         );
         if (cancelled) return;
 
@@ -385,10 +399,17 @@ export default function DiscoverScreen() {
         setNearbyCafes(nzConverted);
         setMapCafes((prev) => mergeCafesById(prev, nzConverted));
         nzConverted.forEach((cafe) => addCafeRef.current(cafe));
-        await persistNearbyCafes(coords, nzConverted);
+        // Only an unfiltered list is a valid cache entry for this coordinate.
+        if (!filtering) {
+          await persistNearbyCafes(coords, nzConverted);
+        }
 
         if (nzConverted.length === 0) {
-          setCafeError('No cafes found nearby.');
+          setCafeError(
+            filtering
+              ? 'No cafes here match those categories yet. Be the first to review one.'
+              : 'No cafes found nearby.'
+          );
         }
       } catch {
         if (!cancelled) {
@@ -408,7 +429,15 @@ export default function DiscoverScreen() {
     };
     // Re-runs when the provider resolves a fix (or the user grants permission
     // from the gate), swapping the Auckland fallback for the real location.
-  }, [locationCoords]);
+    // Re-runs when the provider resolves a fix (or the user grants permission
+    // from the gate), and when the category filter changes — the latter is a
+    // server-side query, so it needs a new request rather than a re-filter.
+    //
+    // categoryFilterKey is deliberately used in place of filters.categories:
+    // the array gets a new identity on every setFilters, which would re-run
+    // this fetch on unrelated filter changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationCoords, categoryFilterKey]);
 
   // Map markers remain viewport-aware. This does not feed the bottom sheet,
   // which stays anchored to the cached user-location list above.
@@ -497,18 +526,18 @@ export default function DiscoverScreen() {
   // committed filters with the same logic.
   const matchesFilters = useCallback(
     (cafe: Cafe, f: Filters) => {
-      if (f.openNow && cafe.hours?.openNow !== true) return false;
+      // Absence of hours data must not mean "closed". Opening hours only
+      // arrive for cafes whose details have been fetched, so the old
+      // `!== true` test hid almost every cafe the moment Open Now was on.
+      if (f.openNow && cafe.hours?.openNow === false) return false;
       if (f.topRated && cafe.rating < 4.5) return false;
       if (f.saved && !isBookmarked(cafe.id)) return false;
       if (f.liked && !isFavorited(cafe.id)) return false;
       if (f.alreadyRated && !reviewedCafeIds.has(cafe.id)) return false;
       if (f.minRating > 0 && cafe.rating < f.minRating) return false;
-      if (f.categories.length > 0) {
-        const amenities = cafe.amenities ?? [];
-        if (!f.categories.every((label) => amenities.includes(label))) {
-          return false;
-        }
-      }
+      // Categories are NOT handled here. They are applied server-side by
+      // cafes_nearby so a match can be a cafe that was never in this
+      // viewport fetch — which client-side filtering could never surface.
       return true;
     },
     [isBookmarked, isFavorited, reviewedCafeIds]

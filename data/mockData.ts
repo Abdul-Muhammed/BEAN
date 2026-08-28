@@ -1,3 +1,5 @@
+import type { CafeTag } from '../lib/cafeTags';
+
 export interface CafeHours {
   openNow: boolean;
   currentHours?: string; // e.g., "Open Now 3:30pm - 7:30pm"
@@ -14,7 +16,14 @@ export interface Cafe {
   reviews: Review[];
   phone?: string;
   hours?: CafeHours;
-  amenities?: string[]; // e.g., ["Has WiFi", "Parking", "Top Rated"]
+  /**
+   * @deprecated Fabricated client-side from Google types and only ever able
+   * to say "Has WiFi" / "Parking" / "Top Rated". Nothing renders it any more —
+   * use `tags` instead. Retained only because the mock seed data still sets it.
+   */
+  amenities?: string[];
+  /** Community tags aggregated from reviews (cafe_category_tags). */
+  tags?: CafeTag[];
   favoritesCount?: number;
   savedCount?: number;
   photos?: string[]; // Array of photo URLs

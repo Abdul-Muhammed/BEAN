@@ -21,12 +21,12 @@ import {
   Phone, 
   ExternalLink,
   Star,
-  Wifi,
 } from 'lucide-react-native';
 import ReviewCard from '../../components/ReviewCard';
 import CafeDetailSkeleton from '../../components/CafeDetailSkeleton';
 import PhotoGallery from '../../components/PhotoGallery';
 import RatingHistogram from '../../components/RatingHistogram';
+import CafeTagChips from '../../components/CafeTagChips';
 import { useReviews } from '../../context/ReviewContext';
 import { enrichCafeWithDetails } from '../../services/googlePlaces';
 import { colors } from '@/constants/theme';
@@ -101,7 +101,7 @@ export default function CafeDetailScreen() {
               image: nextImage,
               phone: enrichedData.phone || cafe.phone,
               hours: enrichedData.hours || cafe.hours,
-              amenities: enrichedData.amenities || cafe.amenities,
+              tags: enrichedData.tags ?? cafe.tags,
               photos: nextPhotos,
               rating: enrichedData.rating || cafe.rating
             };
@@ -308,18 +308,13 @@ export default function CafeDetailScreen() {
             </TouchableOpacity>
           )}
 
-          {/* Amenities Badges */}
-          {cafe.amenities && cafe.amenities.length > 0 && (
-            <View style={styles.amenitiesRow}>
-              {cafe.amenities.map((amenity, index) => (
-                <View key={index} style={styles.amenityBadge}>
-                  {amenity === 'Has WiFi' && <Wifi size={14} color="#007AFF" />}
-                  {amenity === 'Top Rated' && <Star size={14} color="#D4AF37" fill="#D4AF37" />}
-                  <Text style={styles.amenityText}>{amenity}</Text>
-                </View>
-              ))}
-            </View>
-          )}
+          {/* Community tags, from what reviewers said about this cafe */}
+          <CafeTagChips
+            tags={cafe.tags}
+            limit={4}
+            showCounts
+            style={styles.amenitiesRow}
+          />
 
           {/* Ratings Section */}
           <View style={styles.ratingsSection}>
@@ -348,24 +343,16 @@ export default function CafeDetailScreen() {
             </View>
           </View>
 
-          {/* Amenities Section */}
-          {cafe.amenities && cafe.amenities.length > 0 && (
+          {/* What people say — the same tags the category filters query */}
+          {!!cafe.tags?.length && (
             <View style={styles.amenitiesSection}>
-              <Text style={styles.sectionTitle}>Amenities</Text>
-              <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={false}
+              <Text style={styles.sectionTitle}>What People Say</Text>
+              <CafeTagChips
+                tags={cafe.tags}
+                limit={cafe.tags.length}
+                showCounts
                 style={styles.amenitiesScroll}
-              >
-                {cafe.amenities.map((amenity, index) => (
-                  <View key={index} style={styles.amenityItem}>
-                    {amenity === 'Has WiFi' && <Wifi size={20} color="#007AFF" />}
-                    {amenity === 'Parking' && <Text style={styles.amenityEmoji}>🅿️</Text>}
-                    {amenity === 'Top Rated' && <Star size={20} color="#D4AF37" fill="#D4AF37" />}
-                    <Text style={styles.amenityItemText}>{amenity}</Text>
-                  </View>
-                ))}
-              </ScrollView>
+              />
             </View>
           )}
 
@@ -539,20 +526,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 24,
   },
-  amenityBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 6,
-  },
-  amenityText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#1C1C1E',
-  },
   ratingsSection: {
     marginBottom: 32,
   },
@@ -591,24 +564,6 @@ const styles = StyleSheet.create({
   },
   amenitiesScroll: {
     marginTop: 12,
-  },
-  amenityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginRight: 12,
-    gap: 8,
-  },
-  amenityEmoji: {
-    fontSize: 20,
-  },
-  amenityItemText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#1C1C1E',
   },
   reviewsSection: {
     marginBottom: 32,

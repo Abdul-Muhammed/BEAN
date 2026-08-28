@@ -1,11 +1,12 @@
 import React from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
-import { MapPin, Bookmark, Star, Wifi } from 'lucide-react-native';
+import { MapPin, Bookmark } from 'lucide-react-native';
 import { CoffeeBean } from './BeanRating';
 import { Cafe } from '../data/mockData';
 import { useReviews } from '../context/ReviewContext';
 import CafeStatusBadges, { type CafeBadgeKind } from './CafeStatusBadges';
+import CafeTagChips from './CafeTagChips';
 import { colors } from '@/constants/theme';
 
 const DEFAULT_CAFE_IMAGE =
@@ -51,9 +52,6 @@ function MapCafeCard({ cafe, hideBadges }: MapCafeCardProps) {
   };
 
   const location = extractLocation(cafe.location);
-  const amenities = cafe.amenities || [];
-  const visibleAmenities = amenities.slice(0, 2);
-  const remainingCount = Math.max(0, amenities.length - 2);
   const isBooked = isBookmarked(cafe.id);
 
   return (
@@ -86,20 +84,7 @@ function MapCafeCard({ cafe, hideBadges }: MapCafeCardProps) {
           </View>
 
           <View style={styles.footer}>
-            <View style={styles.amenitiesRow}>
-              {visibleAmenities.map((amenity, index) => (
-                <View key={index} style={styles.amenityTag}>
-                  {amenity === 'Has WiFi' && <Wifi size={12} color="#007AFF" />}
-                  {amenity === 'Top Rated' && <Star size={12} color="#D4AF37" fill="#D4AF37" />}
-                  <Text style={styles.amenityText}>{amenity}</Text>
-                </View>
-              ))}
-              {remainingCount > 0 && (
-                <View style={styles.moreTag}>
-                  <Text style={styles.moreText}>+{remainingCount}</Text>
-                </View>
-              )}
-            </View>
+            <CafeTagChips tags={cafe.tags} style={styles.amenitiesRow} />
 
             <View style={styles.ratingRow}>
               <CoffeeBean size={16} />
@@ -192,31 +177,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 6,
     flex: 1,
-  },
-  amenityTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
-  },
-  amenityText: {
-    fontSize: 12,
-    fontFamily: 'Lato-Regular',
-    color: '#1C1C1E',
-  },
-  moreTag: {
-    backgroundColor: '#F5F5F5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  moreText: {
-    fontSize: 12,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
   },
   ratingRow: {
     flexDirection: 'row',

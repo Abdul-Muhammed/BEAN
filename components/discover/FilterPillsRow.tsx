@@ -6,6 +6,7 @@ import {
   categoriesSummary,
   formatMinRating,
 } from './filterTypes';
+import { categoryLabel, useCafeCategories } from '../../hooks/useCafeCategories';
 
 /** Boolean quick-filters that appear as their own dismissible pill when active. */
 type RemovableKey = 'topRated' | 'saved' | 'liked' | 'alreadyRated';
@@ -34,6 +35,7 @@ export default function FilterPillsRow({
   onToggleOpenNow,
   onRemove,
 }: FilterPillsRowProps) {
+  const { byId } = useCafeCategories();
   const ratingActive = filters.minRating > 0;
   const categoriesActive = filters.categories.length > 0;
 
@@ -62,7 +64,7 @@ export default function FilterPillsRow({
       />
 
       <FilterChip
-        label={categoriesSummary(filters.categories)}
+        label={categoriesSummary(filters.categories, (id) => categoryLabel(byId, id))}
         active={categoriesActive}
         showChevron={!categoriesActive}
         onPress={onOpenSheet}

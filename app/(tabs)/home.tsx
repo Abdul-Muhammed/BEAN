@@ -16,14 +16,13 @@ import { router, useFocusEffect } from 'expo-router';
 import {
   MapPin,
   Star,
-  Wifi,
   Bookmark,
   ChevronRight,
-  Car,
 } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import { CoffeeBean } from '@/components/BeanRating';
 import CafeStatusBadges from '@/components/CafeStatusBadges';
+import CafeTagChips from '@/components/CafeTagChips';
 import {
   Badge,
   BadgeText,
@@ -53,38 +52,46 @@ type FilterType = 'all' | 'open';
 // How many top-rated Auckland cafes to show when we have no location.
 const FALLBACK_CAFE_COUNT = 10;
 
+// A 5.0 from two ratings is not a top cafe. Rows cached before
+// cafes.user_ratings_total existed have no count, so the guard is applied only
+// while it still leaves a full list — otherwise it would empty the fallback.
+const MIN_RATINGS_FOR_TOP = 20;
+
+function rankTopRated<T extends { rating?: number | null; user_ratings_total?: number | null }>(
+  places: T[]
+): T[] {
+  const byRating = [...places].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+  const wellRated = byRating.filter(
+    (place) => (place.user_ratings_total ?? 0) >= MIN_RATINGS_FOR_TOP
+  );
+  const source = wellRated.length >= FALLBACK_CAFE_COUNT ? wellRated : byRating;
+  return source.slice(0, FALLBACK_CAFE_COUNT);
+}
+
 // Minimum interval between unread-notification checks so rapid tab switches
 // don't queue redundant network round-trips.
 const NOTIFICATIONS_CHECK_INTERVAL_MS = 30_000;
 
+/**
+ * Card badges: the cafe's community tags, plus a "Top" badge derived straight
+ * from the Google rating.
+ *
+ * "Top Rated" was previously produced by determineAmenities and read back out
+ * of the same array, even though it was never a real category — so it is now
+ * computed inline where it is shown rather than pretending to be a tag.
+ */
 function AmenityTags({ cafe }: { cafe: any }) {
-  const tags: { label: string; icon: any; bgColor: string; textColor: string; iconColor: string }[] = [];
-
-  if (cafe.amenities?.includes('Has WiFi')) {
-    tags.push({ label: 'WiFi', icon: Wifi, bgColor: '#E3F2FD', textColor: '#007AFF', iconColor: '#007AFF' });
-  }
-  if (cafe.amenities?.includes('Top Rated') || cafe.rating >= 4.5) {
-    tags.push({ label: 'Top', icon: Star, bgColor: '#FFF8E1', textColor: '#D4AF37', iconColor: '#D4AF37' });
-  }
-  if (cafe.amenities?.includes('Parking')) {
-    tags.push({ label: 'Parking', icon: Car, bgColor: '#E8F5E9', textColor: '#4CAF50', iconColor: '#4CAF50' });
-  }
-
-  const extraCount = (cafe.amenities?.length || 0) - tags.length;
+  const isTopRated = cafe.rating >= 4.5;
 
   return (
     <View style={styles.cafeTagsWrapper}>
-      {tags.map((tag, i) => (
-        <Badge key={i} style={[styles.amenityTag, { backgroundColor: tag.bgColor }]}>
-          <tag.icon size={12} color={tag.iconColor} style={styles.tagIcon} />
-          <BadgeText style={[styles.amenityTagText, { color: tag.textColor }]}>{tag.label}</BadgeText>
-        </Badge>
-      ))}
-      {extraCount > 0 && (
-        <Badge style={styles.countTag}>
-          <BadgeText style={styles.countTagText}>+{extraCount}</BadgeText>
+      {isTopRated && (
+        <Badge style={[styles.amenityTag, { backgroundColor: '#FFF8E1' }]}>
+          <Star size={12} color="#D4AF37" fill="#D4AF37" style={styles.tagIcon} />
+          <BadgeText style={[styles.amenityTagText, { color: '#D4AF37' }]}>Top</BadgeText>
         </Badge>
       )}
+      <CafeTagChips tags={cafe.tags} limit={2} />
     </View>
   );
 }
@@ -182,6 +189,9 @@ export default function HomeScreen() {
   // standing in the CBD who grants permission stays on the rating-sorted
   // fallback list, because the distance guard sees they barely moved.
   const lastFetchWasFallbackRef = useRef<boolean | null>(null);
+  // Which category the last fetch asked for, so switching chips always
+  // re-queries even though the user has not moved.
+  const lastFetchCategoryRef = useRef<string | null | undefined>(undefined);
 
   const loadNearbyCafes = useCallback(async () => {
     // With no coordinates we still show something useful: the best-rated cafes
@@ -193,7 +203,8 @@ export default function HomeScreen() {
     // just crossed between fallback and real-location mode, which changes how
     // the list is ranked regardless of distance.
     const modeChanged = lastFetchWasFallbackRef.current !== usingFallback;
-    if (lastFetchCoordsRef.current && !modeChanged) {
+    const categoryChanged = lastFetchCategoryRef.current !== selectedCategoryId;
+    if (lastFetchCoordsRef.current && !modeChanged && !categoryChanged) {
       const moved = approximateDistanceMeters(
         lastFetchCoordsRef.current.lat,
         lastFetchCoordsRef.current.lng,
@@ -208,7 +219,10 @@ export default function HomeScreen() {
     try {
       const results = await searchCafesNearbyByCoords(
         target.latitude,
-        target.longitude
+        target.longitude,
+        undefined,
+        undefined,
+        selectedCategoryId ? [selectedCategoryId] : undefined
       );
 
       // The nearby endpoint returns distance-ordered results, which is what we
@@ -216,9 +230,7 @@ export default function HomeScreen() {
       // CBD point the user has no relationship with is meaningless, so rank by
       // rating instead and keep it to a short, curated list.
       const ranked = usingFallback
-        ? [...results]
-            .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
-            .slice(0, FALLBACK_CAFE_COUNT)
+        ? rankTopRated(results)
         : results.slice(0, 15);
 
       const converted = await Promise.all(
@@ -228,11 +240,12 @@ export default function HomeScreen() {
       setNearbyIds(converted.map((cafe) => cafe.id));
       lastFetchCoordsRef.current = { lat: target.latitude, lng: target.longitude };
       lastFetchWasFallbackRef.current = usingFallback;
+      lastFetchCategoryRef.current = selectedCategoryId;
     } catch {
       setNearbyError('Unable to load nearby cafes.');
     }
     setIsLoadingNearby(false);
-  }, [addCafe, coords]);
+  }, [addCafe, coords, selectedCategoryId]);
 
   // Re-check location each time the Home tab gains focus so the list refreshes
   // when the user has moved, without reloading on every render.
@@ -291,6 +304,10 @@ export default function HomeScreen() {
   const selectedCategories = categories.filter((cat) =>
     preferenceIds.includes(cat.id)
   );
+  const selectedCategoryLabel = selectedCategoryId
+    ? (categories.find((cat) => cat.id === selectedCategoryId)?.label ??
+      selectedCategoryId)
+    : null;
 
   const handleCafeClick = useCallback(
     (cafe: any) => {
@@ -417,7 +434,13 @@ export default function HomeScreen() {
       {!isLoadingNearby && !nearbyError && displayCafes.length === 0 && (
         <View style={styles.loadingContainer}>
           <Text style={styles.emptyText}>
-            {isFallback ? 'No cafes found.' : 'No cafes found nearby.'}
+            {selectedCategoryLabel
+              ? `No cafes tagged ${selectedCategoryLabel} ${
+                  isFallback ? 'in Auckland' : 'near you'
+                } yet — be the first to review one.`
+              : isFallback
+                ? 'No cafes found.'
+                : 'No cafes found nearby.'}
           </Text>
         </View>
       )}

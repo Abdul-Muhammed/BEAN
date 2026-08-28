@@ -61,6 +61,14 @@ interface ReviewFormProps {
   onSubmit: (values: ReviewFormValues) => void;
 }
 
+// How many categories a reviewer may attribute to one cafe.
+//
+// This form is the ONLY source of the tag data every category filter queries,
+// so too low a cap starves it: a genuinely halal, cozy, wifi-having,
+// study-friendly cafe could only ever contribute three of those. Too high and
+// it becomes a select-everything checklist that means nothing.
+const MAX_ATTRIBUTES = 5;
+
 const ORDER_ITEMS = [
   'Flat White',
   'Latte',
@@ -179,7 +187,7 @@ export default function ReviewForm({
       if (prev.includes(attributeId)) {
         return prev.filter((id) => id !== attributeId);
       }
-      if (prev.length >= 3) {
+      if (prev.length >= MAX_ATTRIBUTES) {
         return prev;
       }
       return [...prev, attributeId];
@@ -455,15 +463,18 @@ export default function ReviewForm({
                 >
                   <View style={styles.collapsedStepText}>
                     <StepEyebrow title="What Did You Like?" />
-                    <Text style={styles.stepHint}>Choose up to 3</Text>
+                    <Text style={styles.stepHint}>
+                      Choose up to {MAX_ATTRIBUTES} · {selectedAttributes.length}/
+                      {MAX_ATTRIBUTES}
+                    </Text>
                   </View>
                   <ChevronUp size={20} color={colors.mutedText} />
                 </TouchableOpacity>
 
                 <View style={styles.attributesContainer}>
                   {likeCategories.map((category) => {
-                    const isSelected = selectedAttributes.includes(category.label);
-                    const isDisabled = !isSelected && selectedAttributes.length >= 3;
+                    const isSelected = selectedAttributes.includes(category.id);
+                    const isDisabled = !isSelected && selectedAttributes.length >= MAX_ATTRIBUTES;
                     return (
                       <TouchableOpacity
                         key={category.id}
@@ -472,7 +483,7 @@ export default function ReviewForm({
                           isSelected && styles.attributeButtonActive,
                           isDisabled && styles.attributeButtonDisabled,
                         ]}
-                        onPress={() => toggleAttribute(category.label)}
+                        onPress={() => toggleAttribute(category.id)}
                         disabled={isDisabled}
                         activeOpacity={0.8}
                       >
