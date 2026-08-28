@@ -1,10 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActionSheetIOS,
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -22,12 +25,14 @@ import BeanLogo from '../../components/BeanLogo';
 import BeanRating from '../../components/BeanRating';
 import { useAuth } from '../../context/AuthContext';
 import { useReviews } from '../../context/ReviewContext';
+import { useToast } from '../../context/ToastContext';
+import ConfirmationModal from '../../components/settings/ConfirmationModal';
 import { useUserProfile } from '../../hooks/useUserProfile';
 import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
 import { getReviewById } from '../../lib/follows';
 import type { PublicUser } from '../../lib/follows';
 import { approximateDistanceMeters, extractLocation, formatDistance } from '../../lib/geo';
-import { ARROW_LEFT_SVG, EDIT_PENCIL_SVG } from '@/constants/reviewIcons';
+import { ARROW_LEFT_SVG, MORE_VERTICAL_SVG } from '@/constants/reviewIcons';
 import { colors } from '@/constants/theme';
 import { UserReview } from '../../data/mockData';
 
@@ -67,7 +72,9 @@ export default function DiaryEntryScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const { width: screenWidth } = useWindowDimensions();
-  const { userReviews, loading, getCafeById, addCafe, isFavorited } = useReviews();
+  const { userReviews, loading, getCafeById, addCafe, isFavorited, deleteReview } =
+    useReviews();
+  const { showToast } = useToast();
   const { profile } = useUserProfile();
   const { user } = useAuth();
 
@@ -141,6 +148,8 @@ export default function DiaryEntryScreen() {
   }, [categories]);
 
   const [photoIndex, setPhotoIndex] = useState(0);
+  const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const heroListRef = useRef<FlatList<string>>(null);
 
   const handleHeroScroll = useCallback(
@@ -213,6 +222,51 @@ export default function DiaryEntryScreen() {
       'A Bean user'
     : '';
 
+
+  // Edit and Delete live behind the hero overflow button rather than a row of
+  // pills, matching the ActionSheet-with-Alert-fallback pattern used for the
+  // photo picker in ReviewForm.
+  const openOptions = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Edit Review', 'Delete Review', 'Cancel'],
+          destructiveButtonIndex: 1,
+          cancelButtonIndex: 2,
+        },
+        (index) => {
+          if (index === 0) router.push(`/edit-review/${review.id}` as any);
+          else if (index === 1) setConfirmDeleteVisible(true);
+        }
+      );
+    } else {
+      Alert.alert('Review Options', undefined, [
+        { text: 'Edit Review', onPress: () => router.push(`/edit-review/${review.id}` as any) },
+        {
+          text: 'Delete Review',
+          style: 'destructive',
+          onPress: () => setConfirmDeleteVisible(true),
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    const ok = await deleteReview(review.id);
+    setDeleting(false);
+    setConfirmDeleteVisible(false);
+
+    if (!ok) {
+      Alert.alert('Could not delete review', 'Something went wrong. Please try again.');
+      return;
+    }
+
+    router.back();
+    showToast({ message: 'Review deleted' });
+  };
+
   return (
     // The Figma frame puts the status bar on the cream background above the
     // photo rather than over it, so the hero starts below the top inset.
@@ -253,11 +307,10 @@ export default function DiaryEntryScreen() {
           <HeroButton xml={ARROW_LEFT_SVG} side="left" label="Go back" onPress={() => router.back()} />
           {isOwner && (
             <HeroButton
-              xml={EDIT_PENCIL_SVG}
+              xml={MORE_VERTICAL_SVG}
               side="right"
-              label="Edit review"
-              // Route types regenerate when the dev server picks up the new file.
-              onPress={() => router.push(`/edit-review/${review.id}` as any)}
+              label="Review options"
+              onPress={openOptions}
             />
           )}
 
@@ -359,6 +412,17 @@ export default function DiaryEntryScreen() {
           <Text style={styles.shareButtonText}>Share Review</Text>
         </TouchableOpacity>
       </View>
+
+      <ConfirmationModal
+        visible={confirmDeleteVisible}
+        title="Delete review?"
+        message="This removes the review and its photos for good. This can't be undone."
+        confirmLabel="Delete"
+        destructive
+        loading={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDeleteVisible(false)}
+      />
     </SafeAreaView>
   );
 }

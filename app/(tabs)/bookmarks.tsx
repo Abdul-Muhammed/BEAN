@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, ChevronRight } from 'lucide-react-native';
+import { ChevronRight } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import ListCafeCard from '../../components/ListCafeCard';
@@ -44,13 +44,6 @@ export default function ListsScreen() {
 
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Lists</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => router.push('/list/create')}
-          hitSlop={8}
-        >
-          <Plus size={22} color={colors.primary} />
-        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -122,16 +115,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontFamily: fonts.heading,
     color: colors.primary,
-  },
-  addButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.warmBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface,
   },
   scrollView: {
     flex: 1,
