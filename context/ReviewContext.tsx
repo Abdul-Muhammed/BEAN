@@ -5,7 +5,7 @@ import { useToast } from './ToastContext';
 import { useUserProfile } from '../hooks/useUserProfile';
 import { Cafe, UserReview, Review } from '../data/mockData';
 import { supabase } from '../lib/supabase';
-import { uploadReviewPhotos } from '../lib/storage';
+import { uploadReviewPhotos, deleteReviewPhotos } from '../lib/storage';
 import { triggerSaveHaptic } from '../lib/haptics';
 
 interface AddReviewInput {
@@ -55,6 +55,8 @@ interface ReviewContextType {
   addReview: (input: AddReviewInput) => Promise<string | undefined>;
   // Resolves true when the review was successfully updated in the backend.
   updateReview: (input: UpdateReviewInput) => Promise<boolean>;
+  // Resolves true when the review was successfully removed from the backend.
+  deleteReview: (reviewId: string) => Promise<boolean>;
   addCafe: (cafe: Cafe) => void;
   getCafeById: (cafeId: string) => Cafe | undefined;
   toggleBookmark: (cafeId: string) => Promise<void>;
@@ -783,6 +785,64 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
     [userId]
   );
 
+  const deleteReview = useCallback(
+    async (reviewId: string): Promise<boolean> => {
+      if (!userId) {
+        console.warn('Cannot delete review while signed out');
+        return false;
+      }
+
+      // Snapshot everything we need to restore on failure, and to clean up
+      // Storage on success.
+      const removed = userReviews.find((r) => r.id === reviewId);
+      if (!removed) {
+        console.warn('Cannot delete unknown review', reviewId);
+        return false;
+      }
+      const previousUserReviews = userReviews;
+      const previousCafes = cafes;
+
+      // Optimistically drop it from the diary AND from the cafe's embedded
+      // reviews — `app/cafe/[id].tsx` derives its review count and rating
+      // histogram from `cafe.reviews`, so a stale entry makes the review
+      // reappear on the cafe page.
+      setUserReviews((prev) => prev.filter((r) => r.id !== reviewId));
+      setCafes((prevCafes) =>
+        prevCafes.map((c) => {
+          if (c.id !== removed.cafeId) return c;
+          const updated = c.reviews.filter((rv) => rv.id !== reviewId);
+          if (updated.length === c.reviews.length) return c;
+          // Only re-average while reviews remain. `cafe.rating` starts as the
+          // Google rating and is overwritten by addReview, so zeroing it on the
+          // last delete would show the cafe as unrated rather than restoring it.
+          if (updated.length === 0) return { ...c, reviews: updated };
+          const avg = updated.reduce((sum, r) => sum + r.rating, 0) / updated.length;
+          return { ...c, reviews: updated, rating: Math.round(avg * 10) / 10 };
+        })
+      );
+
+      const { error } = await supabase
+        .from('reviews')
+        .delete()
+        .eq('id', reviewId)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.warn('Failed to delete review:', error.message);
+        setUserReviews(previousUserReviews);
+        setCafes(previousCafes);
+        return false;
+      }
+
+      // Best-effort: the row is already gone, so a Storage failure must not
+      // fail the delete or surface an error to the user.
+      void deleteReviewPhotos(removed.photos ?? []);
+
+      return true;
+    },
+    [userId, userReviews, cafes]
+  );
+
   // Memoized so consumers only re-render when context data actually changes,
   // not on every provider render.
   const value = useMemo(
@@ -794,6 +854,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
       favoritedCafes,
       addReview,
       updateReview,
+      deleteReview,
       addCafe,
       getCafeById,
       toggleBookmark,
@@ -810,6 +871,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
       favoritedCafes,
       addReview,
       updateReview,
+      deleteReview,
       addCafe,
       getCafeById,
       toggleBookmark,

@@ -69,6 +69,31 @@ serve(async (req: Request) => {
     }
   }
 
+  // Purge the user's uploaded images. Both buckets store objects under a
+  // "<uid>/" prefix, so listing that folder is enough. Best-effort: a storage
+  // failure must not block the account deletion the user asked for, and the
+  // objects are unreachable once the rows referencing them are gone.
+  for (const bucket of ['review-photos', 'avatars'] as const) {
+    try {
+      const { data: objects, error: listError } = await admin.storage
+        .from(bucket)
+        .list(userId, { limit: 1000 });
+      if (listError) {
+        console.warn(`Failed to list ${bucket} for ${userId}: ${listError.message}`);
+        continue;
+      }
+      const paths = (objects ?? []).map((o) => `${userId}/${o.name}`);
+      if (paths.length === 0) continue;
+
+      const { error: removeError } = await admin.storage.from(bucket).remove(paths);
+      if (removeError) {
+        console.warn(`Failed to remove ${bucket} objects: ${removeError.message}`);
+      }
+    } catch (err) {
+      console.warn(`Unexpected error purging ${bucket}:`, err);
+    }
+  }
+
   const { error: profileError } = await admin.from('profiles').delete().eq('id', userId);
   if (profileError) {
     return jsonResponse({ error: `Failed to delete profile: ${profileError.message}` }, 500);

@@ -92,3 +92,52 @@ export async function uploadAvatar(
 
   return data.publicUrl;
 }
+
+/**
+ * Delete review images from the `review-photos` bucket, given the public URLs
+ * stored on the review row. The storage policy "Users can delete their own
+ * review photos" scopes this to the caller's own `<uid>/` folder.
+ *
+ * Best-effort by design: callers fire this after the review row is already
+ * gone, so a storage failure must never surface an error or roll anything
+ * back — the user's intent was to remove the review. Failures are logged only.
+ */
+export async function deleteReviewPhotos(urls: string[]): Promise<void> {
+  const paths = (urls ?? [])
+    .map(publicUrlToStoragePath)
+    .filter((path): path is string => !!path);
+
+  if (paths.length === 0) return;
+
+  try {
+    const { error } = await supabase.storage
+      .from(REVIEW_PHOTOS_BUCKET)
+      .remove(paths);
+    if (error) {
+      console.warn('Failed to delete review photos:', error.message);
+    }
+  } catch (err) {
+    console.warn('Unexpected error deleting review photos:', err);
+  }
+}
+
+// Turn a public Storage URL back into the bucket-relative path `remove()` wants:
+//   https://<proj>.supabase.co/storage/v1/object/public/review-photos/<uid>/<f>.jpg
+//                                                                    ^^^^^^^^^^^^^
+// Returns null for anything that isn't a review-photos URL (e.g. a legacy
+// local file:// URI), so those are skipped rather than throwing.
+function publicUrlToStoragePath(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const marker = `/${REVIEW_PHOTOS_BUCKET}/`;
+  const index = url.indexOf(marker);
+  if (index === -1) return null;
+
+  const path = url.slice(index + marker.length).split('?')[0];
+  if (!path) return null;
+
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+}
