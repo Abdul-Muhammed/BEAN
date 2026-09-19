@@ -698,7 +698,7 @@ export default function DiscoverScreen() {
           showsUserLocation={hasLocationPermission}
           showsMyLocationButton={false}
           showsCompass={false}
-          showsPointsOfInterest={false}
+          showsPointsOfInterests={false}
           showsBuildings={false}
           showsTraffic={false}
           toolbarEnabled={false}
