@@ -14,6 +14,10 @@ interface TagProps {
   variant?: TagVariant;
   /** s = 12pt text with tight padding, m = 14pt. */
   size?: TagSize;
+  /** Forces the tight 8/4 padding while keeping the size's text and icon.
+   *  The review screen's attribute chips are the one place the frames pair
+   *  body-size text with small-chip padding. */
+  dense?: boolean;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
 }
@@ -29,17 +33,19 @@ export default function Tag({
   iconXml,
   variant = 'outline',
   size = 'm',
+  dense = false,
   onPress,
   style,
 }: TagProps) {
   const filled = variant === 'filled';
-  const iconSize = size === 's' ? 12 : 16;
+  const iconSize = size === 's' || dense ? 12 : 16;
 
   const body = (
     <View
       style={[
         styles.base,
         size === 's' ? styles.sizeS : styles.sizeM,
+        dense && styles.dense,
         variant === 'outlineDark' && styles.outlineDark,
         filled && styles.filled,
         style,
@@ -85,6 +91,11 @@ const styles = StyleSheet.create({
   sizeM: {
     gap: spacing.sm,
     padding: spacing.sm,
+  },
+  dense: {
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
   },
   outlineDark: {
     borderColor: colors.ink,
