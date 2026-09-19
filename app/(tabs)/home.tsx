@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   FlatList,
-  Image,
   TouchableOpacity,
   StatusBar,
   ActivityIndicator,
@@ -13,23 +12,18 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import {
-  MapPin,
-  Star,
-  Wifi,
-  Bookmark,
-  ChevronRight,
-  Car,
-} from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
-import { CoffeeBean } from '@/components/BeanRating';
-import CafeStatusBadges from '@/components/CafeStatusBadges';
-import {
-  Badge,
-  BadgeText,
-  HStack,
-} from '@gluestack-ui/themed';
 import * as Location from 'expo-location';
+
+import BeanScore from '@/components/ui/BeanScore';
+import CafeCard from '@/components/ui/CafeCard';
+import Tag from '@/components/ui/Tag';
+import SectionHeader from '@/components/profile/SectionHeader';
+import CafeStatusBadges from '@/components/CafeStatusBadges';
+import FiltersBottomSheet, {
+  type FiltersBottomSheetHandle,
+} from '@/components/discover/FiltersBottomSheet';
+import { DEFAULT_FILTERS, type Filters } from '@/components/discover/filterTypes';
 import { useReviews } from '../../context/ReviewContext';
 import {
   searchCafesNearby,
@@ -38,13 +32,19 @@ import {
 } from '../../services/googlePlaces';
 import { useUserProfile } from '../../hooks/useUserProfile';
 import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
+import { buildHomeSections, type CafeSection } from '../../lib/cafeSections';
 import { getUnreadFollowCount } from '../../lib/follows';
 import { getNotificationsLastSeen } from '../../lib/notifications';
-import { approximateDistanceMeters } from '../../lib/geo';
-import { colors } from '@/constants/theme';
-import { NOTIFICATIONS_BELL_SVG } from '@/constants/profileIcons';
-
-type FilterType = 'all' | 'open';
+import { approximateDistanceMeters, extractLocation, formatDistance } from '../../lib/geo';
+import type { Cafe } from '../../data/mockData';
+import { colors, spacing, type } from '@/constants/theme';
+import {
+  ARROW_RIGHT_SVG,
+  BELL_SVG,
+  BOOKMARK_SVG,
+  SLIDERS_SVG,
+  tintIcon,
+} from '@/constants/figmaIcons';
 
 // Only refetch the "Near Me" list once the user has moved past this distance
 // from where we last loaded, so a focus that didn't move the user is cheap.
@@ -55,112 +55,101 @@ const LOCATION_REFRESH_THRESHOLD_METERS = 250;
 // don't queue redundant network round-trips.
 const NOTIFICATIONS_CHECK_INTERVAL_MS = 30_000;
 
-function AmenityTags({ cafe }: { cafe: any }) {
-  const tags: { label: string; icon: any; bgColor: string; textColor: string; iconColor: string }[] = [];
+// How many amenity chips a card shows before collapsing the rest into "+N".
+const CARD_TAG_LIMIT = 2;
 
-  if (cafe.amenities?.includes('Has WiFi')) {
-    tags.push({ label: 'WiFi', icon: Wifi, bgColor: '#E3F2FD', textColor: '#007AFF', iconColor: '#007AFF' });
-  }
-  if (cafe.amenities?.includes('Top Rated') || cafe.rating >= 4.5) {
-    tags.push({ label: 'Top', icon: Star, bgColor: '#FFF8E1', textColor: '#D4AF37', iconColor: '#D4AF37' });
-  }
-  if (cafe.amenities?.includes('Parking')) {
-    tags.push({ label: 'Parking', icon: Car, bgColor: '#E8F5E9', textColor: '#4CAF50', iconColor: '#4CAF50' });
-  }
+const BOOKMARK_SAVED_SVG = tintIcon(BOOKMARK_SVG, colors.ink);
 
-  const extraCount = (cafe.amenities?.length || 0) - tags.length;
+function CardTags({
+  cafe,
+  iconFor,
+}: {
+  cafe: Cafe;
+  iconFor: (label: string) => string | null;
+}) {
+  const amenities = cafe.amenities ?? [];
+  if (amenities.length === 0) return <View />;
+
+  const shown = amenities.slice(0, CARD_TAG_LIMIT);
+  const overflow = amenities.length - shown.length;
 
   return (
-    <View style={styles.cafeTagsWrapper}>
-      {tags.map((tag, i) => (
-        <Badge key={i} style={[styles.amenityTag, { backgroundColor: tag.bgColor }]}>
-          <tag.icon size={12} color={tag.iconColor} style={styles.tagIcon} />
-          <BadgeText style={[styles.amenityTagText, { color: tag.textColor }]}>{tag.label}</BadgeText>
-        </Badge>
+    <View style={styles.cardTags}>
+      {shown.map((amenity) => (
+        <Tag key={amenity} label={amenity} iconXml={iconFor(amenity)} size="s" />
       ))}
-      {extraCount > 0 && (
-        <Badge style={styles.countTag}>
-          <BadgeText style={styles.countTagText}>+{extraCount}</BadgeText>
-        </Badge>
-      )}
+      {overflow > 0 && <Tag label={'+' + overflow} size="s" />}
     </View>
   );
 }
 
-// Memoized so scrolling / unrelated screen state changes don't re-render every
-// visible card.
 const HomeCafeCard = React.memo(function HomeCafeCard({
   cafe,
   bookmarked,
+  distanceLabel,
+  iconFor,
   onPress,
   onToggleBookmark,
 }: {
-  cafe: any;
+  cafe: Cafe;
   bookmarked: boolean;
-  onPress: (cafe: any) => void;
-  onToggleBookmark: (cafe: any) => void;
+  distanceLabel?: string;
+  iconFor: (label: string) => string | null;
+  onPress: (cafe: Cafe) => void;
+  onToggleBookmark: (cafe: Cafe) => void;
 }) {
   return (
-    <View style={styles.cafeCardWrapper}>
-      <View style={styles.cafeCard}>
-        <TouchableOpacity
-          style={styles.cafeCardContent}
-          onPress={() => onPress(cafe)}
-        >
-          <View style={styles.cafeImageContainer}>
-            <Image source={{ uri: cafe.image }} style={styles.cafeImage} />
-          </View>
-          <View style={styles.cafeContent}>
-            <View style={styles.cafeHeader}>
-              <Text style={styles.cafeName} numberOfLines={1}>{cafe.name}</Text>
-              <TouchableOpacity
-                style={styles.bookmarkButton}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onToggleBookmark(cafe);
-                }}
-              >
-                <Bookmark
-                  size={20}
-                  color={bookmarked ? '#D4AF37' : '#8E8E93'}
-                  fill={bookmarked ? '#D4AF37' : 'transparent'}
-                />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.cafeLocation}>
-              <MapPin size={14} color="#8E8E93" />
-              <Text style={styles.locationText} numberOfLines={1}>{cafe.location}</Text>
-            </View>
-            <View style={styles.cafeFooter}>
-              <AmenityTags cafe={cafe} />
-              {cafe.rating ? (
-                <View style={styles.ratingContainer}>
-                  <CoffeeBean size={16} />
-                  <Text style={styles.ratingText}>{cafe.rating.toFixed(1)}</Text>
-                </View>
-              ) : null}
-            </View>
-          </View>
-        </TouchableOpacity>
-      </View>
-
+    // The status badge overhangs the card's corner and the card clips its own
+    // children, so the badge lives in this wrapper rather than inside the card.
+    <View style={styles.cardWrapper}>
+      <CafeCard
+        name={cafe.name}
+        city={extractLocation(cafe.location)}
+        distanceLabel={distanceLabel}
+        imageUri={cafe.image}
+        onPress={() => onPress(cafe)}
+        trailing={
+          <TouchableOpacity
+            onPress={() => onToggleBookmark(cafe)}
+            hitSlop={8}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={
+              bookmarked ? 'Unsave ' + cafe.name : 'Save ' + cafe.name
+            }
+          >
+            <SvgXml
+              xml={bookmarked ? BOOKMARK_SAVED_SVG : BOOKMARK_SVG}
+              width={24}
+              height={24}
+              opacity={bookmarked ? 1 : 0.55}
+            />
+          </TouchableOpacity>
+        }
+        footer={
+          <>
+            <CardTags cafe={cafe} iconFor={iconFor} />
+            <BeanScore rating={cafe.rating} />
+          </>
+        }
+      />
       <CafeStatusBadges cafeId={cafe.id} />
     </View>
   );
 });
 
 export default function HomeScreen() {
-  const { cafes, addCafe, toggleBookmark, isBookmarked } = useReviews();
+  const { cafes, addCafe, toggleBookmark, isBookmarked, isFavorited } = useReviews();
   const { profile } = useUserProfile();
-  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [categories, setCategories] = useState<CafeCategory[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [isLoadingNearby, setIsLoadingNearby] = useState(false);
   const [nearbyError, setNearbyError] = useState<string | null>(null);
   // Whether there are follow notifications newer than the user's last visit to
   // the Notifications screen, driving the bell dot. Re-checked on focus so it
   // clears after a visit advances the last-seen timestamp.
   const [hasUnread, setHasUnread] = useState(false);
+  const filtersSheetRef = useRef<FiltersBottomSheetHandle>(null);
   // Coords of the last successful nearby load, so a re-focus that didn't move
   // the user doesn't trigger a redundant network round-trip.
   const lastFetchCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -173,8 +162,7 @@ export default function HomeScreen() {
 
   const loadNearbyCafes = useCallback(async () => {
     const hasProfileCoords =
-      typeof profileLatitude === 'number' &&
-      typeof profileLongitude === 'number';
+      typeof profileLatitude === 'number' && typeof profileLongitude === 'number';
     if (!hasProfileCoords && !profileLocationAddress) return;
 
     // Prefer the device's live location so "Near Me" tracks where the user
@@ -194,10 +182,7 @@ export default function HomeScreen() {
         // fall through to the saved profile coords
       }
       if (hasProfileCoords) {
-        return {
-          lat: profileLatitude as number,
-          lng: profileLongitude as number,
-        };
+        return { lat: profileLatitude as number, lng: profileLongitude as number };
       }
       return null;
     };
@@ -223,9 +208,9 @@ export default function HomeScreen() {
         ? await searchCafesNearbyByCoords(coords.lat, coords.lng)
         : await searchCafesNearby(profileLocationAddress!);
       const converted = await Promise.all(
-        results.slice(0, 15).map(place => convertPlaceToCafe(place))
+        results.slice(0, 15).map((place) => convertPlaceToCafe(place))
       );
-      converted.forEach(cafe => addCafe(cafe));
+      converted.forEach((cafe) => addCafe(cafe));
       if (coords) lastFetchCoordsRef.current = coords;
       else hasLoadedAddressRef.current = true;
     } catch {
@@ -249,9 +234,7 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       const now = Date.now();
-      if (now - lastUnreadCheckRef.current < NOTIFICATIONS_CHECK_INTERVAL_MS) {
-        return;
-      }
+      if (now - lastUnreadCheckRef.current < NOTIFICATIONS_CHECK_INTERVAL_MS) return;
       lastUnreadCheckRef.current = now;
       let active = true;
       (async () => {
@@ -288,130 +271,221 @@ export default function HomeScreen() {
   const preferenceIds: string[] = Array.isArray(profile?.preferences)
     ? profile!.preferences
     : [];
-  const selectedCategories = categories.filter((cat) =>
-    preferenceIds.includes(cat.id)
+
+  const iconByLabel = useMemo(() => {
+    const map = new Map<string, string>();
+    categories.forEach((c) => {
+      if (c.icon_svg_xml) map.set(c.label, c.icon_svg_xml);
+    });
+    return map;
+  }, [categories]);
+
+  const iconFor = useCallback(
+    (label: string) => iconByLabel.get(label) ?? null,
+    [iconByLabel]
   );
 
+  const distanceFor = useCallback(
+    (cafe: Cafe): string | undefined => {
+      if (
+        typeof profileLatitude !== 'number' ||
+        typeof profileLongitude !== 'number' ||
+        typeof cafe.latitude !== 'number' ||
+        typeof cafe.longitude !== 'number'
+      ) {
+        return undefined;
+      }
+      return formatDistance(
+        approximateDistanceMeters(
+          profileLatitude,
+          profileLongitude,
+          cafe.latitude,
+          cafe.longitude
+        )
+      );
+    },
+    [profileLatitude, profileLongitude]
+  );
+
+  // Single client-side predicate, parameterised by a filter set so the sheet can
+  // count matches for an uncommitted draft while the screen filters on the
+  // committed set with identical logic. Mirrors the Discover screen.
+  const matchesFilters = useCallback(
+    (cafe: Cafe, f: Filters) => {
+      if (f.openNow && cafe.hours?.openNow !== true) return false;
+      if (f.topRated && cafe.rating < 4.5) return false;
+      if (f.saved && !isBookmarked(cafe.id)) return false;
+      if (f.liked && !isFavorited(cafe.id)) return false;
+      if (f.minRating > 0 && cafe.rating < f.minRating) return false;
+      if (f.categories.length > 0) {
+        const amenities = cafe.amenities ?? [];
+        if (!f.categories.every((label) => amenities.includes(label))) return false;
+      }
+      return true;
+    },
+    [isBookmarked, isFavorited]
+  );
+
+  const countFor = useCallback(
+    (f: Filters) => cafes.filter((cafe) => matchesFilters(cafe, f)).length,
+    [cafes, matchesFilters]
+  );
+
+  const sections: CafeSection[] = useMemo(() => {
+    const filtered = cafes.filter((cafe) => matchesFilters(cafe, filters));
+    return buildHomeSections(filtered, categories, preferenceIds);
+    // preferenceIds is rebuilt each render from profile.preferences; keying the
+    // memo on the joined ids keeps it from invalidating on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cafes, categories, filters, matchesFilters, preferenceIds.join(',')]);
+
   const handleCafeClick = useCallback(
-    (cafe: any) => {
+    (cafe: Cafe) => {
       Keyboard.dismiss();
       addCafe(cafe);
-      router.push(`/cafe/${cafe.id}`);
+      router.push({ pathname: '/cafe/[id]', params: { id: cafe.id } });
     },
     [addCafe]
   );
 
   const handleToggleBookmark = useCallback(
-    (cafe: any) => {
+    (cafe: Cafe) => {
       addCafe(cafe);
       toggleBookmark(cafe.id);
     },
     [addCafe, toggleBookmark]
   );
 
-  const displayCafes = useMemo(() => {
-    const filtered =
-      activeFilter === 'open'
-        ? cafes.filter((cafe) => cafe.hours?.openNow === true)
-        : cafes;
-    return filtered.slice(0, 10);
-  }, [cafes, activeFilter]);
+  const toggleQuickFilter = (key: 'openNow' | 'topRated') =>
+    setFilters((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  // Everything above the cafe cards renders as the FlatList header so the
-  // whole page scrolls together while the cards stay virtualized.
+  const toggleCategory = (label: string) =>
+    setFilters((prev) => ({
+      ...prev,
+      categories: prev.categories.includes(label)
+        ? prev.categories.filter((c) => c !== label)
+        : [...prev.categories, label],
+    }));
+
+  const preferenceChips = categories.filter((c) => preferenceIds.includes(c.id));
+
   const listHeader = (
-    <>
-      {/* Explore Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Explore</Text>
-            <TouchableOpacity
-              onPress={() => router.push('/notifications')}
-              hitSlop={8}
-              style={styles.bellButton}
-            >
-              <SvgXml xml={NOTIFICATIONS_BELL_SVG} width={20} height={22} />
-              {hasUnread && <View style={styles.bellDot} />}
-            </TouchableOpacity>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-            <HStack space="sm" style={styles.filterContainer}>
-              <TouchableOpacity onPress={() => setActiveFilter(activeFilter === 'open' ? 'all' : 'open')}>
-                <Badge style={[styles.filterBadge, activeFilter === 'open' && styles.activeFilter]}>
-                  <MapPin size={14} color={activeFilter === 'open' ? '#FFFFFF' : '#666'} style={styles.badgeIcon} />
-                  <BadgeText style={activeFilter === 'open' ? styles.activeFilterText : styles.filterText}>Open Now</BadgeText>
-                </Badge>
-              </TouchableOpacity>
-              {selectedCategories.map((cat) => {
-                const isSelected = selectedCategoryId === cat.id;
-                return (
-                  <TouchableOpacity
-                    key={cat.id}
-                    onPress={() =>
-                      setSelectedCategoryId(isSelected ? null : cat.id)
-                    }
-                  >
-                    <Badge style={[styles.filterBadge, isSelected && styles.activeFilter]}>
-                      <SvgXml xml={cat.icon_svg_xml} width={14} height={14} style={styles.badgeIcon} />
-                      <BadgeText style={isSelected ? styles.activeFilterText : styles.filterText}>{cat.label}</BadgeText>
-                    </Badge>
-                  </TouchableOpacity>
-                );
-              })}
-            </HStack>
-          </ScrollView>
-        </View>
-
-      {/* Near Me Section header + status states; the cards themselves are the
-          FlatList items below. */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Near Me</Text>
-        <TouchableOpacity onPress={() => router.push('/(tabs)/discover')}>
-          <ChevronRight size={20} color="#8E8E93" />
+    <View style={styles.header}>
+      <View style={styles.titleRow}>
+        <Text style={styles.screenTitle}>Explore</Text>
+        <TouchableOpacity
+          onPress={() => router.push('/notifications')}
+          hitSlop={8}
+          style={styles.bellButton}
+          accessibilityRole="button"
+          accessibilityLabel={hasUnread ? 'Notifications, unread' : 'Notifications'}
+        >
+          <SvgXml xml={BELL_SVG} width={24} height={24} />
+          {hasUnread && <View style={styles.bellDot} />}
         </TouchableOpacity>
       </View>
 
-      {isLoadingNearby && displayCafes.length === 0 && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#1C1C1E" />
-          <Text style={styles.loadingText}>Finding cafes near you...</Text>
-        </View>
-      )}
-
-      {nearbyError && displayCafes.length === 0 && (
-        <View style={styles.loadingContainer}>
-          <Text style={styles.errorText}>{nearbyError}</Text>
-        </View>
-      )}
-
-      {!isLoadingNearby && !nearbyError && displayCafes.length === 0 && (
-        <View style={styles.loadingContainer}>
-          <Text style={styles.emptyText}>No cafes found nearby.</Text>
-        </View>
-      )}
-    </>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Tag
+          label="All Filters"
+          iconXml={SLIDERS_SVG}
+          onPress={() => filtersSheetRef.current?.open()}
+          style={styles.allFiltersTag}
+        />
+        <Tag
+          label="Open Now"
+          variant={filters.openNow ? 'filled' : 'outline'}
+          onPress={() => toggleQuickFilter('openNow')}
+        />
+        <Tag
+          label="Top Rated"
+          variant={filters.topRated ? 'filled' : 'outline'}
+          onPress={() => toggleQuickFilter('topRated')}
+        />
+        {preferenceChips.map((category) => (
+          <Tag
+            key={category.id}
+            label={category.label}
+            iconXml={category.icon_svg_xml}
+            variant={filters.categories.includes(category.label) ? 'filled' : 'outline'}
+            onPress={() => toggleCategory(category.label)}
+          />
+        ))}
+      </ScrollView>
+    </View>
   );
+
+  const renderStatus = () => {
+    if (isLoadingNearby) {
+      return (
+        <View style={styles.status}>
+          <ActivityIndicator size="large" color={colors.ink} />
+          <Text style={styles.statusText}>Finding cafes near you...</Text>
+        </View>
+      );
+    }
+    if (nearbyError) {
+      return (
+        <View style={styles.status}>
+          <Text style={styles.statusError}>{nearbyError}</Text>
+        </View>
+      );
+    }
+    return (
+      <View style={styles.status}>
+        <Text style={styles.statusText}>No cafes match these filters.</Text>
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
       <FlatList
-        style={styles.scrollView}
-        data={displayCafes}
-        keyExtractor={(cafe) => cafe.id}
-        renderItem={({ item }) => (
-          <HomeCafeCard
-            cafe={item}
-            bookmarked={isBookmarked(item.id)}
-            onPress={handleCafeClick}
-            onToggleBookmark={handleToggleBookmark}
-          />
-        )}
+        style={styles.list}
+        data={sections}
+        keyExtractor={(section) => section.id}
         ListHeaderComponent={listHeader}
+        ListEmptyComponent={renderStatus()}
+        contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        renderItem={({ item: section }) => (
+          <View style={styles.section}>
+            <SectionHeader
+              title={section.title}
+              action={<SvgXml xml={ARROW_RIGHT_SVG} width={16} height={16} />}
+              onPressAction={() => router.push('/(tabs)/discover')}
+              accessibilityLabel={'See more ' + section.title + ' cafes'}
+            />
+            <View style={styles.sectionCards}>
+              {section.cafes.map((cafe) => (
+                <HomeCafeCard
+                  key={cafe.id}
+                  cafe={cafe}
+                  bookmarked={isBookmarked(cafe.id)}
+                  distanceLabel={distanceFor(cafe)}
+                  iconFor={iconFor}
+                  onPress={handleCafeClick}
+                  onToggleBookmark={handleToggleBookmark}
+                />
+              ))}
+            </View>
+          </View>
+        )}
+      />
+
+      <FiltersBottomSheet
+        ref={filtersSheetRef}
+        committed={filters}
+        onApply={setFilters}
+        countFor={countFor}
       />
     </SafeAreaView>
   );
@@ -422,214 +496,84 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  scrollView: {
+  list: {
     flex: 1,
   },
-  scrollContent: {
-    paddingTop: 20,
-    paddingBottom: 24,
+  listContent: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.lg,
   },
-  section: {
-    marginBottom: 24,
+  header: {
+    gap: spacing.md,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.accent,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: '#1C1C1E',
-    marginBottom: 16,
-  },
-  sectionTitleStandalone: {
-    paddingHorizontal: 20,
-  },
-  sectionHeader: {
+  titleRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 16,
+    gap: spacing.sm,
+  },
+  screenTitle: {
+    ...type.h1,
+    flex: 1,
+    color: colors.ink,
   },
   bellButton: {
     position: 'relative',
   },
   bellDot: {
     position: 'absolute',
-    top: -1,
-    right: -1,
+    top: 0,
+    right: 0,
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#E2574C',
-    borderWidth: 1,
-    borderColor: colors.background,
+    backgroundColor: colors.badgeRed,
   },
-  filterScroll: {
-    paddingLeft: 20,
+  filterRow: {
+    gap: spacing.sm,
+    paddingRight: spacing.md,
   },
-  filterContainer: {
-    paddingRight: 20,
+  allFiltersTag: {
+    paddingHorizontal: spacing.md,
   },
-  filterBadge: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+  section: {
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.accent,
+  },
+  sectionCards: {
+    gap: spacing.md,
+  },
+  cardWrapper: {
+    // Reserves room for the status badge to overhang the card's top-left corner.
+    paddingTop: 12,
+    paddingLeft: 12,
+    marginLeft: -12,
+  },
+  cardTags: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
+    gap: spacing.xs,
+    flexShrink: 1,
   },
-  activeFilter: {
-    backgroundColor: '#1C1C1E',
-    borderColor: '#1C1C1E',
-  },
-  badgeIcon: {
-    marginRight: 4,
-  },
-  filterText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#666',
-  },
-  activeFilterText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#FFFFFF',
-  },
-  loadingContainer: {
+  status: {
     paddingVertical: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 20,
   },
-  loadingText: {
-    fontSize: 16,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
+  statusText: {
+    ...type.body1,
     marginTop: 12,
-  },
-  errorText: {
-    fontSize: 16,
-    fontFamily: 'Lato-Regular',
-    color: '#FF3B30',
+    color: colors.greyNormal,
     textAlign: 'center',
   },
-  emptyText: {
-    fontSize: 16,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
+  statusError: {
+    ...type.body1,
+    color: colors.error,
     textAlign: 'center',
-  },
-  // Padding reserves room for the status badge to overhang the card's corner.
-  // The card clips its own children, so the badge has to live out here. The
-  // 8+12 split keeps the card's left edge at the original 20px.
-  cafeCardWrapper: {
-    marginLeft: 8,
-    marginRight: 20,
-    paddingTop: 12,
-    paddingLeft: 12,
-    marginBottom: 4,
-  },
-  cafeCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#E3E3E3',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  cafeImageContainer: {
-    width: 100,
-    height: 120,
-  },
-  cafeImage: {
-    width: '100%',
-    height: '100%',
-  },
-  cafeCardContent: {
-    flexDirection: 'row',
-  },
-  cafeContent: {
-    flex: 1,
-    padding: 12,
-    paddingLeft: 16,
-  },
-  cafeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 4,
-  },
-  cafeName: {
-    fontSize: 16,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: '#1C1C1E',
-    flex: 1,
-  },
-  bookmarkButton: {
-    padding: 4,
-  },
-  cafeLocation: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  locationText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
-    marginLeft: 4,
-    flex: 1,
-  },
-  cafeFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 8,
-  },
-  cafeTagsWrapper: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    flex: 1,
-    marginRight: 8,
-  },
-  amenityTag: {
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  amenityTagText: {
-    fontSize: 12,
-    fontFamily: 'Lato-Regular',
-  },
-  countTag: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  tagIcon: {
-    marginRight: 4,
-  },
-  countTagText: {
-    fontSize: 12,
-    fontFamily: 'Lato-Regular',
-    color: '#666',
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  ratingText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Bold',
-    color: '#1C1C1E',
-    marginLeft: 4,
   },
 });

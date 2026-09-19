@@ -267,6 +267,9 @@ export async function convertPlaceToCafe(place: any): Promise<any> {
     phone: undefined,
     hours: undefined,
     amenities: amenities.length > 0 ? amenities : undefined,
+    // Carried through so the Home feed can group nearby results into
+    // preference sections without issuing a second Places query.
+    types: Array.isArray(types) && types.length > 0 ? types : undefined,
     favoritesCount: 0,
     savedCount: 0,
     photos: [photoUrl],

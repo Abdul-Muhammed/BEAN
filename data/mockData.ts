@@ -21,6 +21,7 @@ export interface Cafe {
   place_id?: string; // Google Places ID
   latitude?: number; // Map coordinate (from Google Places geometry)
   longitude?: number; // Map coordinate (from Google Places geometry)
+  types?: string[]; // Raw Google Places types, used to group the Home feed
 }
 
 export interface Review {
