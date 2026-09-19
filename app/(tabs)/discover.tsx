@@ -47,6 +47,13 @@ import FiltersBottomSheet, {
   type FiltersBottomSheetHandle,
 } from '../../components/discover/FiltersBottomSheet';
 import {
+  attributeRowToCafe,
+  getAttributesForCafes,
+  getCafesByAttributes,
+  type CafeAttribute,
+} from '../../lib/cafeAttributes';
+import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
+import {
   type Filters,
   DEFAULT_FILTERS,
   ACTIVE_CHIP_BG,
@@ -234,9 +241,94 @@ export default function DiscoverScreen() {
   const [cafeError, setCafeError] = useState<string | null>(null);
   const [nearbyCafes, setNearbyCafes] = useState<Cafe[]>([]);
   const [mapCafes, setMapCafes] = useState<Cafe[]>([]);
+  // Crowdsourced attributes for the cafes on screen, plus the database-backed
+  // result set used while a category filter is active. Both are Supabase only.
+  const [cafeAttributes, setCafeAttributes] = useState<Map<string, CafeAttribute[]>>(
+    new Map()
+  );
+  const [attributeCafes, setAttributeCafes] = useState<Cafe[]>([]);
+  // Filters store category ids; the catalogue turns them back into labels for
+  // the summary pill.
+  const [categories, setCategories] = useState<CafeCategory[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCafeCategories()
+      .then((rows) => {
+        if (!cancelled) setCategories(rows);
+      })
+      .catch(() => {
+        /* The pill falls back to showing the raw id. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const labelForCategory = useCallback(
+    (id: string) => categories.find((c) => c.id === id)?.label,
+    [categories]
+  );
+
+  const categoryById = useMemo(() => {
+    const map = new Map<string, CafeCategory>();
+    categories.forEach((c) => map.set(c.id, c));
+    return map;
+  }, [categories]);
 
   const profileLatitude = profile?.location_latitude;
   const profileLongitude = profile?.location_longitude;
+
+  // When categories are selected, pull every cafe carrying them from the
+  // database rather than filtering whatever happens to be loaded. Ordered
+  // nearest-first with no radius, so results are not limited to the map view.
+  const categoryKey = filters.categories.join(',');
+  useEffect(() => {
+    let cancelled = false;
+    if (filters.categories.length === 0) {
+      setAttributeCafes([]);
+      return;
+    }
+    getCafesByAttributes(filters.categories, {
+      latitude: profileLatitude,
+      longitude: profileLongitude,
+      limitPer: NEARBY_CAFE_LIST_LIMIT,
+    }).then((rows) => {
+      if (cancelled) return;
+      // A cafe tagged with several selected categories comes back once per
+      // category; passesFilters then enforces the AND across them.
+      const byId = new Map<string, Cafe>();
+      rows.forEach((row) => {
+        if (!byId.has(row.place_id)) byId.set(row.place_id, attributeRowToCafe(row));
+      });
+      setAttributeCafes(Array.from(byId.values()));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoryKey, profileLatitude, profileLongitude]);
+
+  // Attributes for everything that could be rendered, in one query, so the
+  // category predicate has something to match against.
+  const attributeLookupKey = useMemo(
+    () => [...nearbyCafes.map((c) => c.id), ...attributeCafes.map((c) => c.id)].join(','),
+    [nearbyCafes, attributeCafes]
+  );
+  useEffect(() => {
+    let cancelled = false;
+    const ids = attributeLookupKey ? attributeLookupKey.split(',') : [];
+    if (ids.length === 0) {
+      setCafeAttributes(new Map());
+      return;
+    }
+    getAttributesForCafes(ids).then((map) => {
+      if (!cancelled) setCafeAttributes(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [attributeLookupKey]);
 
   const initialRegion: Region = useMemo(() => {
     const lat =
@@ -496,14 +588,12 @@ export default function DiscoverScreen() {
       if (f.alreadyRated && !reviewedCafeIds.has(cafe.id)) return false;
       if (f.minRating > 0 && cafe.rating < f.minRating) return false;
       if (f.categories.length > 0) {
-        const amenities = cafe.amenities ?? [];
-        if (!f.categories.every((label) => amenities.includes(label))) {
-          return false;
-        }
+        const ids = new Set((cafeAttributes.get(cafe.id) ?? []).map((a) => a.attributeId));
+        if (!f.categories.every((id) => ids.has(id))) return false;
       }
       return true;
     },
-    [isBookmarked, isFavorited, reviewedCafeIds]
+    [cafeAttributes, isBookmarked, isFavorited, reviewedCafeIds]
   );
 
   const passesFilters = useCallback(
@@ -517,10 +607,14 @@ export default function DiscoverScreen() {
     [nearbyCafes, matchesFilters]
   );
 
-  const listCafes = useMemo(
-    () => nearbyCafes.filter(passesFilters).slice(0, NEARBY_CAFE_LIST_LIMIT),
-    [nearbyCafes, passesFilters]
-  );
+  // With a category selected the result set is every cafe carrying it,
+  // nearest first, straight from Supabase — so filtering finds cafes that were
+  // never in the nearby list. Without one, nothing about this screen changes.
+  // Either way the remaining filters apply client-side on top.
+  const listCafes = useMemo(() => {
+    const source = filters.categories.length > 0 ? attributeCafes : nearbyCafes;
+    return source.filter(passesFilters).slice(0, NEARBY_CAFE_LIST_LIMIT);
+  }, [attributeCafes, filters.categories.length, nearbyCafes, passesFilters]);
 
   // Cache/DB-served cafes can arrive without a stored photo, so their cards
   // would render the placeholder. Lazily pull the real photo for just those
@@ -762,6 +856,7 @@ export default function DiscoverScreen() {
           onOpenSheet={() => filtersSheetRef.current?.open()}
           onToggleOpenNow={toggleOpenNow}
           onRemove={removeFilter}
+          labelForCategory={labelForCategory}
         />
 
         {/* Loading / error overlay above the sheet */}
@@ -806,7 +901,13 @@ export default function DiscoverScreen() {
         <BottomSheetFlatList
           data={listCafes}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <MapCafeCard cafe={item} />}
+          renderItem={({ item }) => (
+            <MapCafeCard
+              cafe={item}
+              attributes={cafeAttributes.get(item.id)}
+              categoryById={categoryById}
+            />
+          )}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={

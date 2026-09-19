@@ -1,11 +1,14 @@
 import React from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { SvgXml } from 'react-native-svg';
 import { router } from 'expo-router';
 import { MapPin, Bookmark, Star, Wifi } from 'lucide-react-native';
 import { CoffeeBean } from './BeanRating';
 import { Cafe } from '../data/mockData';
 import { useReviews } from '../context/ReviewContext';
 import CafeStatusBadges, { type CafeBadgeKind } from './CafeStatusBadges';
+import type { CafeAttribute } from '../lib/cafeAttributes';
+import type { CafeCategory } from '../lib/cafeCategories';
 import { colors } from '@/constants/theme';
 
 const DEFAULT_CAFE_IMAGE =
@@ -15,9 +18,13 @@ interface MapCafeCardProps {
   cafe: Cafe;
   /** Suppress badges whose state the surrounding list already implies. */
   hideBadges?: CafeBadgeKind[];
+  /** Crowdsourced attributes for this cafe, most-agreed first. */
+  attributes?: CafeAttribute[];
+  /** Catalogue used to turn stored ids into labels and icons. */
+  categoryById?: Map<string, CafeCategory>;
 }
 
-function MapCafeCard({ cafe, hideBadges }: MapCafeCardProps) {
+function MapCafeCard({ cafe, hideBadges, attributes, categoryById }: MapCafeCardProps) {
   const { toggleBookmark, isBookmarked } = useReviews();
   const [imageFailed, setImageFailed] = React.useState(false);
 
@@ -51,9 +58,9 @@ function MapCafeCard({ cafe, hideBadges }: MapCafeCardProps) {
   };
 
   const location = extractLocation(cafe.location);
-  const amenities = cafe.amenities || [];
-  const visibleAmenities = amenities.slice(0, 2);
-  const remainingCount = Math.max(0, amenities.length - 2);
+  const reported = attributes ?? [];
+  const visibleAttributes = reported.slice(0, 2);
+  const remainingCount = Math.max(0, reported.length - 2);
   const isBooked = isBookmarked(cafe.id);
 
   return (
@@ -87,13 +94,17 @@ function MapCafeCard({ cafe, hideBadges }: MapCafeCardProps) {
 
           <View style={styles.footer}>
             <View style={styles.amenitiesRow}>
-              {visibleAmenities.map((amenity, index) => (
-                <View key={index} style={styles.amenityTag}>
-                  {amenity === 'Has WiFi' && <Wifi size={12} color="#007AFF" />}
-                  {amenity === 'Top Rated' && <Star size={12} color="#D4AF37" fill="#D4AF37" />}
-                  <Text style={styles.amenityText}>{amenity}</Text>
-                </View>
-              ))}
+              {visibleAttributes.map(({ attributeId }) => {
+                const category = categoryById?.get(attributeId);
+                return (
+                  <View key={attributeId} style={styles.amenityTag}>
+                    {category?.icon_svg_xml ? (
+                      <SvgXml xml={category.icon_svg_xml} width={12} height={12} />
+                    ) : null}
+                    <Text style={styles.amenityText}>{category?.label ?? attributeId}</Text>
+                  </View>
+                );
+              })}
               {remainingCount > 0 && (
                 <View style={styles.moreTag}>
                   <Text style={styles.moreText}>+{remainingCount}</Text>

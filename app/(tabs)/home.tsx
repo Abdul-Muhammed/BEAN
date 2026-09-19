@@ -32,7 +32,13 @@ import {
 } from '../../services/googlePlaces';
 import { useUserProfile } from '../../hooks/useUserProfile';
 import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
-import { buildHomeSections, type CafeSection } from '../../lib/cafeSections';
+import {
+  attributeRowToCafe,
+  getAttributesForCafes,
+  getCafesByAttributes,
+  type AttributeCafeRow,
+  type CafeAttribute,
+} from '../../lib/cafeAttributes';
 import { getUnreadFollowCount } from '../../lib/follows';
 import { getNotificationsLastSeen } from '../../lib/notifications';
 import { approximateDistanceMeters, extractLocation, formatDistance } from '../../lib/geo';
@@ -58,26 +64,48 @@ const NOTIFICATIONS_CHECK_INTERVAL_MS = 30_000;
 // How many amenity chips a card shows before collapsing the rest into "+N".
 const CARD_TAG_LIMIT = 2;
 
+/** How many cards a section shows before deferring to Discover. */
+const SECTION_CARD_LIMIT = 3;
+
+/** Shared empty array so a chipless card keeps a stable prop identity. */
+const EMPTY_ATTRIBUTES: CafeAttribute[] = [];
+
+interface CafeSection {
+  /** cafe_categories id, or "near-me" for the leading section. */
+  id: string;
+  title: string;
+  cafes: Cafe[];
+}
+
 const BOOKMARK_SAVED_SVG = tintIcon(BOOKMARK_SVG, colors.ink);
 
 function CardTags({
-  cafe,
-  iconFor,
+  attributes,
+  categoryById,
 }: {
-  cafe: Cafe;
-  iconFor: (label: string) => string | null;
+  attributes: CafeAttribute[];
+  categoryById: Map<string, CafeCategory>;
 }) {
-  const amenities = cafe.amenities ?? [];
-  if (amenities.length === 0) return <View />;
+  // A cafe nobody has reviewed yet carries no attributes, and shows no chips.
+  // The empty View keeps the bean score pushed to the right of the footer row.
+  if (attributes.length === 0) return <View />;
 
-  const shown = amenities.slice(0, CARD_TAG_LIMIT);
-  const overflow = amenities.length - shown.length;
+  const shown = attributes.slice(0, CARD_TAG_LIMIT);
+  const overflow = attributes.length - shown.length;
 
   return (
     <View style={styles.cardTags}>
-      {shown.map((amenity) => (
-        <Tag key={amenity} label={amenity} iconXml={iconFor(amenity)} size="s" />
-      ))}
+      {shown.map(({ attributeId }) => {
+        const category = categoryById.get(attributeId);
+        return (
+          <Tag
+            key={attributeId}
+            label={category?.label ?? attributeId}
+            iconXml={category?.icon_svg_xml}
+            size="s"
+          />
+        );
+      })}
       {overflow > 0 && <Tag label={'+' + overflow} size="s" />}
     </View>
   );
@@ -87,14 +115,16 @@ const HomeCafeCard = React.memo(function HomeCafeCard({
   cafe,
   bookmarked,
   distanceLabel,
-  iconFor,
+  attributes,
+  categoryById,
   onPress,
   onToggleBookmark,
 }: {
   cafe: Cafe;
   bookmarked: boolean;
   distanceLabel?: string;
-  iconFor: (label: string) => string | null;
+  attributes: CafeAttribute[];
+  categoryById: Map<string, CafeCategory>;
   onPress: (cafe: Cafe) => void;
   onToggleBookmark: (cafe: Cafe) => void;
 }) {
@@ -128,7 +158,7 @@ const HomeCafeCard = React.memo(function HomeCafeCard({
         }
         footer={
           <>
-            <CardTags cafe={cafe} iconFor={iconFor} />
+            <CardTags attributes={attributes} categoryById={categoryById} />
             <BeanScore rating={cafe.rating} />
           </>
         }
@@ -149,6 +179,12 @@ export default function HomeScreen() {
   // the Notifications screen, driving the bell dot. Re-checked on focus so it
   // clears after a visit advances the last-seen timestamp.
   const [hasUnread, setHasUnread] = useState(false);
+  // Crowdsourced attributes for everything on screen, and the rows backing the
+  // preference sections. Both come from Supabase, never from Google.
+  const [cafeAttributes, setCafeAttributes] = useState<Map<string, CafeAttribute[]>>(
+    new Map()
+  );
+  const [attributeRows, setAttributeRows] = useState<AttributeCafeRow[]>([]);
   const filtersSheetRef = useRef<FiltersBottomSheetHandle>(null);
   // Coords of the last successful nearby load, so a re-focus that didn't move
   // the user doesn't trigger a redundant network round-trip.
@@ -272,18 +308,51 @@ export default function HomeScreen() {
     ? profile!.preferences
     : [];
 
-  const iconByLabel = useMemo(() => {
-    const map = new Map<string, string>();
-    categories.forEach((c) => {
-      if (c.icon_svg_xml) map.set(c.label, c.icon_svg_xml);
+  // Attributes for every cafe currently in context, in one query. Refreshed
+  // when the set of cafes changes so a newly reviewed cafe picks up its chips.
+  const cafeIdsKey = cafes.map((c) => c.id).join(',');
+  useEffect(() => {
+    let cancelled = false;
+    if (cafes.length === 0) {
+      setCafeAttributes(new Map());
+      return;
+    }
+    getAttributesForCafes(cafes.map((c) => c.id)).then((map) => {
+      if (!cancelled) setCafeAttributes(map);
     });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cafeIdsKey]);
+
+  // One round trip for every preference section, ordered nearest-first with no
+  // distance cap, so a Halal cafe across town appears when none is close.
+  const preferenceKey = preferenceIds.join(',');
+  useEffect(() => {
+    let cancelled = false;
+    if (preferenceIds.length === 0) {
+      setAttributeRows([]);
+      return;
+    }
+    getCafesByAttributes(preferenceIds, {
+      latitude: profileLatitude,
+      longitude: profileLongitude,
+      limitPer: SECTION_CARD_LIMIT,
+    }).then((rows) => {
+      if (!cancelled) setAttributeRows(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preferenceKey, profileLatitude, profileLongitude]);
+
+  const categoryById = useMemo(() => {
+    const map = new Map<string, CafeCategory>();
+    categories.forEach((c) => map.set(c.id, c));
     return map;
   }, [categories]);
-
-  const iconFor = useCallback(
-    (label: string) => iconByLabel.get(label) ?? null,
-    [iconByLabel]
-  );
 
   const distanceFor = useCallback(
     (cafe: Cafe): string | undefined => {
@@ -318,12 +387,12 @@ export default function HomeScreen() {
       if (f.liked && !isFavorited(cafe.id)) return false;
       if (f.minRating > 0 && cafe.rating < f.minRating) return false;
       if (f.categories.length > 0) {
-        const amenities = cafe.amenities ?? [];
-        if (!f.categories.every((label) => amenities.includes(label))) return false;
+        const ids = new Set((cafeAttributes.get(cafe.id) ?? []).map((a) => a.attributeId));
+        if (!f.categories.every((id) => ids.has(id))) return false;
       }
       return true;
     },
-    [isBookmarked, isFavorited]
+    [cafeAttributes, isBookmarked, isFavorited]
   );
 
   const countFor = useCallback(
@@ -331,13 +400,42 @@ export default function HomeScreen() {
     [cafes, matchesFilters]
   );
 
+  // "Near Me" is the nearby fetch, filtered client-side. The preference
+  // sections below it come from Supabase, so adding sections costs no extra
+  // Google Places usage.
+  const nearMe = useMemo(
+    () => cafes.filter((cafe) => matchesFilters(cafe, filters)).slice(0, SECTION_CARD_LIMIT),
+    [cafes, filters, matchesFilters]
+  );
+
   const sections: CafeSection[] = useMemo(() => {
-    const filtered = cafes.filter((cafe) => matchesFilters(cafe, filters));
-    return buildHomeSections(filtered, categories, preferenceIds);
+    const list: CafeSection[] = [];
+    if (nearMe.length > 0) list.push({ id: 'near-me', title: 'Near Me', cafes: nearMe });
+
+    // One row per (attribute, cafe); group them back into a section each, in
+    // the order the user's preferences are listed.
+    const byAttribute = new Map<string, Cafe[]>();
+    attributeRows.forEach((row) => {
+      const list = byAttribute.get(row.attribute) ?? [];
+      list.push(attributeRowToCafe(row));
+      byAttribute.set(row.attribute, list);
+    });
+
+    preferenceIds.forEach((id) => {
+      const matches = byAttribute.get(id);
+      if (!matches || matches.length === 0) return;
+      list.push({
+        id,
+        title: categoryById.get(id)?.label ?? id,
+        cafes: matches.slice(0, SECTION_CARD_LIMIT),
+      });
+    });
+
+    return list;
     // preferenceIds is rebuilt each render from profile.preferences; keying the
     // memo on the joined ids keeps it from invalidating on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cafes, categories, filters, matchesFilters, preferenceIds.join(',')]);
+  }, [attributeRows, categoryById, nearMe, preferenceIds.join(',')]);
 
   const handleCafeClick = useCallback(
     (cafe: Cafe) => {
@@ -359,12 +457,12 @@ export default function HomeScreen() {
   const toggleQuickFilter = (key: 'openNow' | 'topRated') =>
     setFilters((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  const toggleCategory = (label: string) =>
+  const toggleCategory = (id: string) =>
     setFilters((prev) => ({
       ...prev,
-      categories: prev.categories.includes(label)
-        ? prev.categories.filter((c) => c !== label)
-        : [...prev.categories, label],
+      categories: prev.categories.includes(id)
+        ? prev.categories.filter((c) => c !== id)
+        : [...prev.categories, id],
     }));
 
   const preferenceChips = categories.filter((c) => preferenceIds.includes(c.id));
@@ -412,8 +510,8 @@ export default function HomeScreen() {
             key={category.id}
             label={category.label}
             iconXml={category.icon_svg_xml}
-            variant={filters.categories.includes(category.label) ? 'filled' : 'outline'}
-            onPress={() => toggleCategory(category.label)}
+            variant={filters.categories.includes(category.id) ? 'filled' : 'outline'}
+            onPress={() => toggleCategory(category.id)}
           />
         ))}
       </ScrollView>
@@ -471,7 +569,8 @@ export default function HomeScreen() {
                   cafe={cafe}
                   bookmarked={isBookmarked(cafe.id)}
                   distanceLabel={distanceFor(cafe)}
-                  iconFor={iconFor}
+                  attributes={cafeAttributes.get(cafe.id) ?? EMPTY_ATTRIBUTES}
+                  categoryById={categoryById}
                   onPress={handleCafeClick}
                   onToggleBookmark={handleToggleBookmark}
                 />

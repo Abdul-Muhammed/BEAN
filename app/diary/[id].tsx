@@ -117,11 +117,11 @@ export default function DiaryEntryScreen() {
     };
   }, [attributes.length]);
 
-  const iconByLabel = useMemo(() => {
-    const map = new Map<string, string>();
-    categories.forEach((category) => {
-      if (category.icon_svg_xml) map.set(category.label, category.icon_svg_xml);
-    });
+  // reviews.attributes stores category ids; labels are for display only, so a
+  // category can be renamed without orphaning historical reviews.
+  const categoryById = useMemo(() => {
+    const map = new Map<string, CafeCategory>();
+    categories.forEach((category) => map.set(category.id, category));
     return map;
   }, [categories]);
 
@@ -378,8 +378,8 @@ export default function DiaryEntryScreen() {
               {attributes.map((attribute) => (
                 <Tag
                   key={attribute}
-                  label={attribute}
-                  iconXml={iconByLabel.get(attribute)}
+                  label={categoryById.get(attribute)?.label ?? attribute}
+                  iconXml={categoryById.get(attribute)?.icon_svg_xml}
                   variant="outlineDark"
                   dense
                 />

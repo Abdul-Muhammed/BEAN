@@ -7,7 +7,7 @@ export type Filters = {
   liked: boolean;
   alreadyRated: boolean;
   minRating: number; // 0 = no filter, else 0.5..5 (half steps)
-  categories: string[]; // cafe_categories labels
+  categories: string[]; // cafe_categories ids (labels are display-only)
 };
 
 export const DEFAULT_FILTERS: Filters = {
@@ -37,11 +37,21 @@ export function formatMinRating(value: number): string {
   return `${value}+`;
 }
 
-/** Summary label for the Categories pill, e.g. "Has WiFi +2". */
-export function categoriesSummary(categories: string[]): string {
+/**
+ * Summary label for the Categories pill, e.g. "Has WiFi +2".
+ *
+ * Filters hold category ids, so the caller passes a lookup to turn the first
+ * one into its display label. Falls back to the raw id when the catalogue has
+ * not loaded yet.
+ */
+export function categoriesSummary(
+  categories: string[],
+  labelFor?: (id: string) => string | undefined
+): string {
   if (categories.length === 0) return 'Categories';
   const [first, ...rest] = categories;
-  return rest.length > 0 ? `${first} +${rest.length}` : first;
+  const label = labelFor?.(first) ?? first;
+  return rest.length > 0 ? `${label} +${rest.length}` : label;
 }
 
 /** True when any filter is set (used to decide if anything is active). */

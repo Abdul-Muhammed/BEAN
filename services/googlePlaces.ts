@@ -215,38 +215,11 @@ export function parseOpeningHours(openingHours: any): CafeHours | null {
 }
 
 // Determine amenities from Google Places types
-export function determineAmenities(types: string[], rating?: number): string[] {
-  const amenities: string[] = [];
-
-  // Check for WiFi (common in cafe types)
-  if (types.some(type => 
-    type.includes('cafe') || 
-    type.includes('restaurant') || 
-    type.includes('food')
-  )) {
-    amenities.push('Has WiFi'); // Assume cafes have WiFi
-  }
-
-  // Check for parking
-  if (types.some(type => type.includes('parking'))) {
-    amenities.push('Parking');
-  }
-
-  // Top Rated (if rating >= 4.5)
-  if (rating && rating >= 4.5) {
-    amenities.push('Top Rated');
-  }
-
-  return amenities;
-}
 
 // Convert a search/nearby result to our Cafe format. Photos are already cached
 // Storage URLs (no Google photo call here); falls back to a placeholder image.
 export async function convertPlaceToCafe(place: any): Promise<any> {
   const photoUrl = place?.thumbnail_url || DEFAULT_CAFE_IMAGE;
-
-  const types = place.types || [];
-  const amenities = determineAmenities(types, place.rating);
 
   const geoLat = place?.geometry?.location?.lat;
   const geoLng = place?.geometry?.location?.lng;
@@ -266,10 +239,6 @@ export async function convertPlaceToCafe(place: any): Promise<any> {
     place_id: place.place_id || place.id,
     phone: undefined,
     hours: undefined,
-    amenities: amenities.length > 0 ? amenities : undefined,
-    // Carried through so the Home feed can group nearby results into
-    // preference sections without issuing a second Places query.
-    types: Array.isArray(types) && types.length > 0 ? types : undefined,
     favoritesCount: 0,
     savedCount: 0,
     photos: [photoUrl],
@@ -302,9 +271,6 @@ export async function enrichCafeWithDetails(placeId: string): Promise<any | null
     ? parseOpeningHours(placeDetails.opening_hours)
     : null;
 
-  const types = placeDetails.types || [];
-  const amenities = determineAmenities(types, placeDetails.rating);
-
   const geoLat = placeDetails?.geometry?.location?.lat;
   const geoLng = placeDetails?.geometry?.location?.lng;
   const latitude = typeof geoLat === 'number' ? geoLat : undefined;
@@ -319,7 +285,6 @@ export async function enrichCafeWithDetails(placeId: string): Promise<any | null
     image: photos[0] || undefined,
     phone: placeDetails.formatted_phone_number || undefined,
     hours: hours || undefined,
-    amenities: amenities.length > 0 ? amenities : undefined,
     photos: photos.length > 0 ? photos : undefined,
     rating: placeDetails.rating || undefined,
     latitude,

@@ -14,6 +14,7 @@ import ListCafeCard from '../../components/ListCafeCard';
 import { type CafeBadgeKind } from '../../components/CafeStatusBadges';
 import { useReviews } from '../../context/ReviewContext';
 import { Cafe } from '../../data/mockData';
+import { useCafeAttributes } from '../../hooks/useCafeAttributes';
 import { colors, fonts } from '@/constants/theme';
 
 const LIST_TITLES: Record<string, string> = {
@@ -51,6 +52,9 @@ export default function ListDetailScreen() {
       ? diaryCafes
       : bookmarkedCafes;
 
+  // Chips are crowdsourced from reviews, fetched once for the whole list.
+  const { attributesFor, categoryById } = useCafeAttributes(cafes.map((c) => c.id));
+
   // On a single-state list every card carries the same badge, which tells the
   // user nothing. Hide the implied one so only the cross-state stands out.
   const hiddenBadges: CafeBadgeKind[] | undefined =
@@ -77,7 +81,12 @@ export default function ListDetailScreen() {
         data={cafes}
         keyExtractor={(cafe) => cafe.id}
         renderItem={({ item }) => (
-          <ListCafeCard cafe={item} hideBadges={hiddenBadges} />
+          <ListCafeCard
+            cafe={item}
+            hideBadges={hiddenBadges}
+            attributes={attributesFor(item.id)}
+            categoryById={categoryById}
+          />
         )}
         ListEmptyComponent={
           <Text style={styles.emptyHint}>No cafes in this list yet.</Text>

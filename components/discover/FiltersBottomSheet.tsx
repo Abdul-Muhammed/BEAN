@@ -89,12 +89,13 @@ const FiltersBottomSheet = forwardRef<
     setDraft((d) => ({ ...d, minRating: 0 }));
   }, []);
 
-  const toggleCategory = useCallback((label: string) => {
+  // Filters hold category ids; the label is only what the chip shows.
+  const toggleCategory = useCallback((id: string) => {
     setDraft((d) => ({
       ...d,
-      categories: d.categories.includes(label)
-        ? d.categories.filter((c) => c !== label)
-        : [...d.categories, label],
+      categories: d.categories.includes(id)
+        ? d.categories.filter((c) => c !== id)
+        : [...d.categories, id],
     }));
   }, []);
 
@@ -181,13 +182,13 @@ const FiltersBottomSheet = forwardRef<
           <Text style={styles.sectionTitle}>Categories</Text>
           <View style={styles.categoriesWrap}>
             {visibleCategories.map((category) => {
-              const selected = draft.categories.includes(category.label);
+              const selected = draft.categories.includes(category.id);
               return (
                 <FilterChip
                   key={category.id}
                   label={category.label}
                   active={selected}
-                  onPress={() => toggleCategory(category.label)}
+                  onPress={() => toggleCategory(category.id)}
                   leadingIcon={
                     !selected && category.icon_svg_xml ? (
                       <SvgXml

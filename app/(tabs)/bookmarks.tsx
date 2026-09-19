@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import ListCafeCard from '../../components/ListCafeCard';
 import CollectionCard from '../../components/CollectionCard';
 import { useReviews } from '../../context/ReviewContext';
+import { useCafeAttributes } from '../../hooks/useCafeAttributes';
 import { colors, fonts } from '@/constants/theme';
 import { FAVORITES_SVG, DIARY_SVG, BOOKMARKS_SVG } from '@/constants/savedScreenIcons';
 
@@ -37,6 +38,11 @@ export default function ListsScreen() {
   }, [userReviews]);
 
   const previewCafes = bookmarkedCafes.slice(0, PREVIEW_COUNT);
+
+  // Chips are crowdsourced from reviews, fetched once for the preview row.
+  const { attributesFor, categoryById } = useCafeAttributes(
+    previewCafes.map((c) => c.id)
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -68,7 +74,13 @@ export default function ListsScreen() {
           // Every cafe in this preview is bookmarked by definition, so the
           // saved badge would be noise; a heart still marks the ones also liked.
           previewCafes.map((cafe) => (
-            <ListCafeCard key={cafe.id} cafe={cafe} hideBadges={['saved']} />
+            <ListCafeCard
+              key={cafe.id}
+              cafe={cafe}
+              hideBadges={['saved']}
+              attributes={attributesFor(cafe.id)}
+              categoryById={categoryById}
+            />
           ))
         ) : (
           <Text style={styles.emptyHint}>No cafes yet — start saving.</Text>

@@ -22,6 +22,8 @@ interface FilterPillsRowProps {
   onOpenSheet: () => void;
   onToggleOpenNow: () => void;
   onRemove: (key: RemovableKey | 'minRating' | 'categories') => void;
+  /** Turns a stored category id into its display label for the summary pill. */
+  labelForCategory?: (id: string) => string | undefined;
 }
 
 /**
@@ -33,6 +35,7 @@ export default function FilterPillsRow({
   onOpenSheet,
   onToggleOpenNow,
   onRemove,
+  labelForCategory,
 }: FilterPillsRowProps) {
   const ratingActive = filters.minRating > 0;
   const categoriesActive = filters.categories.length > 0;
@@ -62,7 +65,7 @@ export default function FilterPillsRow({
       />
 
       <FilterChip
-        label={categoriesSummary(filters.categories)}
+        label={categoriesSummary(filters.categories, labelForCategory)}
         active={categoriesActive}
         showChevron={!categoriesActive}
         onPress={onOpenSheet}
