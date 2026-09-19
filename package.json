@@ -15,6 +15,7 @@
   "dependencies": {
     "@expo-google-fonts/lato": "^0.4.1",
     "@expo-google-fonts/otomanopee-one": "^0.2.2",
+    "@expo/ngrok": "^4.1.0",
     "@gorhom/bottom-sheet": "^5.2.10",
     "@lucide/lab": "^0.1.2",
     "@react-native-async-storage/async-storage": "2.2.0",
