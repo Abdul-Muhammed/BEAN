@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,30 +8,44 @@ import {
   TouchableOpacity,
   StatusBar,
   Linking,
+  Share,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { 
-  ArrowLeft, 
-  Heart, 
-  Bookmark, 
-  MapPin, 
-  Clock, 
-  Phone, 
-  ExternalLink,
-  Star,
-  Wifi,
-} from 'lucide-react-native';
+import { SvgXml } from 'react-native-svg';
+
 import ReviewCard from '../../components/ReviewCard';
 import CafeDetailSkeleton from '../../components/CafeDetailSkeleton';
 import PhotoGallery from '../../components/PhotoGallery';
-import RatingHistogram from '../../components/RatingHistogram';
+import BeanScore from '../../components/ui/BeanScore';
+import Button from '../../components/ui/Button';
+import HeroPillButton from '../../components/ui/HeroPillButton';
+import RatingGraph from '../../components/ui/RatingGraph';
+import StatTiles from '../../components/ui/StatTiles';
+import Tag from '../../components/ui/Tag';
+import SectionHeader from '../../components/profile/SectionHeader';
 import { useReviews } from '../../context/ReviewContext';
+import { useUserProfile } from '../../hooks/useUserProfile';
+import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
 import { enrichCafeWithDetails } from '../../services/googlePlaces';
-import { colors } from '@/constants/theme';
+import { colors, radius, spacing, type } from '@/constants/theme';
+import {
+  ARROW_LEFT_HERO_SVG,
+  BOOKMARK_24_FILLED_SVG,
+  BOOKMARK_24_SVG,
+  CLOCK_SVG,
+  EXTERNAL_LINK_SVG,
+  HEART_24_FILLED_SVG,
+  HEART_24_SVG,
+  MAP_PIN_16_SVG,
+  MORE_HORIZONTAL_SVG,
+  PLUS_CIRCLE_LIGHT_SVG,
+} from '@/constants/figmaIcons';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+const HERO_HEIGHT = 223;
 
 // Stock fallback used by list/search results before real cached photos load.
 // Treated as "not a real photo" so detail enrichment always replaces it.
@@ -49,10 +63,20 @@ function hasRealPhotos(photos: string[] | undefined | null): boolean {
 export default function CafeDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const { cafes, toggleFavorite, isFavorited, toggleBookmark, isBookmarked, addCafe, getCafeById } = useReviews();
+  const {
+    cafes,
+    toggleFavorite,
+    isFavorited,
+    toggleBookmark,
+    isBookmarked,
+    addCafe,
+    getCafeById,
+  } = useReviews();
+  const { profile } = useUserProfile();
   const [isLoading, setIsLoading] = useState(true);
   const [showPhotoGallery, setShowPhotoGallery] = useState(false);
   const [headerPhotoIndex, setHeaderPhotoIndex] = useState(0);
+  const [categories, setCategories] = useState<CafeCategory[]>([]);
   const enrichedPlaceIds = useRef<Set<string>>(new Set());
   const cafeId = Array.isArray(id) ? id[0] : id;
 
@@ -67,7 +91,7 @@ export default function CafeDetailScreen() {
       if (!cafes.some((c) => c.id === cafe.id)) {
         addCafe(cafe);
       }
-      
+
       // Lazy load Place Details if cafe has place_id and hasn't been enriched yet
       if (
         cafe.place_id &&
@@ -76,81 +100,105 @@ export default function CafeDetailScreen() {
       ) {
         const placeIdForEnrich = cafe.place_id;
         enrichedPlaceIds.current.add(placeIdForEnrich);
-        enrichCafeWithDetails(placeIdForEnrich).then((enrichedData) => {
-          if (enrichedData) {
-            // Prefer real cached cafe photos over the stock placeholder so the
-            // header image and gallery swap in as soon as they load.
-            const enrichedPhotos = Array.isArray(enrichedData.photos)
-              ? enrichedData.photos.filter((p: string) => !isPlaceholderImage(p))
-              : [];
-            const nextPhotos = enrichedPhotos.length > 0
-              ? enrichedPhotos
-              : hasRealPhotos(cafe.photos)
-                ? cafe.photos
-                : cafe.photos || [cafe.image];
-            const nextImage = enrichedPhotos[0]
-              || (!isPlaceholderImage(enrichedData.image) ? enrichedData.image : undefined)
-              || (hasRealPhotos(cafe.photos) ? cafe.photos?.[0] : undefined)
-              || cafe.image;
+        enrichCafeWithDetails(placeIdForEnrich)
+          .then((enrichedData) => {
+            if (enrichedData) {
+              // Prefer real cached cafe photos over the stock placeholder so the
+              // header image and gallery swap in as soon as they load.
+              const enrichedPhotos = Array.isArray(enrichedData.photos)
+                ? enrichedData.photos.filter((p: string) => !isPlaceholderImage(p))
+                : [];
+              const nextPhotos =
+                enrichedPhotos.length > 0
+                  ? enrichedPhotos
+                  : hasRealPhotos(cafe.photos)
+                    ? cafe.photos
+                    : cafe.photos || [cafe.image];
+              const nextImage =
+                enrichedPhotos[0] ||
+                (!isPlaceholderImage(enrichedData.image) ? enrichedData.image : undefined) ||
+                (hasRealPhotos(cafe.photos) ? cafe.photos?.[0] : undefined) ||
+                cafe.image;
 
-            const updatedCafe = {
-              ...cafe,
-              name: enrichedData.name || cafe.name,
-              location: enrichedData.location || cafe.location,
-              description: enrichedData.description || cafe.description,
-              image: nextImage,
-              phone: enrichedData.phone || cafe.phone,
-              hours: enrichedData.hours || cafe.hours,
-              amenities: enrichedData.amenities || cafe.amenities,
-              photos: nextPhotos,
-              rating: enrichedData.rating || cafe.rating
-            };
-            addCafe(updatedCafe);
+              const updatedCafe = {
+                ...cafe,
+                name: enrichedData.name || cafe.name,
+                location: enrichedData.location || cafe.location,
+                description: enrichedData.description || cafe.description,
+                image: nextImage,
+                phone: enrichedData.phone || cafe.phone,
+                hours: enrichedData.hours || cafe.hours,
+                amenities: enrichedData.amenities || cafe.amenities,
+                photos: nextPhotos,
+                rating: enrichedData.rating || cafe.rating,
+              };
+              addCafe(updatedCafe);
 
-            // If enrichment still didn't yield a real photo, allow a future
-            // attempt instead of permanently marking this place as enriched.
-            if (!hasRealPhotos(nextPhotos) && isPlaceholderImage(nextImage)) {
+              // If enrichment still didn't yield a real photo, allow a future
+              // attempt instead of permanently marking this place as enriched.
+              if (!hasRealPhotos(nextPhotos) && isPlaceholderImage(nextImage)) {
+                enrichedPlaceIds.current.delete(placeIdForEnrich);
+              }
+            } else {
+              // No data came back; don't block a later retry this session.
               enrichedPlaceIds.current.delete(placeIdForEnrich);
             }
-          } else {
-            // No data came back; don't block a later retry this session.
+          })
+          .catch((error) => {
+            console.error('Error enriching cafe details:', error);
             enrichedPlaceIds.current.delete(placeIdForEnrich);
-          }
-        }).catch((error) => {
-          console.error('Error enriching cafe details:', error);
-          enrichedPlaceIds.current.delete(placeIdForEnrich);
-        });
+          });
       }
       return;
     }
-    
+
     // If not found, wait a bit (cafe might be getting added to context)
     // This handles the case where addCafe() was called but context hasn't updated yet
     const timer = setTimeout(() => {
       setIsLoading(false);
     }, 1000);
-    
+
     return () => clearTimeout(timer);
   }, [cafe, cafeId, cafes, addCafe]);
 
-  // Show skeleton while loading or if cafe not found after timeout
+  // Amenity chips carry the icon their category was defined with, so the
+  // taxonomy stays editable in Supabase rather than hardcoded here.
+  useEffect(() => {
+    let cancelled = false;
+    getCafeCategories()
+      .then((rows) => {
+        if (!cancelled) setCategories(rows);
+      })
+      .catch(() => {
+        /* Chips fall back to label-only. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const categoryByLabel = useMemo(() => {
+    const map = new Map<string, CafeCategory>();
+    categories.forEach((c) => map.set(c.label, c));
+    return map;
+  }, [categories]);
+
+  // A chip is filled when the amenity is one of the viewer's own onboarding
+  // preferences, so the page shows at a glance how well the cafe fits them.
+  const preferredLabels = useMemo(() => {
+    const ids = new Set(Array.isArray(profile?.preferences) ? profile!.preferences : []);
+    return new Set(categories.filter((c) => ids.has(c.id)).map((c) => c.label));
+  }, [categories, profile?.preferences]);
+
   if (isLoading) {
     return <CafeDetailSkeleton />;
   }
 
   if (!cafe) {
-    // Cafe not found - could show error or redirect
     return (
-      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
-        <Text style={{ fontSize: 16, fontFamily: 'Lato-Regular', color: '#8E8E93' }}>
-          Cafe not found
-        </Text>
-        <TouchableOpacity 
-          style={{ marginTop: 16, padding: 12, backgroundColor: '#1C1C1E', borderRadius: 8 }}
-          onPress={() => router.back()}
-        >
-          <Text style={{ color: '#FFFFFF', fontFamily: 'Lato-Bold' }}>Go Back</Text>
-        </TouchableOpacity>
+      <SafeAreaView style={styles.notFound}>
+        <Text style={styles.notFoundText}>Cafe not found</Text>
+        <Button label="Go Back" onPress={() => router.back()} style={styles.notFoundButton} />
       </SafeAreaView>
     );
   }
@@ -163,251 +211,223 @@ export default function CafeDetailScreen() {
   const safeHeaderIndex = Math.min(headerPhotoIndex, headerPhotos.length - 1);
   const isFav = isFavorited(cafe.id);
   const isSaved = isBookmarked(cafe.id);
-  const favoritesCount = cafe.favoritesCount || 0;
-  const savedCount = cafe.savedCount || 0;
-  const reviewsCount = cafe.reviews.length;
+  const amenities = cafe.amenities ?? [];
 
   const handlePhonePress = () => {
-    if (cafe.phone) {
-      Linking.openURL(`tel:${cafe.phone.replace(/\s/g, '')}`);
-    }
+    if (cafe.phone) Linking.openURL('tel:' + cafe.phone.replace(/\s/g, ''));
   };
 
   const handleLocationPress = () => {
-    const url = `https://maps.google.com/?q=${encodeURIComponent(cafe.location)}`;
-    Linking.openURL(url);
+    Linking.openURL('https://maps.google.com/?q=' + encodeURIComponent(cafe.location));
+  };
+
+  const handleShare = async () => {
+    try {
+      await Share.share({ message: 'Check out ' + cafe.name + ' on Bean' });
+    } catch {
+      // User dismissed the share sheet.
+    }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-      
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Header Section with Image */}
-        <View style={styles.headerImageContainer}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.hero}>
           <ScrollView
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
             onMomentumScrollEnd={(event) => {
-              const index = Math.round(
-                event.nativeEvent.contentOffset.x / SCREEN_WIDTH
+              setHeaderPhotoIndex(
+                Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH)
               );
-              setHeaderPhotoIndex(index);
             }}
           >
             {headerPhotos.map((photo, index) => (
               <TouchableOpacity
-                key={`${photo}-${index}`}
+                key={photo + '-' + index}
                 activeOpacity={0.9}
                 onPress={() => {
                   if (realPhotos.length > 0) setShowPhotoGallery(true);
                 }}
               >
-                <Image
-                  source={{ uri: photo }}
-                  style={styles.headerImage}
-                  defaultSource={{ uri: 'https://via.placeholder.com/400x300/E5E5EA/E5E5EA' }}
-                />
+                <Image source={{ uri: photo }} style={styles.heroImage} resizeMode="cover" />
               </TouchableOpacity>
             ))}
           </ScrollView>
 
-          {/* Page dots */}
           {headerPhotos.length > 1 && (
-            <View style={styles.headerDots}>
+            <View style={styles.dots}>
               {headerPhotos.map((_, index) => (
                 <View
                   key={index}
-                  style={[
-                    styles.headerDot,
-                    index === safeHeaderIndex && styles.headerDotActive,
-                  ]}
+                  style={[styles.dot, index === safeHeaderIndex && styles.dotActive]}
                 />
               ))}
             </View>
           )}
 
-          {/* Back Button */}
-          <TouchableOpacity
-            style={styles.backButton}
+          <HeroPillButton
+            xml={ARROW_LEFT_HERO_SVG}
+            side="left"
+            label="Go back"
             onPress={() => router.back()}
-          >
-            <ArrowLeft size={24} color="#1C1C1E" />
-          </TouchableOpacity>
+          />
+          <HeroPillButton
+            xml={MORE_HORIZONTAL_SVG}
+            side="right"
+            label="Share this cafe"
+            onPress={handleShare}
+          />
 
-          {/* Photos Button */}
           {photoCount > 0 && (
             <TouchableOpacity
-              style={styles.photosButton}
+              style={styles.photosPill}
               onPress={() => setShowPhotoGallery(true)}
+              activeOpacity={0.85}
             >
-              <Text style={styles.photosButtonText}>{photoCount} Photos</Text>
+              <Text style={styles.photosPillText}>{photoCount} Photos</Text>
             </TouchableOpacity>
           )}
         </View>
 
-        {/* Business Info Section */}
-        <View style={styles.content}>
-          {/* Name and Action Icons */}
+        <View style={styles.identity}>
           <View style={styles.nameRow}>
             <Text style={styles.name}>{cafe.name}</Text>
-            <View style={styles.actionIcons}>
-              <TouchableOpacity
-                style={styles.actionIcon}
-                onPress={() => toggleFavorite(cafe.id)}
-              >
-                <Heart 
-                  size={24} 
-                  color={isFav ? "#FF3B30" : "#1C1C1E"} 
-                  fill={isFav ? "#FF3B30" : "transparent"}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionIcon}
-                onPress={() => toggleBookmark(cafe.id)}
-              >
-                <Bookmark 
-                  size={24} 
-                  color={isSaved ? "#1C1C1E" : "#1C1C1E"} 
-                  fill={isSaved ? "#1C1C1E" : "transparent"}
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Location */}
-          <TouchableOpacity style={styles.infoRow} onPress={handleLocationPress}>
-            <MapPin size={16} color="#8E8E93" />
-            <Text style={styles.infoText}>{cafe.location}</Text>
-            <ExternalLink size={14} color="#8E8E93" style={styles.externalIcon} />
-          </TouchableOpacity>
-
-          {/* Hours */}
-          {cafe.hours && (
-            <View style={styles.infoRow}>
-              <Clock size={16} color="#8E8E93" />
-              <Text style={styles.infoText}>
-                {cafe.hours.openNow ? (
-                  <>
-                    <Text style={styles.openNowText}>Open Now</Text>
-                    {(cafe.hours.currentHours || '').replace(/^Open Now/, '')}
-                  </>
-                ) : (
-                  cafe.hours.currentHours || 'Hours not available'
-                )}
-              </Text>
-            </View>
-          )}
-
-          {/* Phone */}
-          {cafe.phone && (
-            <TouchableOpacity style={styles.infoRow} onPress={handlePhonePress}>
-              <Phone size={16} color="#8E8E93" />
-              <Text style={styles.infoText}>{cafe.phone}</Text>
+            <TouchableOpacity
+              onPress={() => toggleFavorite(cafe.id)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={isFav ? 'Remove from favourites' : 'Add to favourites'}
+            >
+              <SvgXml
+                xml={isFav ? HEART_24_FILLED_SVG : HEART_24_SVG}
+                width={24}
+                height={24}
+              />
             </TouchableOpacity>
-          )}
-
-          {/* Amenities Badges */}
-          {cafe.amenities && cafe.amenities.length > 0 && (
-            <View style={styles.amenitiesRow}>
-              {cafe.amenities.map((amenity, index) => (
-                <View key={index} style={styles.amenityBadge}>
-                  {amenity === 'Has WiFi' && <Wifi size={14} color="#007AFF" />}
-                  {amenity === 'Top Rated' && <Star size={14} color="#D4AF37" fill="#D4AF37" />}
-                  <Text style={styles.amenityText}>{amenity}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {/* Ratings Section */}
-          <View style={styles.ratingsSection}>
-            <RatingHistogram
-              ratings={cafe.reviews.map((r) => r.rating)}
-              averageRating={cafe.rating}
-            />
-
-            {/* Stat Cards */}
-            <View style={styles.statCards}>
-              <View style={styles.statCard}>
-                <Star size={16} color="#4CAF50" fill="#4CAF50" />
-                <Text style={styles.statLabel}>Reviews</Text>
-                <Text style={styles.statValue}>{reviewsCount}</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Heart size={16} color="#FF3B30" fill="#FF3B30" />
-                <Text style={styles.statLabel}>Favourites</Text>
-                <Text style={styles.statValue}>{favoritesCount}</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Bookmark size={16} color="#1C1C1E" fill="#1C1C1E" />
-                <Text style={styles.statLabel}>Saved</Text>
-                <Text style={styles.statValue}>{savedCount}</Text>
-              </View>
-            </View>
+            <TouchableOpacity
+              onPress={() => toggleBookmark(cafe.id)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={isSaved ? 'Remove from saved' : 'Save this cafe'}
+            >
+              <SvgXml
+                xml={isSaved ? BOOKMARK_24_FILLED_SVG : BOOKMARK_24_SVG}
+                width={24}
+                height={24}
+              />
+            </TouchableOpacity>
           </View>
 
-          {/* Amenities Section */}
-          {cafe.amenities && cafe.amenities.length > 0 && (
-            <View style={styles.amenitiesSection}>
-              <Text style={styles.sectionTitle}>Amenities</Text>
-              <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={false}
-                style={styles.amenitiesScroll}
-              >
-                {cafe.amenities.map((amenity, index) => (
-                  <View key={index} style={styles.amenityItem}>
-                    {amenity === 'Has WiFi' && <Wifi size={20} color="#007AFF" />}
-                    {amenity === 'Parking' && <Text style={styles.amenityEmoji}>🅿️</Text>}
-                    {amenity === 'Top Rated' && <Star size={20} color="#D4AF37" fill="#D4AF37" />}
-                    <Text style={styles.amenityItemText}>{amenity}</Text>
-                  </View>
-                ))}
-              </ScrollView>
-            </View>
-          )}
+          <View style={styles.infoBlock}>
+            <TouchableOpacity style={styles.infoRow} onPress={handleLocationPress}>
+              <SvgXml xml={MAP_PIN_16_SVG} width={16} height={16} />
+              <Text style={styles.infoText}>{cafe.location}</Text>
+              <SvgXml xml={EXTERNAL_LINK_SVG} width={16} height={16} />
+            </TouchableOpacity>
 
-          {/* Reviews Section */}
-          {cafe.reviews.length > 0 && (
-            <View style={styles.reviewsSection}>
-              <Text style={styles.sectionTitle}>Reviews</Text>
-              {cafe.reviews.map((review) => (
-                <ReviewCard key={review.id} review={review} />
+            {!!cafe.hours && (
+              <View style={styles.infoRow}>
+                <SvgXml xml={CLOCK_SVG} width={16} height={16} />
+                {cafe.hours.openNow ? (
+                  <Text style={styles.infoText}>
+                    <Text style={styles.openNow}>Open Now</Text>
+                    {(cafe.hours.currentHours || '').replace(/^Open Now/, '')}
+                  </Text>
+                ) : (
+                  <Text style={styles.infoText}>
+                    {cafe.hours.currentHours || 'Hours not available'}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {!!cafe.phone && (
+              <TouchableOpacity style={styles.infoRow} onPress={handlePhonePress}>
+                {/* The frame puts a map pin on the phone row too. Kept as drawn;
+                    no phone glyph exists in the exported icon set. */}
+                <SvgXml xml={MAP_PIN_16_SVG} width={16} height={16} />
+                <Text style={styles.infoText}>{cafe.phone}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {amenities.length > 0 && (
+            <View style={styles.amenityRow}>
+              {amenities.slice(0, 3).map((amenity) => (
+                <Tag
+                  key={amenity}
+                  label={amenity}
+                  iconXml={categoryByLabel.get(amenity)?.icon_svg_xml}
+                  variant="outlineDark"
+                  size="s"
+                />
               ))}
             </View>
           )}
         </View>
+
+        <View style={styles.section}>
+          <SectionHeader title="Ratings" action={<BeanScore rating={cafe.rating} />} />
+          <RatingGraph
+            ratings={cafe.reviews.map((r) => r.rating)}
+            averageRating={cafe.rating}
+          />
+          <StatTiles
+            reviewsCount={cafe.reviews.length}
+            favouritesCount={cafe.favoritesCount || 0}
+            savedCount={cafe.savedCount || 0}
+          />
+        </View>
+
+        {amenities.length > 0 && (
+          <View style={styles.section}>
+            <SectionHeader title="Amenities" />
+            <View style={styles.amenityWrap}>
+              {amenities.map((amenity) => (
+                <Tag
+                  key={amenity}
+                  label={amenity}
+                  iconXml={categoryByLabel.get(amenity)?.icon_svg_xml}
+                  variant={preferredLabels.has(amenity) ? 'filled' : 'outlineDark'}
+                />
+              ))}
+            </View>
+          </View>
+        )}
+
+        {cafe.reviews.length > 0 && (
+          <View style={styles.section}>
+            <SectionHeader title="Reviews" />
+            {cafe.reviews.map((review) => (
+              <ReviewCard key={review.id} review={review} />
+            ))}
+          </View>
+        )}
       </ScrollView>
 
-      {/* Bottom Action Buttons */}
-      <View style={styles.bottomActions}>
-        <TouchableOpacity
-          style={[styles.bottomButton, styles.saveButton, isSaved && styles.saveButtonActive]}
-          onPress={() => toggleBookmark(cafe.id)}
-        >
-          <Bookmark 
-            size={20} 
-            color={isSaved ? "#FFFFFF" : "#1C1C1E"} 
-            fill={isSaved ? "#FFFFFF" : "transparent"}
-          />
-          <Text style={[styles.bottomButtonText, isSaved && styles.bottomButtonTextActive]}>
-            {isSaved ? 'Saved' : 'Save'}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.bottomButton}
-          onPress={() => router.push({
-            pathname: '/(tabs)/add-review',
-            params: { cafeId: cafe.id, cafeName: cafe.name, cafeImage: cafe.image }
-          })}
-        >
-          <Text style={styles.addReviewButtonText}>Add Review</Text>
-        </TouchableOpacity>
+      {/* The frame's footer is a single Add Review button. Saving already has a
+          home in the bookmark beside the cafe name, so it is not repeated here. */}
+      <View style={styles.footer}>
+        <Button
+          label="Add Review"
+          iconXml={PLUS_CIRCLE_LIGHT_SVG}
+          onPress={() =>
+            router.push({
+              pathname: '/(tabs)/add-review',
+              params: { cafeId: cafe.id, cafeName: cafe.name, cafeImage: cafe.image },
+            })
+          }
+        />
       </View>
 
-      {/* Photo Gallery Modal */}
       {realPhotos.length > 0 && (
         <PhotoGallery
           photos={realPhotos}
@@ -428,233 +448,118 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  headerImageContainer: {
-    position: 'relative',
-    width: '100%',
-    height: SCREEN_WIDTH * 0.75, // ~40% of screen height
-    backgroundColor: '#E5E5EA',
+  scrollContent: {
+    paddingBottom: spacing.md,
   },
-  headerImage: {
+  notFound: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.background,
+  },
+  notFoundText: {
+    ...type.body1,
+    color: colors.greyNormal,
+  },
+  notFoundButton: {
+    paddingHorizontal: 32,
+  },
+  hero: {
+    height: HERO_HEIGHT,
+    overflow: 'hidden',
+    backgroundColor: colors.accent2,
+  },
+  heroImage: {
     width: SCREEN_WIDTH,
-    height: SCREEN_WIDTH * 0.75,
+    height: HERO_HEIGHT,
   },
-  headerDots: {
+  dots: {
     position: 'absolute',
-    bottom: 16,
+    bottom: 12,
     left: 0,
     right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
-    alignItems: 'center',
     gap: 6,
   },
-  headerDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255, 254, 251, 0.5)',
   },
-  headerDotActive: {
-    backgroundColor: '#FFFFFF',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  dotActive: {
+    backgroundColor: colors.background,
   },
-  backButton: {
+  photosPill: {
     position: 'absolute',
-    top: 50,
-    left: 20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    right: spacing.md,
+    bottom: spacing.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: '#FCFBFC',
   },
-  photosButton: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+  photosPillText: {
+    ...type.footnote1,
+    color: colors.ink,
+    letterSpacing: -0.408,
   },
-  photosButtonText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Bold',
-    color: '#1C1C1E',
-  },
-  content: {
-    padding: 20,
-    paddingBottom: 100,
+  identity: {
+    gap: spacing.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.creamBorder,
   },
   nameRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
+    alignItems: 'center',
+    gap: spacing.md,
   },
   name: {
+    ...type.title1,
     flex: 1,
-    fontSize: 28,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: '#1C1C1E',
-    marginRight: 12,
+    fontSize: 24,
+    lineHeight: 26.4,
+    letterSpacing: -0.408,
+    color: colors.ink,
   },
-  actionIcons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  actionIcon: {
-    padding: 4,
+  infoBlock: {
+    gap: spacing.sm,
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-    gap: 8,
+    gap: spacing.sm,
   },
   infoText: {
+    ...type.body1,
     flex: 1,
-    fontSize: 16,
-    fontFamily: 'Lato-Regular',
-    color: '#1C1C1E',
+    letterSpacing: -0.408,
+    color: colors.ink,
   },
-  openNowText: {
-    color: '#2CC05E',
+  openNow: {
+    color: colors.openGreen,
   },
-  externalIcon: {
-    marginLeft: 4,
-  },
-  amenitiesRow: {
+  amenityRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 8,
-    marginBottom: 24,
+    gap: spacing.xs,
   },
-  amenityBadge: {
+  section: {
+    gap: spacing.md,
+    padding: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.creamBorder,
+  },
+  amenityWrap: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 6,
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
-  amenityText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#1C1C1E',
-  },
-  ratingsSection: {
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: '#1C1C1E',
-  },
-  statCards: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 16,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    gap: 8,
-  },
-  statLabel: {
-    fontSize: 12,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
-  },
-  statValue: {
-    fontSize: 18,
-    fontFamily: 'Lato-Bold',
-    color: '#1C1C1E',
-  },
-  amenitiesSection: {
-    marginBottom: 32,
-  },
-  amenitiesScroll: {
-    marginTop: 12,
-  },
-  amenityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginRight: 12,
-    gap: 8,
-  },
-  amenityEmoji: {
-    fontSize: 20,
-  },
-  amenityItemText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#1C1C1E',
-  },
-  reviewsSection: {
-    marginBottom: 32,
-  },
-  bottomActions: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    padding: 20,
+  footer: {
+    padding: spacing.md,
     backgroundColor: colors.background,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E5EA',
-    gap: 12,
-  },
-  bottomButton: {
-    flex: 1,
-    backgroundColor: '#1C1C1E',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveButton: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
-    flexDirection: 'row',
-    gap: 8,
-  },
-  saveButtonActive: {
-    backgroundColor: '#1C1C1E',
-    borderColor: '#1C1C1E',
-  },
-  bottomButtonText: {
-    fontSize: 16,
-    fontFamily: 'Lato-Bold',
-    color: '#1C1C1E',
-  },
-  bottomButtonTextActive: {
-    color: '#FFFFFF',
-  },
-  addReviewButtonText: {
-    fontSize: 16,
-    fontFamily: 'Lato-Bold',
-    color: '#FFFFFF',
   },
 });
