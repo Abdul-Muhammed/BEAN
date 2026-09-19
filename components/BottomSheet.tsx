@@ -115,7 +115,7 @@ export default function BottomSheet({
   const screenHeight = getScreenHeight();
   const styles = StyleSheet.create({
     backdrop: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       backgroundColor: '#000000',
       zIndex: 1,
     },
