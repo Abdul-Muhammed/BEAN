@@ -1,8 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { SvgXml } from 'react-native-svg';
-import { EDIT_PENCIL_SVG } from '@/constants/profileIcons';
-import { colors } from '@/constants/theme';
+import { PENCIL_SVG } from '@/constants/figmaIcons';
+import { colors, radius, softShadow, spacing, type } from '@/constants/theme';
 
 interface ProfileHeroProps {
   username: string;
@@ -19,9 +19,34 @@ interface ProfileHeroProps {
   showEditButton?: boolean;
 }
 
-/** Centered identity block: avatar (with edit pencil), name/handle/bio/join date,
- *  and tappable follow stats. Follow counts are placeholders for now (no social
- *  graph exists yet). */
+function Stat({
+  value,
+  label,
+  onPress,
+}: {
+  value: number;
+  label: string;
+  onPress?: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={styles.stat}
+      onPress={onPress}
+      disabled={!onPress}
+      activeOpacity={0.7}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={`${value} ${label}`}
+    >
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+/**
+ * Centred identity block: an 80pt avatar carrying the edit badge, then the
+ * handle, bio and join date, then the follow counts.
+ */
 export default function ProfileHero({
   username,
   fullName,
@@ -49,42 +74,31 @@ export default function ProfileHero({
         )}
         {showEditButton && (
           <TouchableOpacity
-            style={styles.editButton}
+            style={styles.editBadge}
             onPress={onPressEdit}
             activeOpacity={0.85}
-            hitSlop={8}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Edit profile"
           >
-            <SvgXml xml={EDIT_PENCIL_SVG} width={40} height={40} />
+            <SvgXml xml={PENCIL_SVG} width={12} height={12} />
           </TouchableOpacity>
         )}
       </View>
 
-      <Text style={styles.username}>{username}</Text>
-      {bio ? (
-        <Text style={styles.bio}>{bio}</Text>
-      ) : showEditButton ? (
-        <Text style={[styles.bio, styles.bioEmpty]}>Add a short bio</Text>
-      ) : null}
-      <Text style={styles.joined}>{joinedLabel}</Text>
+      <View style={styles.identity}>
+        <Text style={styles.username}>{username}</Text>
+        {bio ? (
+          <Text style={styles.bio}>{bio}</Text>
+        ) : showEditButton ? (
+          <Text style={[styles.bio, styles.bioEmpty]}>Add a short bio</Text>
+        ) : null}
+        {!!joinedLabel && <Text style={styles.joined}>{joinedLabel}</Text>}
+      </View>
 
       <View style={styles.statsRow}>
-        <TouchableOpacity
-          style={styles.stat}
-          onPress={onPressFollowing}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.statValue}>{followingCount}</Text>
-          <Text style={styles.statLabel}>Following</Text>
-        </TouchableOpacity>
-        <View style={styles.statDivider} />
-        <TouchableOpacity
-          style={styles.stat}
-          onPress={onPressFollowers}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.statValue}>{followersCount}</Text>
-          <Text style={styles.statLabel}>Followers</Text>
-        </TouchableOpacity>
+        <Stat value={followingCount} label="Following" onPress={onPressFollowing} />
+        <Stat value={followersCount} label="Followers" onPress={onPressFollowers} />
       </View>
     </View>
   );
@@ -93,90 +107,88 @@ export default function ProfileHero({
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 20,
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
   },
   avatarWrap: {
-    width: 104,
-    height: 104,
-    marginBottom: 14,
+    width: 80,
+    height: 80,
   },
   avatar: {
-    width: 104,
-    height: 104,
-    borderRadius: 52,
-    backgroundColor: '#F2F2F7',
+    width: 80,
+    height: 80,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.cream,
+    backgroundColor: colors.greyExtraLight,
   },
   avatarPlaceholder: {
-    backgroundColor: '#1C1C1E',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.ink,
   },
   avatarInitial: {
-    fontSize: 42,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: '#FFFFFF',
+    ...type.h1,
+    fontSize: 32,
+    color: colors.background,
   },
-  editButton: {
+  editBadge: {
     position: 'absolute',
-    right: -6,
-    bottom: -6,
-    width: 40,
-    height: 40,
+    top: 0,
+    right: 0,
+    width: 24,
+    height: 24,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.ink,
+    backgroundColor: colors.white,
+    overflow: 'hidden',
+    ...softShadow,
+  },
+  identity: {
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    alignSelf: 'stretch',
   },
   username: {
-    fontSize: 20,
-    fontFamily: 'Lato-Bold',
-    color: '#1C1C1E',
+    ...type.h1,
+    color: colors.ink,
+    textAlign: 'center',
   },
   bio: {
-    marginTop: 6,
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#3A3A3C',
+    ...type.body1,
+    color: colors.ink,
     textAlign: 'center',
-    lineHeight: 19,
-    paddingHorizontal: 12,
   },
   bioEmpty: {
-    color: '#B0B0B5',
+    color: colors.greyNormal,
     fontStyle: 'italic',
   },
   joined: {
-    marginTop: 6,
-    fontSize: 13,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
+    ...type.footnote1,
+    color: colors.greyNormal,
+    textAlign: 'center',
   },
   statsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 18,
-    gap: 4,
+    justifyContent: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    alignSelf: 'stretch',
   },
   stat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 4,
+    gap: spacing.xs,
   },
   statValue: {
-    fontSize: 16,
-    fontFamily: 'Lato-Bold',
-    color: '#1C1C1E',
+    ...type.title1,
+    color: colors.ink,
+    textAlign: 'center',
   },
   statLabel: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
-  },
-  statDivider: {
-    width: 1,
-    height: 18,
-    backgroundColor: '#E5E5EA',
+    ...type.footnote1,
+    color: colors.greyNormal,
+    textAlign: 'center',
   },
 });

@@ -9,23 +9,23 @@ import {
   Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '../../context/AuthContext';
 import { useRouter } from 'expo-router';
+import { useAuth } from '../../context/AuthContext';
 import { useReviews } from '../../context/ReviewContext';
 import { useFollows } from '../../context/FollowContext';
 import { useUserProfile } from '../../hooks/useUserProfile';
 import ProfileTabs, { ProfileTab } from '../../components/ProfileTabs';
 import BeanLogo from '../../components/BeanLogo';
-import ProfileHeader from '../../components/profile/ProfileHeader';
+import TopAppBar from '../../components/ui/TopAppBar';
 import ProfileHero from '../../components/profile/ProfileHero';
 import FriendDiscoveryCard from '../../components/profile/FriendDiscoveryCard';
 import TopCafesSection from '../../components/profile/TopCafesSection';
 import PreferencesSection from '../../components/profile/PreferencesSection';
 import RatingsSection from '../../components/profile/RatingsSection';
-import StatsCards from '../../components/profile/StatsCards';
 import RecentActivitySection from '../../components/profile/RecentActivitySection';
 import DiaryList from '../../components/profile/DiaryList';
-import { colors } from '@/constants/theme';
+import { MORE_HORIZONTAL_SVG, SETTINGS_SVG } from '@/constants/figmaIcons';
+import { colors, spacing, type } from '@/constants/theme';
 
 const MONTH_SHORT = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -47,7 +47,6 @@ export default function ProfileScreen() {
   const { followersCount, followingCount } = useFollows();
   const [activeTab, setActiveTab] = useState<ProfileTab>('overview');
 
-  // Calculate stats
   const averageRating = useMemo(() => {
     if (userReviews.length === 0) return 0;
     const sum = userReviews.reduce((acc, review) => acc + review.rating, 0);
@@ -55,7 +54,7 @@ export default function ProfileScreen() {
   }, [userReviews]);
 
   // Recent activity = the most recent reviews; userReviews is already newest-first.
-  const recentActivity = useMemo(() => userReviews.slice(0, 3), [userReviews]);
+  const recentActivity = useMemo(() => userReviews.slice(0, 4), [userReviews]);
 
   // Prioritize username if it exists, is not empty, and is not a temporary placeholder
   const hasValidUsername =
@@ -79,8 +78,7 @@ export default function ProfileScreen() {
   const headerName =
     (profile?.first_name || meta.first_name || '').toString().trim() || 'Profile';
 
-  const profileImageUrl =
-    profile?.profile_image_url || meta.avatar_url || meta.picture;
+  const profileImageUrl = profile?.profile_image_url || meta.avatar_url || meta.picture;
   const userName =
     fullNameFromProfile || meta.full_name || meta.name || profile?.first_name || 'User';
 
@@ -88,43 +86,61 @@ export default function ProfileScreen() {
     ? (profile!.preferences as string[])
     : [];
 
+  const topCafeIds: string[] = Array.isArray(profile?.top_cafes)
+    ? (profile!.top_cafes as string[])
+    : [];
+
   const handleShareProfile = async () => {
     try {
-      await Share.share({
-        message: `Check out ${username} on Bean ☕`,
-      });
+      await Share.share({ message: `Check out ${username} on Bean` });
     } catch {
       // User dismissed the share sheet — nothing to do.
     }
   };
 
+  const goToDiaryEntry = (id: string) =>
+    router.push({ pathname: '/diary/[id]', params: { id } });
+
   const renderOverview = () => (
     <>
-      <TopCafesSection
-        reviews={userReviews}
-        onPressCafe={(review) =>
-          router.push({ pathname: '/cafe/[id]', params: { id: review.cafeId } })
-        }
-      />
-      <PreferencesSection preferenceIds={preferenceIds} />
-      <RatingsSection
-        ratings={userReviews.map((r) => r.rating)}
-        averageRating={averageRating}
-      />
-      <StatsCards
-        reviewsCount={userReviews.length}
-        favouritesCount={favoritedCafeIds.length}
-        savedCount={bookmarkedCafes.length}
-        onPressReviews={() => setActiveTab('diary')}
-        onPressFavourites={() => router.push('/list/favorites')}
-        onPressSaved={() => router.push('/list/bookmarks')}
-      />
+      <View style={styles.sectionGroup}>
+        <View style={styles.section}>
+          <TopCafesSection
+            reviews={userReviews}
+            topCafeIds={topCafeIds}
+            isFavorited={isFavorited}
+            onPressCafe={(cafeId) =>
+              router.push({ pathname: '/cafe/[id]', params: { id: cafeId } })
+            }
+            onPressEdit={() => router.push('/edit-top-cafes')}
+          />
+        </View>
+
+        <View style={styles.section}>
+          <PreferencesSection
+            preferenceIds={preferenceIds}
+            onPressEdit={() => router.push('/(onboarding)/preferences')}
+          />
+        </View>
+
+        <View style={styles.sectionLast}>
+          <RatingsSection
+            ratings={userReviews.map((r) => r.rating)}
+            averageRating={averageRating}
+            reviewsCount={userReviews.length}
+            favouritesCount={favoritedCafeIds.length}
+            savedCount={bookmarkedCafes.length}
+            onPressReviews={() => setActiveTab('diary')}
+            onPressFavourites={() => router.push('/list/favorites')}
+            onPressSaved={() => router.push('/list/bookmarks')}
+          />
+        </View>
+      </View>
+
       <RecentActivitySection
         reviews={recentActivity}
         isFavorited={isFavorited}
-        onPressEntry={(id) =>
-          router.push({ pathname: '/diary/[id]', params: { id } })
-        }
+        onPressEntry={goToDiaryEntry}
         onPressViewAll={() => setActiveTab('diary')}
       />
     </>
@@ -133,7 +149,7 @@ export default function ProfileScreen() {
   const renderDiary = () => {
     if (userReviews.length === 0) {
       return (
-        <View style={styles.diaryEmptyContainer}>
+        <View style={styles.diaryEmpty}>
           <BeanLogo width={70} height={118} />
           <Text style={styles.diaryEmptyTitle}>Where you bean?</Text>
           <Text style={styles.diaryEmptySubtitle}>
@@ -144,15 +160,11 @@ export default function ProfileScreen() {
     }
 
     return (
-      <View style={styles.diaryContent}>
-        <DiaryList
-          reviews={userReviews}
-          isFavorited={isFavorited}
-          onPressEntry={(id) =>
-            router.push({ pathname: '/diary/[id]', params: { id } })
-          }
-        />
-      </View>
+      <DiaryList
+        reviews={userReviews}
+        isFavorited={isFavorited}
+        onPressEntry={goToDiaryEntry}
+      />
     );
   };
 
@@ -160,37 +172,39 @@ export default function ProfileScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
-      {/* Sticky header */}
-      <ProfileHeader
-        username={headerName}
-        onPressSettings={() => router.push('/settings')}
-        onPressOverflow={handleShareProfile}
+      <TopAppBar
+        title={headerName}
+        leadingXml={SETTINGS_SVG}
+        onPressLeading={() => router.push('/settings')}
+        leadingLabel="Settings"
+        trailingXml={MORE_HORIZONTAL_SVG}
+        onPressTrailing={handleShareProfile}
+        trailingLabel="Share profile"
       />
 
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
-        stickyHeaderIndices={[2]}
+        stickyHeaderIndices={[1]}
       >
-        {isProfileLoading ? (
-          <ActivityIndicator size="large" color="#1C1C1E" style={styles.loader} />
-        ) : (
-          <ProfileHero
-            username={username}
-            fullName={userName}
-            bio={profile?.bio ?? null}
-            joinedLabel={formatJoinDate(profile?.created_at)}
-            profileImageUrl={profileImageUrl}
-            followingCount={followingCount}
-            followersCount={followersCount}
-            onPressEdit={() => router.push('/settings/edit-profile')}
-            onPressFollowing={() => router.push('/following')}
-            onPressFollowers={() => router.push('/followers')}
-          />
-        )}
-
-        <View style={styles.friendCardWrap}>
+        <View style={styles.heroBlock}>
+          {isProfileLoading ? (
+            <ActivityIndicator size="large" color={colors.ink} style={styles.loader} />
+          ) : (
+            <ProfileHero
+              username={username}
+              fullName={userName}
+              bio={profile?.bio ?? null}
+              joinedLabel={formatJoinDate(profile?.created_at)}
+              profileImageUrl={profileImageUrl}
+              followingCount={followingCount}
+              followersCount={followersCount}
+              onPressEdit={() => router.push('/settings/edit-profile')}
+              onPressFollowing={() => router.push('/following')}
+              onPressFollowers={() => router.push('/followers')}
+            />
+          )}
           <FriendDiscoveryCard onPress={() => router.push('/connect-friends')} />
         </View>
 
@@ -211,20 +225,27 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 100,
+    paddingBottom: 40,
   },
   loader: {
     marginVertical: 60,
   },
-  friendCardWrap: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
+  heroBlock: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
   },
-  diaryContent: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
+  sectionGroup: {
+    paddingHorizontal: spacing.md,
   },
-  diaryEmptyContainer: {
+  section: {
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.separator,
+  },
+  sectionLast: {
+    paddingVertical: spacing.md,
+  },
+  diaryEmpty: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 40,
@@ -232,18 +253,16 @@ const styles = StyleSheet.create({
     paddingBottom: 80,
   },
   diaryEmptyTitle: {
-    fontSize: 22,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: '#1C1C1E',
-    marginTop: 24,
-    marginBottom: 8,
+    ...type.h1,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+    color: colors.ink,
     textAlign: 'center',
   },
   diaryEmptySubtitle: {
-    fontSize: 15,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
+    ...type.body1,
+    lineHeight: 20,
+    color: colors.greyNormal,
     textAlign: 'center',
-    lineHeight: 22,
   },
 });

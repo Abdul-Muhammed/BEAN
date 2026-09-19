@@ -10,6 +10,8 @@ export interface UpdateProfileParams {
   latitude?: number | null;
   longitude?: number | null;
   preferences?: string[];
+  /** Hand-picked cafe ids for the profile's Top Cafes, in display order. */
+  topCafes?: string[];
   onboardingCompleted?: boolean;
 }
 
@@ -68,6 +70,7 @@ export async function updateProfile(params: UpdateProfileParams) {
     latitude,
     longitude,
     preferences,
+    topCafes,
     onboardingCompleted,
   } = params;
 
@@ -104,6 +107,7 @@ export async function updateProfile(params: UpdateProfileParams) {
     updateData.location_longitude = longitude;
   }
   if (preferences !== undefined) updateData.preferences = preferences || [];
+  if (topCafes !== undefined) updateData.top_cafes = topCafes || [];
   if (onboardingCompleted !== undefined) updateData.onboarding_completed = onboardingCompleted;
 
   const { data, error } = await supabase
