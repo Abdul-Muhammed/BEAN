@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
-import BeanRating from '../BeanRating';
+import BeanRating, { CoffeeBean } from '../BeanRating';
 import { colors, spacing } from '@/constants/theme';
 
 interface RatingGraphProps {
@@ -57,7 +57,9 @@ export default function RatingGraph({ ratings, averageRating, style }: RatingGra
 
   return (
     <View style={[styles.row, style]}>
-      <BeanRating rating={1} size={12} />
+      {/* One bean marks the low end and five the high end, as the frame draws
+          them. A 5-bean row with one filled would read as a rating, not a scale. */}
+      <CoffeeBean size={12} />
       {heights.map((h, i) => (
         <View
           key={i}

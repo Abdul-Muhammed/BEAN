@@ -221,14 +221,22 @@ export default function EditTopCafesScreen() {
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const searchRef = useRef<TextInput>(null);
+
   const dragIndex = useSharedValue(-1);
   const dragY = useSharedValue(0);
   const hoverIndex = useSharedValue(-1);
 
-  // Seed from the saved list once the profile has loaded.
+  // Seed from the saved list once both the profile and the reviews that
+  // resolve those ids into names and images are available. Waiting on the
+  // reviews matters: they arrive from a different context and can land after
+  // the profile, and seeding early would show an empty editor for someone who
+  // has saved picks.
   const seededRef = useRef(false);
   useEffect(() => {
     if (seededRef.current || !profile) return;
+    if (initialIds.length > 0 && visited.size === 0) return;
+
     seededRef.current = true;
     setPicked(
       initialIds
@@ -361,7 +369,13 @@ export default function EditTopCafesScreen() {
           ))}
 
           {picked.length < MAX_TOP_CAFES && (
-            <View style={styles.row}>
+            <TouchableOpacity
+              style={styles.row}
+              activeOpacity={0.85}
+              onPress={() => searchRef.current?.focus()}
+              accessibilityRole="button"
+              accessibilityLabel="Add a cafe to your top cafes"
+            >
               <View style={[styles.rowCard, styles.placeholderCard]}>
                 <View style={styles.placeholderThumb}>
                   <BeanLogo width={18} height={30} color={colors.accent2} />
@@ -371,7 +385,7 @@ export default function EditTopCafesScreen() {
               <View style={styles.grip}>
                 <SvgXml xml={PLUS_CIRCLE_SVG} width={24} height={24} />
               </View>
-            </View>
+            </TouchableOpacity>
           )}
         </View>
 
@@ -379,6 +393,7 @@ export default function EditTopCafesScreen() {
           <View style={styles.search}>
             <SvgXml xml={SEARCH_SMALL_SVG} width={14} height={14} />
             <TextInput
+              ref={searchRef}
               style={styles.searchInput}
               value={query}
               onChangeText={setQuery}

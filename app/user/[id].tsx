@@ -6,6 +6,7 @@ import {
   ScrollView,
   StatusBar,
   ActivityIndicator,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -118,6 +119,14 @@ export default function UserProfileScreen() {
     ? (profile.top_cafes as string[])
     : [];
 
+  const handleShareProfile = async () => {
+    try {
+      await Share.share({ message: `Check out ${username} on Bean` });
+    } catch {
+      // User dismissed the share sheet.
+    }
+  };
+
   // Other people's reviews open as reviews, not as the cafe. Favourites are
   // private, so nothing here can be shown as favourited.
   const goToDiaryEntry = (reviewId: string) =>
@@ -191,7 +200,8 @@ export default function UserProfileScreen() {
         onPressLeading={() => router.back()}
         leadingLabel="Go back"
         trailingXml={MORE_HORIZONTAL_SVG}
-        trailingLabel="More options"
+        onPressTrailing={handleShareProfile}
+        trailingLabel="Share this profile"
       />
 
       {loading ? (
