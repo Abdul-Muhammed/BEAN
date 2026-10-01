@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { SvgXml } from 'react-native-svg';
-import { Pencil } from 'lucide-react-native';
+import Tag from '../ui/Tag';
 import SectionHeader from './SectionHeader';
+import { PENCIL_SVG } from '@/constants/figmaIcons';
 import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
-import { colors } from '@/constants/theme';
+import { spacing } from '@/constants/theme';
 
 interface PreferencesSectionProps {
   preferenceIds: string[];
@@ -13,9 +14,8 @@ interface PreferencesSectionProps {
   editable?: boolean;
 }
 
-/** Renders the user's selected preferences as pill chips. Chips are derived from
- *  the live cafe_categories table (label + icon_svg_xml) so they always match the
- *  onboarding/discovery taxonomy. */
+/** The user's chosen preferences as pill chips. Labels and icons come from the
+ *  live cafe_categories table so they always match the onboarding taxonomy. */
 export default function PreferencesSection({
   preferenceIds,
   onPressEdit,
@@ -47,17 +47,13 @@ export default function PreferencesSection({
     <View style={styles.container}>
       <SectionHeader
         title="Preferences"
-        action={editable ? <Pencil size={18} color="#8E8E93" /> : undefined}
+        action={editable ? <SvgXml xml={PENCIL_SVG} width={16} height={16} /> : undefined}
         onPressAction={onPressEdit}
+        accessibilityLabel="Edit your preferences"
       />
       <View style={styles.chips}>
         {chips.map((chip) => (
-          <View key={chip.id} style={styles.chip}>
-            {chip.icon_svg_xml ? (
-              <SvgXml xml={chip.icon_svg_xml} width={16} height={16} />
-            ) : null}
-            <Text style={styles.chipText}>{chip.label}</Text>
-          </View>
+          <Tag key={chip.id} label={chip.label} iconXml={chip.icon_svg_xml} />
         ))}
       </View>
     </View>
@@ -66,28 +62,11 @@ export default function PreferencesSection({
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 20,
-    marginBottom: 28,
+    gap: spacing.md,
   },
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.warmBorder,
-    backgroundColor: colors.warmSurface,
-  },
-  chipText: {
-    fontSize: 13,
-    fontFamily: 'Lato-Bold',
-    color: '#4A4A4A',
+    gap: spacing.sm,
   },
 });

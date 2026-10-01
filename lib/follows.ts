@@ -313,3 +313,34 @@ export async function getReviewById(reviewId: string): Promise<ReviewWithAuthor 
 
   return { review, author };
 }
+
+export interface PublicCafeCounts {
+  favourites: number;
+  saved: number;
+}
+
+/**
+ * Favourite and saved counts for any user.
+ *
+ * The favorites and bookmarks tables are owner-only under RLS, so these counts
+ * cannot be read directly for someone else. This calls a security-definer
+ * function that returns the two totals and nothing else, so a viewer learns how
+ * many cafes a person saved but never which ones.
+ *
+ * Returns zeroes if the function is missing, which is what happens until the
+ * accompanying migration has been applied.
+ */
+export async function getPublicCafeCounts(userId: string): Promise<PublicCafeCounts> {
+  const { data, error } = await supabase.rpc('public_cafe_counts', { target: userId });
+
+  if (error) {
+    console.warn('Failed to load public cafe counts:', error.message);
+    return { favourites: 0, saved: 0 };
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return {
+    favourites: Number(row?.favourites ?? 0),
+    saved: Number(row?.saved ?? 0),
+  };
+}

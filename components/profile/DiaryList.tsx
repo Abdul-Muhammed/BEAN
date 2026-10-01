@@ -1,79 +1,64 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
-import { Heart } from 'lucide-react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { SvgXml } from 'react-native-svg';
 import BeanRating from '../BeanRating';
-import BeanLogo from '../BeanLogo';
+import { HEART_12_FILLED_SVG } from '@/constants/figmaIcons';
 import { UserReview } from '../../data/mockData';
-import {
-  MONTH_ABBR,
-  getReviewVisitDate,
-  groupReviewsByYear,
-} from '../../utils/reviewDates';
-import { colors } from '@/constants/theme';
+import { getReviewVisitDate, groupReviewsByMonth } from '../../utils/reviewDates';
+import { colors, radius, spacing, type } from '@/constants/theme';
 
 interface DiaryListProps {
   reviews: UserReview[];
   isFavorited: (cafeId: string) => boolean;
   onPressEntry: (reviewId: string) => void;
-  /** Group entries under year headers (Diary tab). When false, render a flat
-   *  list of cards (Recent Activity). Defaults to true. */
+  /** Group entries under cream month bands (Diary tab). When false, render a
+   *  flat run of rows (Recent Activity). Defaults to true. */
   grouped?: boolean;
 }
 
-function DiaryCard({
+/**
+ * One diary entry: a bordered day box, the cafe name, then the bean spread and
+ * a heart when the cafe is favourited.
+ *
+ * Deliberately lean. Notes, the ordered item and the numeric score used to live
+ * here but the design moves them to the review detail screen, one tap away, so
+ * the diary reads as a dense log rather than a feed.
+ */
+export function DiaryRow({
   review,
   isFav,
   onPress,
+  isLast = false,
 }: {
   review: UserReview;
   isFav: boolean;
   onPress: () => void;
+  isLast?: boolean;
 }) {
   const visitDate = getReviewVisitDate(review);
   const dayNumber = visitDate
     ? String(visitDate.day)
-    : review.date.match(/\d+/)?.[0] || review.date;
-  const monthName = visitDate
-    ? visitDate.month
-    : review.date.match(/[A-Za-z]+/)?.[0] || '';
-  const monthAbbr = MONTH_ABBR[monthName] || monthName.slice(0, 3).toUpperCase();
+    : review.date.match(/\d+/)?.[0] || '';
 
   return (
-    <TouchableOpacity style={styles.diaryCard} activeOpacity={0.85} onPress={onPress}>
-      <View style={styles.diaryDateBlock}>
-        <Text style={styles.diaryDateDay}>{dayNumber}</Text>
-        <Text style={styles.diaryDateMonth}>{monthAbbr}</Text>
+    <TouchableOpacity
+      style={[styles.row, !isLast && styles.rowDivided]}
+      activeOpacity={0.85}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${review.cafeName}, rated ${review.rating} out of 5`}
+    >
+      <View style={styles.dayBox}>
+        <Text style={styles.dayText}>{dayNumber}</Text>
       </View>
 
-      {review.cafeImage ? (
-        <Image source={{ uri: review.cafeImage }} style={styles.diaryThumb} />
-      ) : (
-        <View style={[styles.diaryThumb, styles.diaryThumbFallback]}>
-          <BeanLogo width={20} height={34} color="#FFFFFF" />
-        </View>
-      )}
+      <Text style={styles.name} numberOfLines={1}>
+        {review.cafeName}
+      </Text>
 
-      <View style={styles.diaryCardBody}>
-        <View style={styles.diaryCardTitleRow}>
-          <Text style={styles.diaryCardName} numberOfLines={1}>
-            {review.cafeName}
-          </Text>
-          {isFav && <Heart size={14} color="#FF3B30" fill="#FF3B30" />}
-        </View>
-        <View style={styles.diaryCardRatingRow}>
-          <BeanRating rating={review.rating} size={14} />
-          <Text style={styles.diaryCardRatingText}>{review.rating.toFixed(1)}</Text>
-        </View>
-        {review.orderedItem ? (
-          <Text style={styles.diaryCardOrderText} numberOfLines={1}>
-            Ordered: {review.orderedItem}
-          </Text>
-        ) : null}
-        {review.text ? (
-          <Text style={styles.diaryCardNotesText} numberOfLines={2}>
-            {review.text}
-          </Text>
-        ) : null}
+      <View style={styles.ratingRow}>
+        <BeanRating rating={review.rating} size={12} />
+        {isFav && <SvgXml xml={HEART_12_FILLED_SVG} width={12} height={12} />}
       </View>
     </TouchableOpacity>
   );
@@ -87,38 +72,34 @@ export default function DiaryList({
 }: DiaryListProps) {
   if (!grouped) {
     return (
-      <View style={styles.flatList}>
-        {reviews.map((review) => (
-          <DiaryCard
+      <View>
+        {reviews.map((review, index) => (
+          <DiaryRow
             key={review.id}
             review={review}
             isFav={isFavorited(review.cafeId)}
             onPress={() => onPressEntry(review.id)}
+            isLast={index === reviews.length - 1}
           />
         ))}
       </View>
     );
   }
 
-  const groups = groupReviewsByYear(reviews);
-
   return (
     <View>
-      {groups.map((group) => (
-        <View key={group.year} style={styles.yearSection}>
-          <View style={styles.yearHeaderRow}>
-            <Text style={styles.yearHeader}>{group.year}</Text>
-            <View style={styles.yearHeaderLine} />
-            <Text style={styles.yearCount}>
-              {group.reviews.length} {group.reviews.length === 1 ? 'visit' : 'visits'}
-            </Text>
+      {groupReviewsByMonth(reviews).map((group) => (
+        <View key={group.key}>
+          <View style={styles.monthBand}>
+            <Text style={styles.monthText}>{group.label}</Text>
           </View>
-          {group.reviews.map((review) => (
-            <DiaryCard
+          {group.reviews.map((review, index) => (
+            <DiaryRow
               key={review.id}
               review={review}
               isFav={isFavorited(review.cafeId)}
               onPress={() => onPressEntry(review.id)}
+              isLast={index === group.reviews.length - 1}
             />
           ))}
         </View>
@@ -128,118 +109,49 @@ export default function DiaryList({
 }
 
 const styles = StyleSheet.create({
-  flatList: {
-    gap: 10,
+  monthBand: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.cream,
   },
-  yearSection: {
-    marginBottom: 24,
+  monthText: {
+    ...type.footnote1,
+    color: colors.ink,
   },
-  yearHeaderRow: {
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-    gap: 12,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.background,
   },
-  yearHeader: {
-    fontSize: 18,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: '#1C1C1E',
+  rowDivided: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cream,
   },
-  yearHeaderLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E5E5EA',
-  },
-  yearCount: {
-    fontSize: 12,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  diaryCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 10,
+  dayBox: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#F0F0F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
+    borderColor: colors.accent2,
   },
-  diaryDateBlock: {
-    width: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-    paddingTop: 4,
+  dayText: {
+    ...type.body1,
+    color: colors.slate,
   },
-  diaryDateDay: {
-    fontSize: 22,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: '#1C1C1E',
-    lineHeight: 26,
-  },
-  diaryDateMonth: {
-    fontSize: 11,
-    fontFamily: 'Lato-Bold',
-    color: '#D4AF37',
-    letterSpacing: 1,
-    marginTop: 2,
-  },
-  diaryThumb: {
-    width: 56,
-    height: 56,
-    borderRadius: 12,
-    backgroundColor: '#F2F2F7',
-    marginRight: 12,
-  },
-  diaryThumbFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#1C1C1E',
-  },
-  diaryCardBody: {
+  name: {
+    ...type.title1,
     flex: 1,
+    color: colors.ink,
   },
-  diaryCardTitleRow: {
+  ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-  diaryCardName: {
-    flex: 1,
-    fontSize: 15,
-    fontFamily: 'Lato-Bold',
-    color: '#1C1C1E',
-  },
-  diaryCardRatingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
-  },
-  diaryCardRatingText: {
-    fontSize: 13,
-    fontFamily: 'Lato-Bold',
-    color: '#4CAF50',
-  },
-  diaryCardOrderText: {
-    fontSize: 13,
-    fontFamily: 'Lato-Bold',
-    color: '#1C1C1E',
-    marginBottom: 3,
-  },
-  diaryCardNotesText: {
-    fontSize: 13,
-    fontFamily: 'Lato-Regular',
-    color: '#6B6257',
-    lineHeight: 18,
+    justifyContent: 'flex-end',
+    gap: spacing.xs,
   },
 });

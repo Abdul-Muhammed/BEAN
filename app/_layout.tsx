@@ -91,7 +91,13 @@ export function logError(prefix: string, error: any) {
 const PENDING_DEEP_LINK_KEY = 'bean.pendingDeepLink';
 
 /** Route groups a signed-out visitor may not stay on. */
-const AUTH_ONLY_GROUPS = ['(tabs)', '(onboarding)', 'diary', 'share-review'];
+const AUTH_ONLY_GROUPS = [
+  '(tabs)',
+  '(onboarding)',
+  'diary',
+  'share-review',
+  'edit-top-cafes',
+];
 
 function AuthGate() {
   const { isLoaded, isSignedIn } = useAuth();

@@ -18,11 +18,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronRight, Heart, MapPin } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 
 import BeanLogo from '../../components/BeanLogo';
 import BeanRating from '../../components/BeanRating';
+import Button from '../../components/ui/Button';
+import HeroPillButton from '../../components/ui/HeroPillButton';
+import Tag from '../../components/ui/Tag';
 import { useAuth } from '../../context/AuthContext';
 import { useReviews } from '../../context/ReviewContext';
 import { useToast } from '../../context/ToastContext';
@@ -32,41 +34,17 @@ import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
 import { getReviewById } from '../../lib/follows';
 import type { PublicUser } from '../../lib/follows';
 import { approximateDistanceMeters, extractLocation, formatDistance } from '../../lib/geo';
-import { ARROW_LEFT_SVG, MORE_VERTICAL_SVG } from '@/constants/reviewIcons';
-import { colors } from '@/constants/theme';
+import {
+  ARROW_LEFT_HERO_SVG,
+  CHEVRON_RIGHT_SVG,
+  HEART_12_FILLED_SVG,
+  MAP_PIN_12_SVG,
+  PENCIL_SVG,
+} from '@/constants/figmaIcons';
+import { colors, radius, spacing, type } from '@/constants/theme';
 import { UserReview } from '../../data/mockData';
 
 const HERO_HEIGHT = 223;
-
-/**
- * A floating pill button over the hero image — Figma nodes 276:4905 / 276:4907.
- * Both hero buttons share this so the back arrow and the edit pencil are
- * provably identical in size, border and shadow.
- */
-function HeroButton({
-  xml,
-  onPress,
-  side,
-  label,
-}: {
-  xml: string;
-  onPress: () => void;
-  side: 'left' | 'right';
-  label: string;
-}) {
-  return (
-    <TouchableOpacity
-      style={[styles.heroButton, side === 'left' ? styles.heroButtonLeft : styles.heroButtonRight]}
-      onPress={onPress}
-      hitSlop={8}
-      activeOpacity={0.85}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-    >
-      <SvgXml xml={xml} width={16} height={16} />
-    </TouchableOpacity>
-  );
-}
 
 export default function DiaryEntryScreen() {
   const { id } = useLocalSearchParams();
@@ -304,10 +282,18 @@ export default function DiaryEntryScreen() {
             </View>
           )}
 
-          <HeroButton xml={ARROW_LEFT_SVG} side="left" label="Go back" onPress={() => router.back()} />
+          <HeroPillButton
+            xml={ARROW_LEFT_HERO_SVG}
+            side="left"
+            label="Go back"
+            onPress={() => router.back()}
+          />
+          {/* The frame draws a pencil here. It still opens the Edit/Delete
+              sheet rather than jumping straight to the editor, because that
+              sheet is the only route to deleting a review. */}
           {isOwner && (
-            <HeroButton
-              xml={MORE_VERTICAL_SVG}
+            <HeroPillButton
+              xml={PENCIL_SVG}
               side="right"
               label="Review options"
               onPress={openOptions}
@@ -330,7 +316,7 @@ export default function DiaryEntryScreen() {
           <Text style={styles.dateText}>{review.date}</Text>
           <View style={styles.dateStripRight}>
             <BeanRating rating={review.rating} size={12} />
-            {isFav && <Heart size={12} color={colors.heartRed} fill={colors.heartRed} />}
+            {isFav && <SvgXml xml={HEART_12_FILLED_SVG} width={12} height={12} />}
           </View>
         </View>
 
@@ -361,14 +347,14 @@ export default function DiaryEntryScreen() {
                 </Text>
                 {!!city && (
                   <View style={styles.cafeLocationRow}>
-                    <MapPin size={12} color={colors.slate} />
+                    <SvgXml xml={MAP_PIN_12_SVG} width={12} height={12} />
                     <Text style={styles.cafeLocationText} numberOfLines={1}>
                       {distanceLabel ? `${city} • ${distanceLabel}` : city}
                     </Text>
                   </View>
                 )}
               </View>
-              <ChevronRight size={16} color={colors.ink} />
+              <SvgXml xml={CHEVRON_RIGHT_SVG} width={16} height={16} />
             </View>
           </TouchableOpacity>
 
@@ -389,28 +375,25 @@ export default function DiaryEntryScreen() {
 
           {attributes.length > 0 && (
             <View style={styles.attributeRow}>
-              {attributes.map((attribute) => {
-                const icon = iconByLabel.get(attribute);
-                return (
-                  <View key={attribute} style={styles.attributeChip}>
-                    {!!icon && <SvgXml xml={icon} width={12} height={12} />}
-                    <Text style={styles.attributeChipText}>{attribute}</Text>
-                  </View>
-                );
-              })}
+              {attributes.map((attribute) => (
+                <Tag
+                  key={attribute}
+                  label={attribute}
+                  iconXml={iconByLabel.get(attribute)}
+                  variant="outlineDark"
+                  dense
+                />
+              ))}
             </View>
           )}
         </View>
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={styles.shareButton}
-          activeOpacity={0.88}
+        <Button
+          label="Share Review"
           onPress={() => router.push(`/share-review/${review.id}` as any)}
-        >
-          <Text style={styles.shareButtonText}>Share Review</Text>
-        </TouchableOpacity>
+        />
       </View>
 
       <ConfirmationModal
@@ -492,26 +475,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.ink,
   },
-  heroButton: {
-    position: 'absolute',
-    top: 16,
-    padding: 8,
-    borderRadius: 100,
-    borderWidth: 1,
-    borderColor: colors.ink,
-    backgroundColor: colors.background,
-    shadowColor: '#262626',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  heroButtonLeft: {
-    left: 16,
-  },
-  heroButtonRight: {
-    right: 16,
-  },
   dots: {
     position: 'absolute',
     bottom: 12,
@@ -534,15 +497,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     backgroundColor: colors.cream,
   },
   dateText: {
+    ...type.footnote1,
     flex: 1,
-    fontFamily: 'Lato-Regular',
-    fontSize: 12,
-    lineHeight: 13.2,
     color: colors.ink,
   },
   dateStripRight: {
@@ -574,10 +535,8 @@ const styles = StyleSheet.create({
     borderColor: colors.separator,
   },
   bylineText: {
+    ...type.footnote1,
     flex: 1,
-    fontFamily: 'Lato-Regular',
-    fontSize: 12,
-    lineHeight: 13.2,
     color: colors.slate,
   },
   cafeCard: {
@@ -606,8 +565,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   cafeName: {
-    fontFamily: 'Lato-Black',
-    fontSize: 14,
+    ...type.title1,
     color: colors.ink,
   },
   cafeLocationRow: {
@@ -616,10 +574,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   cafeLocationText: {
+    ...type.footnote1,
     flex: 1,
-    fontFamily: 'Lato-Regular',
-    fontSize: 12,
-    lineHeight: 13.2,
     color: colors.slate,
   },
   orderRow: {
@@ -627,83 +583,47 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   orderChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 100,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.background,
     backgroundColor: colors.heartRed,
   },
   orderChipText: {
-    fontFamily: 'Lato-Regular',
-    fontSize: 14,
-    lineHeight: 15.4,
+    ...type.body1,
     color: colors.background,
     textAlign: 'center',
   },
   notesSection: {
-    gap: 16,
-    padding: 16,
+    gap: spacing.md,
+    padding: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.creamBorder,
     backgroundColor: colors.cream,
   },
   notesHeading: {
-    fontFamily: 'Lato-Black',
-    fontSize: 14,
+    ...type.title1,
     color: colors.ink,
   },
   notesText: {
-    fontFamily: 'Lato-Regular',
-    fontSize: 14,
+    ...type.body1,
     lineHeight: 20,
     color: colors.ink,
   },
   notesTextMuted: {
-    fontFamily: 'Lato-Regular',
-    fontSize: 14,
+    ...type.body1,
     lineHeight: 20,
-    color: colors.mutedText,
+    color: colors.greyNormal,
   },
   attributeRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-  },
-  attributeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 100,
-    borderWidth: 1,
-    borderColor: colors.ink,
-    backgroundColor: colors.background,
-  },
-  attributeChipText: {
-    fontFamily: 'Lato-Regular',
-    fontSize: 14,
-    lineHeight: 15.4,
-    color: colors.ink,
-    textAlign: 'center',
+    gap: spacing.sm,
   },
   footer: {
-    gap: 16,
-    padding: 16,
+    gap: spacing.md,
+    padding: spacing.md,
     backgroundColor: colors.background,
-  },
-  shareButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderRadius: 8,
-    backgroundColor: colors.ink,
-  },
-  shareButtonText: {
-    fontFamily: 'Lato-Black',
-    fontSize: 14,
-    color: colors.background,
   },
 });

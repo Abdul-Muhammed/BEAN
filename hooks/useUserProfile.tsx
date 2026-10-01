@@ -20,6 +20,9 @@ export interface UserProfile {
   location_latitude: number | null;
   location_longitude: number | null;
   preferences: any;
+  /** Hand-picked cafe ids, in display order. Empty until the user opens the
+   *  Top Cafes editor, at which point the profile stops deriving them. */
+  top_cafes: string[] | null;
   profile_image_url: string | null;
   onboarding_completed: boolean;
   created_at: string;

@@ -115,3 +115,64 @@ export function groupReviewsByYear(userReviews: UserReview[]): ReviewYearGroup[]
       reviews: grouped[year].sort((a, b) => sortValueOf(b) - sortValueOf(a)),
     }));
 }
+
+export interface ReviewMonthGroup {
+  /** Display label for the band, e.g. "October" or "October 2025". */
+  label: string;
+  /** Stable key: "2026-09", or "other" when the date could not be parsed. */
+  key: string;
+  reviews: UserReview[];
+}
+
+/**
+ * Group reviews by visit month, newest first, each group sorted newest-first.
+ * This is what the Figma diary shows: cream bands headed by a month name.
+ *
+ * The frames label bands with a bare month name. That is ambiguous once the
+ * diary spans more than a year, so a month outside the current year carries its
+ * year too. Undated reviews collect under "Earlier" at the end rather than
+ * being dropped.
+ */
+export function groupReviewsByMonth(userReviews: UserReview[]): ReviewMonthGroup[] {
+  const grouped = new Map<string, { label: string; sort: number; reviews: UserReview[] }>();
+  const currentYear = new Date().getFullYear();
+
+  userReviews.forEach((review) => {
+    const visitDate = getReviewVisitDate(review);
+
+    if (!visitDate) {
+      const existing = grouped.get('other');
+      if (existing) existing.reviews.push(review);
+      else grouped.set('other', { label: 'Earlier', sort: -1, reviews: [review] });
+      return;
+    }
+
+    const monthIndex = MONTH_NAMES.indexOf(visitDate.month);
+    const key = `${visitDate.year}-${String(monthIndex + 1).padStart(2, '0')}`;
+    const label =
+      visitDate.year === currentYear
+        ? visitDate.month
+        : `${visitDate.month} ${visitDate.year}`;
+
+    const existing = grouped.get(key);
+    if (existing) existing.reviews.push(review);
+    else {
+      grouped.set(key, {
+        label,
+        sort: visitDate.year * 12 + monthIndex,
+        reviews: [review],
+      });
+    }
+  });
+
+  const sortValueOf = (review: UserReview): number =>
+    getReviewVisitDate(review)?.timestamp || 0;
+
+  return Array.from(grouped.entries())
+    .sort(([, a], [, b]) => b.sort - a.sort)
+    .map(([key, group]) => ({
+      key,
+      label: group.label,
+      reviews: group.reviews.sort((a, b) => sortValueOf(b) - sortValueOf(a)),
+    }));
+}

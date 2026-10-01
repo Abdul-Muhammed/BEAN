@@ -6,25 +6,30 @@ import {
   ScrollView,
   StatusBar,
   ActivityIndicator,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import ConnectionsHeader from '../../components/social/ConnectionsHeader';
+import ProfileTabs, { ProfileTab } from '../../components/ProfileTabs';
+import TopAppBar from '../../components/ui/TopAppBar';
 import ProfileHero from '../../components/profile/ProfileHero';
 import FollowButton from '../../components/social/FollowButton';
 import TopCafesSection from '../../components/profile/TopCafesSection';
 import PreferencesSection from '../../components/profile/PreferencesSection';
 import RatingsSection from '../../components/profile/RatingsSection';
-import StatsCards from '../../components/profile/StatsCards';
 import RecentActivitySection from '../../components/profile/RecentActivitySection';
+import DiaryList from '../../components/profile/DiaryList';
 import {
   getPublicProfile,
+  getPublicCafeCounts,
   getUserReviews,
   getFollowCounts,
   doesUserFollowMe,
+  type PublicCafeCounts,
 } from '../../lib/follows';
 import { UserReview } from '../../data/mockData';
-import { colors } from '@/constants/theme';
+import { ARROW_LEFT_SVG, MORE_HORIZONTAL_SVG } from '@/constants/figmaIcons';
+import { colors, spacing, type } from '@/constants/theme';
 
 const MONTH_SHORT = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -45,9 +50,14 @@ export default function UserProfileScreen() {
   const [profile, setProfile] = useState<any>(null);
   const [reviews, setReviews] = useState<UserReview[]>([]);
   const [counts, setCounts] = useState({ followers: 0, following: 0 });
+  const [cafeCounts, setCafeCounts] = useState<PublicCafeCounts>({
+    favourites: 0,
+    saved: 0,
+  });
   const [theyFollowMe, setTheyFollowMe] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [activeTab, setActiveTab] = useState<ProfileTab>('overview');
 
   useEffect(() => {
     let cancelled = false;
@@ -60,8 +70,9 @@ export default function UserProfileScreen() {
       getUserReviews(id),
       getFollowCounts(id),
       doesUserFollowMe(id),
+      getPublicCafeCounts(id),
     ])
-      .then(([prof, revs, cnts, follows]) => {
+      .then(([prof, revs, cnts, follows, cafeCnts]) => {
         if (cancelled) return;
         if (!prof) {
           setNotFound(true);
@@ -71,6 +82,7 @@ export default function UserProfileScreen() {
         setReviews(revs);
         setCounts(cnts);
         setTheyFollowMe(follows);
+        setCafeCounts(cafeCnts);
       })
       .catch((err) => {
         if (!cancelled) {
@@ -93,7 +105,7 @@ export default function UserProfileScreen() {
     return Math.round((sum / reviews.length) * 10) / 10;
   }, [reviews]);
 
-  const recentActivity = useMemo(() => reviews.slice(0, 3), [reviews]);
+  const recentActivity = useMemo(() => reviews.slice(0, 4), [reviews]);
 
   const username = profile?.username ? `@${profile.username}` : '@user';
   const fullName =
@@ -103,17 +115,97 @@ export default function UserProfileScreen() {
   const preferenceIds: string[] = Array.isArray(profile?.preferences)
     ? (profile.preferences as string[])
     : [];
+  const topCafeIds: string[] = Array.isArray(profile?.top_cafes)
+    ? (profile.top_cafes as string[])
+    : [];
 
-  const goToCafe = (cafeId: string) =>
-    router.push({ pathname: '/cafe/[id]', params: { id: cafeId } });
+  const handleShareProfile = async () => {
+    try {
+      await Share.share({ message: `Check out ${username} on Bean` });
+    } catch {
+      // User dismissed the share sheet.
+    }
+  };
+
+  // Other people's reviews open as reviews, not as the cafe. Favourites are
+  // private, so nothing here can be shown as favourited.
+  const goToDiaryEntry = (reviewId: string) =>
+    router.push({ pathname: '/diary/[id]', params: { id: reviewId } });
+
+  const renderOverview = () => (
+    <>
+      <View style={styles.sectionGroup}>
+        <View style={styles.section}>
+          <TopCafesSection
+            reviews={reviews}
+            topCafeIds={topCafeIds}
+            onPressCafe={(cafeId) =>
+              router.push({ pathname: '/cafe/[id]', params: { id: cafeId } })
+            }
+            editable={false}
+          />
+        </View>
+
+        <View style={styles.section}>
+          <PreferencesSection preferenceIds={preferenceIds} editable={false} />
+        </View>
+
+        <View style={styles.sectionLast}>
+          <RatingsSection
+            ratings={reviews.map((r) => r.rating)}
+            averageRating={averageRating}
+            reviewsCount={reviews.length}
+            favouritesCount={cafeCounts.favourites}
+            savedCount={cafeCounts.saved}
+          />
+        </View>
+      </View>
+
+      <RecentActivitySection
+        reviews={recentActivity}
+        isFavorited={() => false}
+        onPressEntry={goToDiaryEntry}
+        onPressViewAll={() => setActiveTab('diary')}
+      />
+    </>
+  );
+
+  const renderDiary = () => {
+    if (reviews.length === 0) {
+      return (
+        <View style={styles.diaryEmpty}>
+          <Text style={styles.diaryEmptySubtitle}>
+            {fullName} has not logged any cafes yet.
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <DiaryList
+        reviews={reviews}
+        isFavorited={() => false}
+        onPressEntry={goToDiaryEntry}
+      />
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
-      <ConnectionsHeader title={(profile?.first_name || '').trim() || 'Profile'} />
+
+      <TopAppBar
+        title={(profile?.first_name || '').trim() || 'Profile'}
+        leadingXml={ARROW_LEFT_SVG}
+        onPressLeading={() => router.back()}
+        leadingLabel="Go back"
+        trailingXml={MORE_HORIZONTAL_SVG}
+        onPressTrailing={handleShareProfile}
+        trailingLabel="Share this profile"
+      />
 
       {loading ? (
-        <ActivityIndicator size="large" color="#1C1C1E" style={styles.loader} />
+        <ActivityIndicator size="large" color={colors.ink} style={styles.loader} />
       ) : notFound ? (
         <View style={styles.notFound}>
           <Text style={styles.notFoundText}>This user could not be found.</Text>
@@ -123,19 +215,19 @@ export default function UserProfileScreen() {
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
+          stickyHeaderIndices={[1]}
         >
-          <ProfileHero
-            username={username}
-            fullName={fullName}
-            bio={profile?.bio ?? null}
-            joinedLabel={formatJoinDate(profile?.created_at)}
-            profileImageUrl={profile?.profile_image_url}
-            followingCount={counts.following}
-            followersCount={counts.followers}
-            showEditButton={false}
-          />
-
-          <View style={styles.followWrap}>
+          <View style={styles.heroBlock}>
+            <ProfileHero
+              username={username}
+              fullName={fullName}
+              bio={profile?.bio ?? null}
+              joinedLabel={formatJoinDate(profile?.created_at)}
+              profileImageUrl={profile?.profile_image_url}
+              followingCount={counts.following}
+              followersCount={counts.followers}
+              showEditButton={false}
+            />
             <FollowButton
               targetId={id!}
               username={profile?.username}
@@ -144,30 +236,9 @@ export default function UserProfileScreen() {
             />
           </View>
 
-          <TopCafesSection
-            reviews={reviews}
-            onPressCafe={(r) => goToCafe(r.cafeId)}
-            editable={false}
-          />
-          <PreferencesSection preferenceIds={preferenceIds} editable={false} />
-          <RatingsSection
-            ratings={reviews.map((r) => r.rating)}
-            averageRating={averageRating}
-          />
-          <StatsCards
-            reviewsCount={reviews.length}
-            favouritesCount={0}
-            savedCount={0}
-            reviewsOnly
-          />
-          <RecentActivitySection
-            reviews={recentActivity}
-            isFavorited={() => false}
-            onPressEntry={(reviewId) => {
-              const r = reviews.find((x) => x.id === reviewId);
-              if (r) goToCafe(r.cafeId);
-            }}
-          />
+          <ProfileTabs activeTab={activeTab} onTabChange={setActiveTab} />
+
+          {activeTab === 'overview' ? renderOverview() : renderDiary()}
         </ScrollView>
       )}
     </SafeAreaView>
@@ -183,18 +254,40 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 60,
+    paddingBottom: 40,
   },
   loader: {
     marginVertical: 60,
   },
-  followWrap: {
-    paddingHorizontal: 20,
-    marginBottom: 24,
+  heroBlock: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
   },
   followButton: {
     alignSelf: 'stretch',
-    height: 44,
+    height: 32,
+  },
+  sectionGroup: {
+    paddingHorizontal: spacing.md,
+  },
+  section: {
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.separator,
+  },
+  sectionLast: {
+    paddingVertical: spacing.md,
+  },
+  diaryEmpty: {
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    paddingVertical: 60,
+  },
+  diaryEmptySubtitle: {
+    ...type.body1,
+    lineHeight: 20,
+    color: colors.greyNormal,
+    textAlign: 'center',
   },
   notFound: {
     flex: 1,
@@ -203,9 +296,8 @@ const styles = StyleSheet.create({
     padding: 40,
   },
   notFoundText: {
-    fontSize: 15,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
+    ...type.body1,
+    color: colors.greyNormal,
     textAlign: 'center',
   },
 });
