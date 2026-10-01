@@ -6,7 +6,7 @@ import { SvgXml } from 'react-native-svg';
 import { CoffeeBean } from './BeanRating';
 import { Cafe } from '../data/mockData';
 import { useReviews } from '../context/ReviewContext';
-import { useUserProfile } from '../hooks/useUserProfile';
+import { useLocation } from '../hooks/useLocation';
 import { approximateDistanceMeters, extractLocation, formatDistance } from '../lib/geo';
 import CafeStatusBadges, { type CafeBadgeKind } from './CafeStatusBadges';
 import { colors, fonts } from '@/constants/theme';
@@ -26,7 +26,7 @@ interface ListCafeCardProps {
 
 function ListCafeCard({ cafe, hideBadges, attributes, categoryById }: ListCafeCardProps) {
   const { addCafe } = useReviews();
-  const { profile } = useUserProfile();
+  const { coords } = useLocation();
 
   const handlePress = () => {
     addCafe(cafe);
@@ -38,15 +38,10 @@ function ListCafeCard({ cafe, hideBadges, attributes, categoryById }: ListCafeCa
   // Distance is only shown when we have both the user's saved coordinates and
   // the cafe's coordinates; otherwise we gracefully fall back to city-only.
   let distanceLabel = '';
-  if (
-    typeof profile?.location_latitude === 'number' &&
-    typeof profile?.location_longitude === 'number' &&
-    typeof cafe.latitude === 'number' &&
-    typeof cafe.longitude === 'number'
-  ) {
+  if (coords && typeof cafe.latitude === 'number' && typeof cafe.longitude === 'number') {
     const meters = approximateDistanceMeters(
-      profile.location_latitude,
-      profile.location_longitude,
+      coords.latitude,
+      coords.longitude,
       cafe.latitude,
       cafe.longitude
     );

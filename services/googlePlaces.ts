@@ -90,28 +90,6 @@ export async function searchCafesNearbyByCoords(
   }
 }
 
-// Search for cafes near a free-text address. Geocoding happens server-side in
-// the Edge Function (so no Geocoding key is needed on the client) and is only
-// used as a fallback for profiles created before coordinates were captured.
-export async function searchCafesNearby(
-  location: string,
-  radius: number = 5000
-): Promise<PlaceDetails[]> {
-  if (!location) return [];
-  try {
-    const { data, error } = await supabase.functions.invoke('nearby-cafes', {
-      body: { address: location, radius },
-    });
-    if (error) {
-      console.warn('Nearby cafes (address) function error:', error.message);
-      return [];
-    }
-    return Array.isArray(data?.results) ? data.results.filter(isNzPlace) : [];
-  } catch (error) {
-    console.error('Error invoking nearby cafes function:', error);
-    return [];
-  }
-}
 
 // Search for cafes by text query through the Edge Function (DB-first, Google on
 // miss).

@@ -19,6 +19,7 @@ import { FollowProvider } from '@/context/FollowContext';
 import { ToastProvider } from '@/context/ToastContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { UserProfileProvider, useUserProfile } from '@/hooks/useUserProfile';
+import { LocationProvider } from '@/hooks/useLocation';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -187,6 +188,7 @@ export default function RootLayout() {
         <BottomSheetModalProvider>
         <AuthProvider>
           <UserProfileProvider>
+            <LocationProvider>
             <ToastProvider>
               <FollowProvider>
                 <ReviewProvider>
@@ -203,6 +205,7 @@ export default function RootLayout() {
                 </ReviewProvider>
               </FollowProvider>
             </ToastProvider>
+            </LocationProvider>
           </UserProfileProvider>
         </AuthProvider>
         </BottomSheetModalProvider>
