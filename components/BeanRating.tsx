@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
     padding: 2,
   },
   halfOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     flexDirection: 'row',
   },
   halfTouch: {

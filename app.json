@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "beanapp",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "usesAppleSignIn": true,
@@ -84,7 +83,11 @@
             "com.instagram.android"
           ]
         }
-      ]
+      ],
+      "expo-build-properties",
+      "expo-sharing",
+      "expo-splash-screen",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true

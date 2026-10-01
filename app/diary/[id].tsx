@@ -30,6 +30,7 @@ import { useReviews } from '../../context/ReviewContext';
 import { useToast } from '../../context/ToastContext';
 import ConfirmationModal from '../../components/settings/ConfirmationModal';
 import { useUserProfile } from '../../hooks/useUserProfile';
+import { useLocation } from '../../hooks/useLocation';
 import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
 import { getReviewById } from '../../lib/follows';
 import type { PublicUser } from '../../lib/follows';
@@ -54,6 +55,10 @@ export default function DiaryEntryScreen() {
     useReviews();
   const { showToast } = useToast();
   const { profile } = useUserProfile();
+  // Location comes from the shared hook rather than the profile row, since
+  // onboarding no longer collects it. The hook falls back to the profile's
+  // saved coordinates for users who set them before that change.
+  const { coords } = useLocation();
   const { user } = useAuth();
 
   const reviewId = Array.isArray(id) ? id[0] : id;
@@ -117,11 +122,11 @@ export default function DiaryEntryScreen() {
     };
   }, [attributes.length]);
 
-  const iconByLabel = useMemo(() => {
-    const map = new Map<string, string>();
-    categories.forEach((category) => {
-      if (category.icon_svg_xml) map.set(category.label, category.icon_svg_xml);
-    });
+  // reviews.attributes stores category ids; labels are for display only, so a
+  // category can be renamed without orphaning historical reviews.
+  const categoryById = useMemo(() => {
+    const map = new Map<string, CafeCategory>();
+    categories.forEach((category) => map.set(category.id, category));
     return map;
   }, [categories]);
 
@@ -178,16 +183,11 @@ export default function DiaryEntryScreen() {
   // quietly falls back to the suburb alone, or disappears entirely.
   const city = cafe ? extractLocation(cafe.location) : '';
   let distanceLabel = '';
-  if (
-    typeof profile?.location_latitude === 'number' &&
-    typeof profile?.location_longitude === 'number' &&
-    typeof cafe?.latitude === 'number' &&
-    typeof cafe?.longitude === 'number'
-  ) {
+  if (coords && typeof cafe?.latitude === 'number' && typeof cafe?.longitude === 'number') {
     distanceLabel = formatDistance(
       approximateDistanceMeters(
-        profile.location_latitude,
-        profile.location_longitude,
+        coords.latitude,
+        coords.longitude,
         cafe.latitude,
         cafe.longitude
       )
@@ -378,8 +378,8 @@ export default function DiaryEntryScreen() {
               {attributes.map((attribute) => (
                 <Tag
                   key={attribute}
-                  label={attribute}
-                  iconXml={iconByLabel.get(attribute)}
+                  label={categoryById.get(attribute)?.label ?? attribute}
+                  iconXml={categoryById.get(attribute)?.icon_svg_xml}
                   variant="outlineDark"
                   dense
                 />

@@ -28,6 +28,7 @@ import SectionHeader from '../../components/profile/SectionHeader';
 import { useReviews } from '../../context/ReviewContext';
 import { useUserProfile } from '../../hooks/useUserProfile';
 import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
+import { getAttributesForCafes, type CafeAttribute } from '../../lib/cafeAttributes';
 import { enrichCafeWithDetails } from '../../services/googlePlaces';
 import { colors, radius, spacing, type } from '@/constants/theme';
 import {
@@ -77,6 +78,8 @@ export default function CafeDetailScreen() {
   const [showPhotoGallery, setShowPhotoGallery] = useState(false);
   const [headerPhotoIndex, setHeaderPhotoIndex] = useState(0);
   const [categories, setCategories] = useState<CafeCategory[]>([]);
+  // What people actually reported about this cafe, most-agreed first.
+  const [attributes, setAttributes] = useState<CafeAttribute[]>([]);
   const enrichedPlaceIds = useRef<Set<string>>(new Set());
   const cafeId = Array.isArray(id) ? id[0] : id;
 
@@ -128,7 +131,6 @@ export default function CafeDetailScreen() {
                 image: nextImage,
                 phone: enrichedData.phone || cafe.phone,
                 hours: enrichedData.hours || cafe.hours,
-                amenities: enrichedData.amenities || cafe.amenities,
                 photos: nextPhotos,
                 rating: enrichedData.rating || cafe.rating,
               };
@@ -177,18 +179,31 @@ export default function CafeDetailScreen() {
     };
   }, []);
 
-  const categoryByLabel = useMemo(() => {
+  // Attributes are crowdsourced from reviews, so they are re-read whenever the
+  // cafe changes rather than derived from the Google payload.
+  useEffect(() => {
+    if (!cafeId) return;
+    let cancelled = false;
+    getAttributesForCafes([cafeId]).then((map) => {
+      if (!cancelled) setAttributes(map.get(cafeId) ?? []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [cafeId]);
+
+  const categoryById = useMemo(() => {
     const map = new Map<string, CafeCategory>();
-    categories.forEach((c) => map.set(c.label, c));
+    categories.forEach((c) => map.set(c.id, c));
     return map;
   }, [categories]);
 
-  // A chip is filled when the amenity is one of the viewer's own onboarding
+  // A chip is filled when the attribute is one of the viewer's own onboarding
   // preferences, so the page shows at a glance how well the cafe fits them.
-  const preferredLabels = useMemo(() => {
-    const ids = new Set(Array.isArray(profile?.preferences) ? profile!.preferences : []);
-    return new Set(categories.filter((c) => ids.has(c.id)).map((c) => c.label));
-  }, [categories, profile?.preferences]);
+  const preferredIds = useMemo(
+    () => new Set(Array.isArray(profile?.preferences) ? profile!.preferences : []),
+    [profile?.preferences]
+  );
 
   if (isLoading) {
     return <CafeDetailSkeleton />;
@@ -211,7 +226,7 @@ export default function CafeDetailScreen() {
   const safeHeaderIndex = Math.min(headerPhotoIndex, headerPhotos.length - 1);
   const isFav = isFavorited(cafe.id);
   const isSaved = isBookmarked(cafe.id);
-  const amenities = cafe.amenities ?? [];
+
 
   const handlePhonePress = () => {
     if (cafe.phone) Linking.openURL('tel:' + cafe.phone.replace(/\s/g, ''));
@@ -359,13 +374,13 @@ export default function CafeDetailScreen() {
             )}
           </View>
 
-          {amenities.length > 0 && (
+          {attributes.length > 0 && (
             <View style={styles.amenityRow}>
-              {amenities.slice(0, 3).map((amenity) => (
+              {attributes.slice(0, 3).map(({ attributeId }) => (
                 <Tag
-                  key={amenity}
-                  label={amenity}
-                  iconXml={categoryByLabel.get(amenity)?.icon_svg_xml}
+                  key={attributeId}
+                  label={categoryById.get(attributeId)?.label ?? attributeId}
+                  iconXml={categoryById.get(attributeId)?.icon_svg_xml}
                   variant="outlineDark"
                   size="s"
                 />
@@ -387,16 +402,16 @@ export default function CafeDetailScreen() {
           />
         </View>
 
-        {amenities.length > 0 && (
+        {attributes.length > 0 && (
           <View style={styles.section}>
             <SectionHeader title="Amenities" />
             <View style={styles.amenityWrap}>
-              {amenities.map((amenity) => (
+              {attributes.map(({ attributeId }) => (
                 <Tag
-                  key={amenity}
-                  label={amenity}
-                  iconXml={categoryByLabel.get(amenity)?.icon_svg_xml}
-                  variant={preferredLabels.has(amenity) ? 'filled' : 'outlineDark'}
+                  key={attributeId}
+                  label={categoryById.get(attributeId)?.label ?? attributeId}
+                  iconXml={categoryById.get(attributeId)?.icon_svg_xml}
+                  variant={preferredIds.has(attributeId) ? 'filled' : 'outlineDark'}
                 />
               ))}
             </View>

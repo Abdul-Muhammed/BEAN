@@ -1,30 +1,32 @@
 import React from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
-import { MapPin, Star, Wifi, Car } from 'lucide-react-native';
+import { MapPin } from 'lucide-react-native';
+import { SvgXml } from 'react-native-svg';
 import { CoffeeBean } from './BeanRating';
 import { Cafe } from '../data/mockData';
 import { useReviews } from '../context/ReviewContext';
-import { useUserProfile } from '../hooks/useUserProfile';
+import { useLocation } from '../hooks/useLocation';
 import { approximateDistanceMeters, extractLocation, formatDistance } from '../lib/geo';
 import CafeStatusBadges, { type CafeBadgeKind } from './CafeStatusBadges';
 import { colors, fonts } from '@/constants/theme';
+import type { CafeAttribute } from '../lib/cafeAttributes';
+import type { CafeCategory } from '../lib/cafeCategories';
 
 interface ListCafeCardProps {
   cafe: Cafe;
   /** Suppress badges whose state the surrounding list already implies. */
   hideBadges?: CafeBadgeKind[];
+  /** Crowdsourced attributes for this cafe, most-agreed first. Omitted means
+   *  no chips, which is what an unreviewed cafe shows. */
+  attributes?: CafeAttribute[];
+  /** Catalogue used to turn stored ids into labels and icons. */
+  categoryById?: Map<string, CafeCategory>;
 }
 
-const AMENITY_ICONS: Record<string, React.ReactNode> = {
-  'Has WiFi': <Wifi size={12} color="#8E8E93" />,
-  'Top Rated': <Star size={12} color={colors.gold} fill={colors.gold} />,
-  Parking: <Car size={12} color="#8E8E93" />,
-};
-
-function ListCafeCard({ cafe, hideBadges }: ListCafeCardProps) {
+function ListCafeCard({ cafe, hideBadges, attributes, categoryById }: ListCafeCardProps) {
   const { addCafe } = useReviews();
-  const { profile } = useUserProfile();
+  const { coords } = useLocation();
 
   const handlePress = () => {
     addCafe(cafe);
@@ -36,24 +38,19 @@ function ListCafeCard({ cafe, hideBadges }: ListCafeCardProps) {
   // Distance is only shown when we have both the user's saved coordinates and
   // the cafe's coordinates; otherwise we gracefully fall back to city-only.
   let distanceLabel = '';
-  if (
-    typeof profile?.location_latitude === 'number' &&
-    typeof profile?.location_longitude === 'number' &&
-    typeof cafe.latitude === 'number' &&
-    typeof cafe.longitude === 'number'
-  ) {
+  if (coords && typeof cafe.latitude === 'number' && typeof cafe.longitude === 'number') {
     const meters = approximateDistanceMeters(
-      profile.location_latitude,
-      profile.location_longitude,
+      coords.latitude,
+      coords.longitude,
       cafe.latitude,
       cafe.longitude
     );
     distanceLabel = formatDistance(meters);
   }
 
-  const amenities = cafe.amenities || [];
-  const visibleAmenities = amenities.slice(0, 2);
-  const remainingCount = Math.max(0, amenities.length - 2);
+  const reported = attributes ?? [];
+  const visibleAttributes = reported.slice(0, 2);
+  const remainingCount = Math.max(0, reported.length - 2);
 
   return (
     <View style={styles.cardWrapper}>
@@ -74,14 +71,19 @@ function ListCafeCard({ cafe, hideBadges }: ListCafeCardProps) {
             </View>
           )}
 
-          {amenities.length > 0 && (
+          {reported.length > 0 && (
             <View style={styles.amenitiesRow}>
-              {visibleAmenities.map((amenity, index) => (
-                <View key={index} style={styles.chip}>
-                  {AMENITY_ICONS[amenity]}
-                  <Text style={styles.chipText}>{amenity}</Text>
-                </View>
-              ))}
+              {visibleAttributes.map(({ attributeId }) => {
+                const category = categoryById?.get(attributeId);
+                return (
+                  <View key={attributeId} style={styles.chip}>
+                    {category?.icon_svg_xml ? (
+                      <SvgXml xml={category.icon_svg_xml} width={12} height={12} />
+                    ) : null}
+                    <Text style={styles.chipText}>{category?.label ?? attributeId}</Text>
+                  </View>
+                );
+              })}
               {remainingCount > 0 && (
                 <View style={styles.chip}>
                   <Text style={styles.chipText}>+{remainingCount}</Text>

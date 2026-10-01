@@ -462,7 +462,7 @@ export default function ReviewForm({
 
                 <View style={styles.attributesContainer}>
                   {likeCategories.map((category) => {
-                    const isSelected = selectedAttributes.includes(category.label);
+                    const isSelected = selectedAttributes.includes(category.id);
                     const isDisabled = !isSelected && selectedAttributes.length >= 3;
                     return (
                       <TouchableOpacity
@@ -472,7 +472,7 @@ export default function ReviewForm({
                           isSelected && styles.attributeButtonActive,
                           isDisabled && styles.attributeButtonDisabled,
                         ]}
-                        onPress={() => toggleAttribute(category.label)}
+                        onPress={() => toggleAttribute(category.id)}
                         disabled={isDisabled}
                         activeOpacity={0.8}
                       >
