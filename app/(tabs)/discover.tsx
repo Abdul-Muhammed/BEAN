@@ -53,6 +53,8 @@ import {
   type CafeAttribute,
 } from '../../lib/cafeAttributes';
 import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
+import { AUCKLAND_CBD, useLocation } from '../../hooks/useLocation';
+import LocationGateOverlay from '../../components/discover/LocationGateOverlay';
 import {
   type Filters,
   DEFAULT_FILTERS,
@@ -61,8 +63,8 @@ import {
 } from '../../components/discover/filterTypes';
 
 // Auckland fallback when no profile coords and no permission.
-const DEFAULT_LATITUDE = -36.8485;
-const DEFAULT_LONGITUDE = 174.7633;
+const DEFAULT_LATITUDE = AUCKLAND_CBD.latitude;
+const DEFAULT_LONGITUDE = AUCKLAND_CBD.longitude;
 const DEFAULT_LATITUDE_DELTA = 0.0422;
 const DEFAULT_LONGITUDE_DELTA = 0.0211;
 const NEARBY_CAFE_LIST_LIMIT = 7;
@@ -276,8 +278,28 @@ export default function DiscoverScreen() {
     return map;
   }, [categories]);
 
-  const profileLatitude = profile?.location_latitude;
-  const profileLongitude = profile?.location_longitude;
+  // The hook is the single source of truth for where the user is: live GPS
+  // when granted, the coordinates saved on their profile otherwise, and null
+  // when we genuinely do not know.
+  const {
+    coords,
+    isFallback,
+    canAskAgain,
+    requestPermission,
+  } = useLocation();
+  const [isRequestingLocation, setIsRequestingLocation] = useState(false);
+
+  const profileLatitude = coords?.latitude;
+  const profileLongitude = coords?.longitude;
+
+  const handleEnableLocation = useCallback(async () => {
+    setIsRequestingLocation(true);
+    try {
+      await requestPermission();
+    } finally {
+      setIsRequestingLocation(false);
+    }
+  }, [requestPermission]);
 
   // When categories are selected, pull every cafe carrying them from the
   // database rather than filtering whatever happens to be loaded. Ordered
@@ -824,6 +846,14 @@ export default function DiscoverScreen() {
             </Marker>
           ))}
         </MapView>
+
+        {isFallback && (
+          <LocationGateOverlay
+            requesting={isRequestingLocation}
+            mustUseSettings={!canAskAgain}
+            onEnable={handleEnableLocation}
+          />
+        )}
 
         {/* Search bar + filters button — siblings on one row, never nested */}
         <View style={styles.searchRow}>

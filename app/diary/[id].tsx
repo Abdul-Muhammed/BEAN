@@ -30,6 +30,7 @@ import { useReviews } from '../../context/ReviewContext';
 import { useToast } from '../../context/ToastContext';
 import ConfirmationModal from '../../components/settings/ConfirmationModal';
 import { useUserProfile } from '../../hooks/useUserProfile';
+import { useLocation } from '../../hooks/useLocation';
 import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
 import { getReviewById } from '../../lib/follows';
 import type { PublicUser } from '../../lib/follows';
@@ -54,6 +55,10 @@ export default function DiaryEntryScreen() {
     useReviews();
   const { showToast } = useToast();
   const { profile } = useUserProfile();
+  // Location comes from the shared hook rather than the profile row, since
+  // onboarding no longer collects it. The hook falls back to the profile's
+  // saved coordinates for users who set them before that change.
+  const { coords } = useLocation();
   const { user } = useAuth();
 
   const reviewId = Array.isArray(id) ? id[0] : id;
@@ -178,16 +183,11 @@ export default function DiaryEntryScreen() {
   // quietly falls back to the suburb alone, or disappears entirely.
   const city = cafe ? extractLocation(cafe.location) : '';
   let distanceLabel = '';
-  if (
-    typeof profile?.location_latitude === 'number' &&
-    typeof profile?.location_longitude === 'number' &&
-    typeof cafe?.latitude === 'number' &&
-    typeof cafe?.longitude === 'number'
-  ) {
+  if (coords && typeof cafe?.latitude === 'number' && typeof cafe?.longitude === 'number') {
     distanceLabel = formatDistance(
       approximateDistanceMeters(
-        profile.location_latitude,
-        profile.location_longitude,
+        coords.latitude,
+        coords.longitude,
         cafe.latitude,
         cafe.longitude
       )
