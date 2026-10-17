@@ -22,6 +22,18 @@ export const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+// Web Mercator tile containing a coordinate. Used as the unit for the Google
+// backfill rate limit: a zoom-13 tile is roughly 3.8 km square in NZ.
+export function tileKey(lat: number, lng: number, zoom = 13): string {
+  const n = 2 ** zoom;
+  const x = Math.floor(((lng + 180) / 360) * n);
+  const latRad = (lat * Math.PI) / 180;
+  const y = Math.floor(
+    ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n
+  );
+  return `z${zoom}:${x}:${y}`;
+}
+
 export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -233,6 +245,71 @@ export async function upsertCafeFromPlace(
   }
 
   return thumbnailUrl;
+}
+
+// Run work after the response has been sent. Supabase Edge Runtime exposes
+// EdgeRuntime.waitUntil; elsewhere (local `deno run`) the promise simply runs
+// unawaited.
+export function runInBackground(work: Promise<unknown>): void {
+  const runtime = (globalThis as any).EdgeRuntime;
+  const guarded = work.catch((error) =>
+    console.warn('Background task failed:', error instanceof Error ? error.message : String(error))
+  );
+  if (runtime && typeof runtime.waitUntil === 'function') {
+    runtime.waitUntil(guarded);
+  }
+}
+
+// Upsert many Google "basic" results into `cafes` in one statement, then cache
+// thumbnails for the first `thumbnailCount` in the background so the caller is
+// never kept waiting on photo downloads. Rows that already have a thumbnail
+// keep it: the row written here omits thumbnail_url, and cachePhoto reuses a
+// stored photo instead of fetching a new one.
+export async function upsertCafesFromPlaces(
+  supabase: SupabaseClient,
+  places: Record<string, any>[],
+  thumbnailCount: number
+): Promise<void> {
+  const rows = places
+    .filter((place) => place.place_id || place.id)
+    .map((place) => ({
+      place_id: place.place_id || place.id,
+      name: place.name ?? null,
+      formatted_address: place.formatted_address || place.vicinity || null,
+      rating: typeof place.rating === 'number' ? place.rating : null,
+      latitude: coord(place?.geometry?.location?.lat),
+      longitude: coord(place?.geometry?.location?.lng),
+      types: Array.isArray(place.types) ? place.types : null,
+      updated_at: new Date().toISOString(),
+    }));
+  if (rows.length === 0) return;
+
+  const { error } = await supabase.from('cafes').upsert(rows, { onConflict: 'place_id' });
+  if (error) {
+    console.warn('cafes batch upsert failed:', error.message);
+    return;
+  }
+
+  const withPhotos = places
+    .slice(0, thumbnailCount)
+    .filter((place) => Array.isArray(place.photos) && place.photos[0]?.photo_reference);
+  if (withPhotos.length === 0) return;
+
+  runInBackground(
+    Promise.all(
+      withPhotos.map(async (place) => {
+        const placeId = place.place_id || place.id;
+        const url = await cachePhoto(supabase, placeId, place.photos[0].photo_reference, 0, 800);
+        if (!url) return;
+        const { error: thumbError } = await supabase
+          .from('cafes')
+          .update({ thumbnail_url: url })
+          .eq('place_id', placeId)
+          .is('thumbnail_url', null);
+        if (thumbError) console.warn('thumbnail update failed:', thumbError.message);
+      })
+    )
+  );
 }
 
 // Build the client-facing place shape from a Google result + cached thumbnail.

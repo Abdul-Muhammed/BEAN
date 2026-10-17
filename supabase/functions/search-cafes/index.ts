@@ -9,13 +9,15 @@ import {
   jsonResponse,
   PlaceLike,
   requireUser,
-  upsertCafeFromPlace,
+  upsertCafesFromPlaces,
 } from '../_shared/places.ts';
 
 const CACHE_TTL_DAYS = 7;
 const RESULT_LIMIT = 20;
-// If the DB already matches this many cafes, answer from the DB and skip Google.
-const MIN_DB_RESULTS = 5;
+// Any database match answers the query. A higher bar sent precise cafe names
+// (which match one row) to Google on every search; the app now calls the
+// search_cafes RPC first and only invokes this function when that found nothing.
+const MIN_DB_RESULTS = 1;
 // Cap how many fresh results we cache thumbnails for. Mirrors the map's
 // `nearby-cafes` behavior so search results show real photos without an
 // unbounded number of Google Photo calls per query.
@@ -132,16 +134,12 @@ serve(async (req) => {
     const googleResults = (await fetchGoogleTextSearch(query)).filter((place) =>
       isNzPlace(place)
     );
-    const results: PlaceLike[] = [];
-    for (let i = 0; i < googleResults.length && i < RESULT_LIMIT; i++) {
-      const place = googleResults[i];
-      // Cache thumbnails for the first few results so search matches the map's
-      // behavior and the detail screen shows a real photo immediately. Beyond
-      // the cap we skip the download to bound latency and Google Photo spend;
-      // those photos are cached lazily by `cafe-details` when opened.
-      const thumb = await upsertCafeFromPlace(supabase, place, i < MAX_THUMBNAILS);
-      results.push(googlePlaceToPlaceLike(place, thumb));
-    }
+    const topResults = googleResults.slice(0, RESULT_LIMIT);
+    // One batched upsert. Thumbnails for the first few results download after
+    // the response is sent; beyond the cap they are cached lazily by
+    // `cafe-details` when a cafe is opened, bounding Google Photo spend.
+    await upsertCafesFromPlaces(supabase, topResults, MAX_THUMBNAILS);
+    const results: PlaceLike[] = topResults.map((place) => googlePlaceToPlaceLike(place, null));
 
     await writeSearchCache(supabase, queryKey, results.map((r) => r.place_id));
     return jsonResponse({ results, cache: 'miss' });

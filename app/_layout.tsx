@@ -23,6 +23,8 @@ import { LocationProvider } from '@/hooks/useLocation';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { queryClient, queryPersister, QUERY_CACHE_BUSTER } from '@/lib/queryClient';
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -184,6 +186,18 @@ export default function RootLayout() {
   // background and screens already check isLoaded/isSignedIn.
   return (
     <ErrorBoundary>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{
+          persister: queryPersister,
+          buster: QUERY_CACHE_BUSTER,
+          maxAge: 24 * 60 * 60 * 1000,
+          dehydrateOptions: {
+            shouldDehydrateQuery: (query) =>
+              query.state.status === 'success' && query.meta?.persist === true,
+          },
+        }}
+      >
       <GestureHandlerRootView style={{ flex: 1 }}>
         <BottomSheetModalProvider>
         <AuthProvider>
@@ -210,6 +224,7 @@ export default function RootLayout() {
         </AuthProvider>
         </BottomSheetModalProvider>
       </GestureHandlerRootView>
+      </PersistQueryClientProvider>
     </ErrorBoundary>
   );
 }

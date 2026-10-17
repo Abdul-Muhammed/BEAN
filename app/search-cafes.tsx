@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,25 +7,24 @@ import {
   TouchableOpacity,
   StatusBar,
   FlatList,
-  Alert,
   Keyboard,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Search, X, Clock, MapPin } from 'lucide-react-native';
 import { CoffeeBean } from '../components/BeanRating';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { searchCafesByText, convertPlaceToCafe, isNzCafe } from '../services/googlePlaces';
+import { convertPlaceToCafe, isNzCafe } from '../services/googlePlaces';
 import { useReviews } from '../context/ReviewContext';
+import { useLocation } from '../hooks/useLocation';
+import { useCafeSearch, MIN_QUERY_LENGTH } from '../hooks/useCafeSearch';
+import { cardToCafe } from '../lib/mapSearch';
 import BeanLogo from '../components/BeanLogo';
 import { colors } from '@/constants/theme';
 
 const RECENT_SEARCHES_KEY = '@bean/recent_searches';
 const MAX_RECENT_SEARCHES = 8;
-// Wait until the user has typed a meaningful query before searching, to avoid
-// firing a billable search on every keystroke.
-const MIN_QUERY_LENGTH = 3;
-const SEARCH_DEBOUNCE_MS = 800;
 const DEFAULT_CAFE_IMAGE =
   'https://images.pexels.com/photos/302899/pexels-photo-302899.jpeg?auto=compress&cs=tinysrgb&w=800';
 
@@ -40,17 +39,32 @@ interface RecentSearch {
 
 export default function SearchCafesScreen() {
   const { addCafe } = useReviews();
-  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const { mode, origin } = useLocalSearchParams<{ mode?: string; origin?: string }>();
   const isReviewMode = mode === 'review';
+  // Opened from the Discover map: a picked cafe is shown on the map rather
+  // than opened directly.
+  const returnsToMap = origin === 'discover' && !isReviewMode;
+  const { coords } = useLocation();
 
   const goToReview = (params: { cafeId: string; cafeName: string; cafeImage: string }) => {
     router.push({ pathname: '/(tabs)/add-review', params });
   };
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([]);
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { results, googleResults, isSearching, isSearchingMore } = useCafeSearch(
+    searchQuery,
+    coords
+  );
+  // Database matches when there are any; otherwise whatever the one-off Google
+  // lookup found for this query.
+  const searchResults = useMemo(
+    () =>
+      results.length > 0
+        ? results.map(cardToCafe)
+        : googleResults.map((place) => convertPlaceToCafe(place)).filter(isNzCafe),
+    [results, googleResults]
+  );
 
   // Load recent searches on mount
   useEffect(() => {
@@ -120,38 +134,28 @@ export default function SearchCafesScreen() {
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
+  };
 
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-
-    // Require a minimum query length so short/incomplete input doesn't trigger
-    // a search call.
-    if (query.trim().length < MIN_QUERY_LENGTH) {
-      setSearchResults([]);
-      setIsSearching(false);
-      return;
-    }
-
-    debounceTimerRef.current = setTimeout(async () => {
-      setIsSearching(true);
-      try {
-        const results = await searchCafesByText(query);
-        const convertedCafes = await Promise.all(
-          results.slice(0, 20).map((place) => convertPlaceToCafe(place))
-        );
-        setSearchResults(convertedCafes);
-      } catch {
-        Alert.alert('Search Error', 'Failed to search for cafes. Please try again.');
-      }
-      setIsSearching(false);
-    }, SEARCH_DEBOUNCE_MS);
+  // Back to the Discover map, which flies to the cafe and selects it.
+  const showOnMap = (cafe: { id: string; latitude?: number; longitude?: number }) => {
+    router.navigate({
+      pathname: '/(tabs)/discover',
+      params: {
+        focusCafeId: cafe.id,
+        focusLat: String(cafe.latitude),
+        focusLng: String(cafe.longitude),
+      },
+    });
   };
 
   const selectCafe = (cafe: any) => {
     Keyboard.dismiss();
     addCafe(cafe);
     addToRecent(cafe);
+    if (returnsToMap && typeof cafe.latitude === 'number' && typeof cafe.longitude === 'number') {
+      showOnMap(cafe);
+      return;
+    }
     if (isReviewMode) {
       goToReview({
         cafeId: cafe.id,
@@ -216,10 +220,7 @@ export default function SearchCafesScreen() {
           {searchQuery.length > 0 && (
             <TouchableOpacity
               style={styles.clearButton}
-              onPress={() => {
-                setSearchQuery('');
-                setSearchResults([]);
-              }}
+              onPress={() => setSearchQuery('')}
             >
               <X size={18} color="#8E8E93" />
             </TouchableOpacity>
@@ -284,6 +285,7 @@ export default function SearchCafesScreen() {
 
       {searchResults.length === 0 &&
         !isSearching &&
+        !isSearchingMore &&
         searchQuery.trim().length >= MIN_QUERY_LENGTH && (
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>No cafes found</Text>
@@ -291,9 +293,12 @@ export default function SearchCafesScreen() {
           </View>
         )}
 
-      {isSearching && (
+      {searchResults.length === 0 && (isSearching || isSearchingMore) && (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>Searching...</Text>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={styles.emptyText}>
+            {isSearchingMore ? 'Searching more places…' : 'Searching...'}
+          </Text>
         </View>
       )}
 
