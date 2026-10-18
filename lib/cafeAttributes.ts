@@ -26,8 +26,8 @@ export interface AttributeCafeRow {
  * Attributes for a set of cafes, keyed by cafe id.
  *
  * One query for everything currently on screen rather than one per card. The
- * source is the cafe_attribute_counts view, so it reflects review edits and
- * deletions immediately. Returns an empty map rather than throwing, because a
+ * source is the cafe_attribute_counts table, kept current by a trigger on
+ * reviews, so it reflects review edits and deletions immediately. Returns an empty map rather than throwing, because a
  * missing chip row should never take a screen down.
  */
 export async function getAttributesForCafes(

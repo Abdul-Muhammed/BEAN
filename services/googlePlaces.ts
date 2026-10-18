@@ -196,7 +196,7 @@ export function parseOpeningHours(openingHours: any): CafeHours | null {
 
 // Convert a search/nearby result to our Cafe format. Photos are already cached
 // Storage URLs (no Google photo call here); falls back to a placeholder image.
-export async function convertPlaceToCafe(place: any): Promise<any> {
+export function convertPlaceToCafe(place: any): any {
   const photoUrl = place?.thumbnail_url || DEFAULT_CAFE_IMAGE;
 
   const geoLat = place?.geometry?.location?.lat;

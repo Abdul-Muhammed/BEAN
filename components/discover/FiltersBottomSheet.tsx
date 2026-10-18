@@ -1,7 +1,6 @@
 import React, {
   forwardRef,
   useCallback,
-  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -18,7 +17,7 @@ import {
 import { SvgXml } from 'react-native-svg';
 import { colors } from '@/constants/theme';
 import SwipeableBeanRating from '@/components/SwipeableBeanRating';
-import { getCafeCategories, type CafeCategory } from '@/lib/cafeCategories';
+import { useCategories } from '@/hooks/useCategories';
 import FilterChip from './FilterChip';
 import {
   type Filters,
@@ -45,7 +44,7 @@ const FiltersBottomSheet = forwardRef<
 >(({ committed, onApply, countFor }, ref) => {
   const modalRef = useRef<BottomSheetModal>(null);
   const [draft, setDraft] = useState<Filters>(committed);
-  const [categories, setCategories] = useState<CafeCategory[]>([]);
+  const { categories } = useCategories();
   const [showAllCategories, setShowAllCategories] = useState(false);
 
   const snapPoints = useMemo(() => ['85%'], []);
@@ -63,18 +62,6 @@ const FiltersBottomSheet = forwardRef<
     }),
     [committed]
   );
-
-  useEffect(() => {
-    let active = true;
-    getCafeCategories()
-      .then((data) => {
-        if (active) setCategories(data);
-      })
-      .catch((err) => console.warn('Failed to load cafe categories:', err));
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const toggleQuick = useCallback((key: keyof Filters) => {
     setDraft((d) => ({ ...d, [key]: !d[key] }));

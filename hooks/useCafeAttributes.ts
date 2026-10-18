@@ -3,7 +3,7 @@ import {
   getAttributesForCafes,
   type CafeAttribute,
 } from '../lib/cafeAttributes';
-import { getCafeCategories, type CafeCategory } from '../lib/cafeCategories';
+import { useCategories } from './useCategories';
 
 /** Shared empty array so a chipless card keeps a stable prop identity. */
 const EMPTY: CafeAttribute[] = [];
@@ -18,21 +18,8 @@ const EMPTY: CafeAttribute[] = [];
  */
 export function useCafeAttributes(cafeIds: string[]) {
   const [attributes, setAttributes] = useState<Map<string, CafeAttribute[]>>(new Map());
-  const [categories, setCategories] = useState<CafeCategory[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    getCafeCategories()
-      .then((rows) => {
-        if (!cancelled) setCategories(rows);
-      })
-      .catch(() => {
-        /* Chips fall back to the raw id. */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Shared, cached catalogue; chips fall back to the raw id until it loads.
+  const { categoryById } = useCategories();
 
   // Keyed on the joined ids: the array identity changes every render, the
   // contents rarely do.
@@ -51,12 +38,6 @@ export function useCafeAttributes(cafeIds: string[]) {
       cancelled = true;
     };
   }, [key]);
-
-  const categoryById = useMemo(() => {
-    const map = new Map<string, CafeCategory>();
-    categories.forEach((c) => map.set(c.id, c));
-    return map;
-  }, [categories]);
 
   const attributesFor = useMemo(
     () => (cafeId: string) => attributes.get(cafeId) ?? EMPTY,

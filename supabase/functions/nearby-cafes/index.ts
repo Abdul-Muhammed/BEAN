@@ -9,7 +9,8 @@ import {
   jsonResponse,
   PlaceLike,
   requireUser,
-  upsertCafeFromPlace,
+  tileKey,
+  upsertCafesFromPlaces,
 } from '../_shared/places.ts';
 
 const CACHE_TTL_DAYS = 7;
@@ -20,6 +21,9 @@ const MIN_DB_RESULTS = 8;
 // Cap how many results we cache thumbnails for per fresh fetch (bounds latency
 // and Google Photo calls on a cold area).
 const MAX_THUMBNAILS = 8;
+// Google is asked about a given map tile at most once in this window, for all
+// users combined. Panning back over an area is then free.
+const BACKFILL_TTL_DAYS = 30;
 
 interface NearbyRequest {
   lat?: number;
@@ -269,17 +273,32 @@ serve(async (req) => {
       return jsonResponse({ results, cache: 'db' });
     }
 
-    // 3. Cache miss: fetch from Google, persist, return.
+    // 3. Cache miss. Only ask Google if this tile hasn't been filled recently;
+    //    otherwise the database is as complete as it is going to get and we
+    //    answer with what it has.
+    const tile = tileKey(lat, lng);
+    if (!(await claimBackfillTile(supabase, tile))) {
+      const results: PlaceLike[] = nzDbRows.map((row: Record<string, any>) =>
+        cafeRowToPlaceLike(row)
+      );
+      return jsonResponse({ results, cache: 'tile_recent' });
+    }
+
     const googleResults = (await fetchGoogleNearby(lat, lng, roundedRadius, pages)).filter(
       (place) => isNzPlace(place)
     );
 
-    const results: PlaceLike[] = [];
-    for (let i = 0; i < googleResults.length; i++) {
-      const place = googleResults[i];
-      const thumb = await upsertCafeFromPlace(supabase, place, i < MAX_THUMBNAILS);
-      results.push(googlePlaceToPlaceLike(place, thumb));
-    }
+    // One batched upsert; thumbnails download after the response is sent.
+    await upsertCafesFromPlaces(supabase, googleResults, MAX_THUMBNAILS);
+    const results: PlaceLike[] = googleResults.map((place) =>
+      googlePlaceToPlaceLike(place, null)
+    );
+
+    const { error: logError } = await supabase
+      .from('places_backfill_log')
+      .update({ result_count: results.length })
+      .eq('tile_key', tile);
+    if (logError) console.warn('Backfill log update failed:', logError.message);
 
     await writeNearbyCache(supabase, {
       cacheKey,
@@ -297,6 +316,35 @@ serve(async (req) => {
     return jsonResponse({ error: message, results: [] }, 400);
   }
 });
+
+// Returns true when this call may query Google for the tile, recording the
+// claim first so concurrent requests for the same tile don't all go through.
+async function claimBackfillTile(
+  supabase: ReturnType<typeof createServiceClient>,
+  tile: string
+): Promise<boolean> {
+  const cutoff = new Date(Date.now() - BACKFILL_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const { data: existing, error } = await supabase
+    .from('places_backfill_log')
+    .select('last_run')
+    .eq('tile_key', tile)
+    .maybeSingle();
+  if (error) {
+    // Fail closed: an unreadable log must not turn into unbounded Google spend.
+    console.warn('Backfill log lookup failed:', error.message);
+    return false;
+  }
+  if (existing && new Date(existing.last_run) > cutoff) return false;
+
+  const { error: claimError } = await supabase
+    .from('places_backfill_log')
+    .upsert({ tile_key: tile, last_run: new Date().toISOString(), result_count: 0 });
+  if (claimError) {
+    console.warn('Backfill log claim failed:', claimError.message);
+    return false;
+  }
+  return true;
+}
 
 async function writeNearbyCache(
   supabase: ReturnType<typeof createServiceClient>,

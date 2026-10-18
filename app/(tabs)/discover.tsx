@@ -1,10 +1,4 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -12,49 +6,29 @@ import {
   StatusBar,
   TouchableOpacity,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Search, Navigation2 } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
-import MapView, {
-  Marker,
-  PROVIDER_DEFAULT,
-  PROVIDER_GOOGLE,
-  Region,
-} from 'react-native-maps';
-import * as Location from 'expo-location';
-import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
-import MapCafeCard from '../../components/MapCafeCard';
+import type { Region } from 'react-native-maps';
 import { useReviews } from '../../context/ReviewContext';
-import { useUserProfile } from '../../hooks/useUserProfile';
-import {
-  searchCafesNearbyByCoords,
-  convertPlaceToCafe,
-  enrichCafeWithDetails,
-  isNzCafe,
-  DEFAULT_CAFE_IMAGE,
-} from '../../services/googlePlaces';
 import { colors } from '@/constants/theme';
 import { SLIDERS_FILTER_SVG } from '@/constants/searchIcons';
-import { MARKER_PALETTE, type MarkerKind } from '../../constants/mapMarkerIcons';
-import { approximateDistanceMeters } from '../../lib/geo';
+import type { MarkerKind } from '../../constants/mapMarkerIcons';
 import type { Cafe } from '../../data/mockData';
 import FilterPillsRow from '../../components/discover/FilterPillsRow';
 import FiltersBottomSheet, {
   type FiltersBottomSheetHandle,
 } from '../../components/discover/FiltersBottomSheet';
-import {
-  attributeRowToCafe,
-  getAttributesForCafes,
-  getCafesByAttributes,
-  type CafeAttribute,
-} from '../../lib/cafeAttributes';
-import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
-import { AUCKLAND_CBD, useLocation } from '../../hooks/useLocation';
+import CafeMap, { type CafeMapHandle } from '../../components/discover/CafeMap';
+import DiscoverSheet, { type DiscoverSheetHandle } from '../../components/discover/DiscoverSheet';
 import LocationGateOverlay from '../../components/discover/LocationGateOverlay';
+import { AUCKLAND_CBD, useLocation } from '../../hooks/useLocation';
+import { useViewportCafes, type ViewportRegion } from '../../hooks/useViewportCafes';
+import { useCategories } from '../../hooks/useCategories';
+import { cardAttributes, cardToCafe, getCard, type MapPin } from '../../lib/mapSearch';
+import type { CafeAttribute } from '../../lib/cafeAttributes';
 import {
   type Filters,
   DEFAULT_FILTERS,
@@ -62,235 +36,85 @@ import {
   hasAnyFilter,
 } from '../../components/discover/filterTypes';
 
-// Auckland fallback when no profile coords and no permission.
-const DEFAULT_LATITUDE = AUCKLAND_CBD.latitude;
-const DEFAULT_LONGITUDE = AUCKLAND_CBD.longitude;
 const DEFAULT_LATITUDE_DELTA = 0.0422;
 const DEFAULT_LONGITUDE_DELTA = 0.0211;
-const NEARBY_CAFE_LIST_LIMIT = 7;
-const NEARBY_CAFE_SEARCH_RADIUS_METERS = 5000;
-const LOCATION_REFRESH_THRESHOLD_METERS = 250;
-const NEARBY_CAFES_CACHE_KEY = '@bean/discover_nearby_cafes';
+const FOCUS_LATITUDE_DELTA = 0.012;
+const FOCUS_LONGITUDE_DELTA = 0.006;
 
-// Apple-Maps-like custom style for Google Maps on Android. Hides POI/transit
-// noise so cafe markers are the visual focus.
-const APPLE_LIKE_MAP_STYLE = [
-  { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
-  { featureType: 'poi.business', stylers: [{ visibility: 'off' }] },
-  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-  { featureType: 'road', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
-];
-
-type ZoomLevel = 'far' | 'medium' | 'close';
-
-function zoomLevelForDelta(longitudeDelta: number): ZoomLevel {
-  if (longitudeDelta > 0.08) return 'far';
-  if (longitudeDelta > 0.02) return 'medium';
-  return 'close';
-}
-
-// Approximate radius in meters that fully covers the visible map region.
-// This is used for map markers only; the bottom sheet stays user-location based.
-function radiusFromRegion(region: Region): number {
-  const METERS_PER_DEGREE_LAT = 111000;
-  const latMeters = region.latitudeDelta * METERS_PER_DEGREE_LAT;
-  const lngMeters =
-    region.longitudeDelta *
-    METERS_PER_DEGREE_LAT *
-    Math.cos((region.latitude * Math.PI) / 180);
-  const halfDiagonal = Math.sqrt(latMeters * latMeters + lngMeters * lngMeters) / 2;
-  const radius = halfDiagonal * 1.2;
-  return Math.min(Math.max(radius, 600), 50000);
-}
-
-interface CachedNearbyCafes {
-  latitude: number;
-  longitude: number;
-  cafes: Cafe[];
-}
-
-function getPlaceDistanceMeters(
-  place: any,
-  coords: { latitude: number; longitude: number }
-): number {
-  const lat = place?.geometry?.location?.lat;
-  const lng = place?.geometry?.location?.lng;
-  if (typeof lat !== 'number' || typeof lng !== 'number') {
-    return Number.POSITIVE_INFINITY;
-  }
-
-  return approximateDistanceMeters(coords.latitude, coords.longitude, lat, lng);
-}
-
-function mergeCafesById(previous: Cafe[], next: Cafe[]): Cafe[] {
-  const merged = new Map(previous.map((cafe) => [cafe.id, cafe]));
-  next.forEach((cafe) => {
-    const existing = merged.get(cafe.id);
-    const combined = { ...existing, ...cafe } as Cafe;
-    // Don't let an incoming rating of 0/undefined wipe a real rating that was
-    // already loaded for this cafe.
-    if (!cafe.rating && existing?.rating) {
-      combined.rating = existing.rating;
-    }
-    merged.set(cafe.id, combined);
-  });
-  return Array.from(merged.values());
-}
-
-interface CafeMarkerViewProps {
-  cafe: Cafe;
-  zoom: ZoomLevel;
-  /** Active "Saved"/"Liked" quick-filters, so the marker style matches the
-   *  filter the user is viewing (a cafe can be both saved and favorited). */
-  savedActive: boolean;
-  likedActive: boolean;
-}
-
-const CafeMarkerView = React.memo(function CafeMarkerView({
-  cafe,
-  zoom,
-  savedActive,
-  likedActive,
-}: CafeMarkerViewProps) {
-  const { isFavorited, isBookmarked } = useReviews();
-  const favorited = isFavorited(cafe.id);
-  const bookmarked = isBookmarked(cafe.id);
-  // When exactly one of Saved/Liked is filtered, style by that filter so the map
-  // reads consistently. Otherwise fall back to favorited > saved > default.
-  let kind: MarkerKind;
-  if (savedActive && !likedActive && bookmarked) {
-    kind = 'saved';
-  } else if (likedActive && !savedActive && favorited) {
-    kind = 'favorite';
-  } else {
-    kind = favorited ? 'favorite' : bookmarked ? 'saved' : 'default';
-  }
-  const palette = MARKER_PALETTE[kind];
-  const pillColors = {
-    backgroundColor: palette.bg,
-    borderColor: palette.border,
+function regionAround(coords: { latitude: number; longitude: number }): Region {
+  return {
+    latitude: coords.latitude,
+    longitude: coords.longitude,
+    latitudeDelta: DEFAULT_LATITUDE_DELTA,
+    longitudeDelta: DEFAULT_LONGITUDE_DELTA,
   };
-
-  if (zoom === 'far') {
-    return (
-      <View style={[styles.markerDot, pillColors]}>
-        <SvgXml xml={palette.icon} width={14} height={14} />
-      </View>
-    );
-  }
-
-  if (zoom === 'medium') {
-    return (
-      <View style={[styles.markerPill, pillColors]}>
-        <SvgXml xml={palette.icon} width={13} height={13} />
-        <Text style={[styles.markerPillText, { color: palette.text }]}>
-          {cafe.rating ? cafe.rating.toFixed(1) : '—'}
-        </Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={[styles.markerExpanded, pillColors]}>
-      <SvgXml xml={palette.icon} width={13} height={13} />
-      <Text
-        style={[styles.markerExpandedText, { color: palette.text }]}
-        numberOfLines={1}
-      >
-        {cafe.name}
-      </Text>
-      {cafe.rating ? (
-        <Text style={[styles.markerExpandedRating, { color: palette.text }]}>
-          {cafe.rating.toFixed(1)}
-        </Text>
-      ) : null}
-    </View>
-  );
-});
+}
 
 export default function DiscoverScreen() {
   const { addCafe, isBookmarked, isFavorited, userReviews } = useReviews();
-  const { profile } = useUserProfile();
-  const mapRef = useRef<MapView | null>(null);
-  const bottomSheetRef = useRef<BottomSheet>(null);
+  const mapRef = useRef<CafeMapHandle>(null);
+  const sheetRef = useRef<DiscoverSheetHandle>(null);
   const filtersSheetRef = useRef<FiltersBottomSheetHandle>(null);
-  const trackingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mapFetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastMapFetchRef = useRef<{
-    latitude: number;
-    longitude: number;
-    radius: number;
-  } | null>(null);
-  // Stable ref to addCafe so the one-time loader doesn't churn.
-  const addCafeRef = useRef(addCafe);
-  useEffect(() => {
-    addCafeRef.current = addCafe;
-  }, [addCafe]);
 
-  const [sheetIndex, setSheetIndex] = useState(1);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
-  // Drives the filters button's inverted state so it's obvious the map results
-  // are being narrowed, now that the icon no longer sits inside the search bar.
   const filtersActive = useMemo(() => hasAnyFilter(filters), [filters]);
-  const [zoom, setZoom] = useState<ZoomLevel>('medium');
-  const [tracksViewChanges, setTracksViewChanges] = useState(true);
-  const [userCoords, setUserCoords] = useState<{
-    latitude: number;
-    longitude: number;
-  } | null>(null);
-  const [hasLocationPermission, setHasLocationPermission] = useState(false);
-  const [isLoadingCafes, setIsLoadingCafes] = useState(false);
-  const [cafeError, setCafeError] = useState<string | null>(null);
-  const [nearbyCafes, setNearbyCafes] = useState<Cafe[]>([]);
-  const [mapCafes, setMapCafes] = useState<Cafe[]>([]);
-  // Crowdsourced attributes for the cafes on screen, plus the database-backed
-  // result set used while a category filter is active. Both are Supabase only.
-  const [cafeAttributes, setCafeAttributes] = useState<Map<string, CafeAttribute[]>>(
-    new Map()
-  );
-  const [attributeCafes, setAttributeCafes] = useState<Cafe[]>([]);
-  // Filters store category ids; the catalogue turns them back into labels for
-  // the summary pill.
-  const [categories, setCategories] = useState<CafeCategory[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    getCafeCategories()
-      .then((rows) => {
-        if (!cancelled) setCategories(rows);
-      })
-      .catch(() => {
-        /* The pill falls back to showing the raw id. */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { categoryById } = useCategories();
 
   const labelForCategory = useCallback(
-    (id: string) => categories.find((c) => c.id === id)?.label,
-    [categories]
+    (id: string) => categoryById.get(id)?.label,
+    [categoryById]
   );
 
-  const categoryById = useMemo(() => {
-    const map = new Map<string, CafeCategory>();
-    categories.forEach((c) => map.set(c.id, c));
-    return map;
-  }, [categories]);
-
-  // The hook is the single source of truth for where the user is: live GPS
-  // when granted, the coordinates saved on their profile otherwise, and null
-  // when we genuinely do not know.
-  const {
-    coords,
-    isFallback,
-    canAskAgain,
-    requestPermission,
-  } = useLocation();
+  // The location context is the only source of permission and coordinates on
+  // this screen: live GPS when granted, the profile's saved fix otherwise, null
+  // when unknown. Granting from the gate updates coords, which re-centres the
+  // map below and so reloads the list.
+  const { status, coords, isFallback, canAskAgain, requestPermission } = useLocation();
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
 
-  const profileLatitude = coords?.latitude;
-  const profileLongitude = coords?.longitude;
+  const initialRegion = useMemo(() => regionAround(coords ?? AUCKLAND_CBD), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The region the map last settled on. Starts at the initial region so the
+  // first fetch doesn't wait for the map to report.
+  const [settledRegion, setSettledRegion] = useState<ViewportRegion>(initialRegion);
+  const userMovedMapRef = useRef(false);
+  // Where the camera was last sent (or last settled). A settled region close to
+  // it is our own move or the map's initial report (Android sends one on load);
+  // anything else is the user panning or zooming.
+  const lastTargetRef = useRef<Region>(initialRegion);
+
+  // Programmatic camera moves. The map reports the new region when the
+  // animation settles, and that report is what updates settledRegion (and so
+  // fetches), exactly as a user pan does.
+  const flyTo = useCallback((next: Region, durationMs: number) => {
+    lastTargetRef.current = next;
+    mapRef.current?.animateToRegion(next, durationMs);
+  }, []);
+
+  // Follow the user's location until they pan the map themselves: coords can
+  // arrive after mount (GPS resolving, or permission granted from the gate).
+  const coordsKey = coords ? `${coords.latitude.toFixed(5)},${coords.longitude.toFixed(5)}` : '';
+  useEffect(() => {
+    if (!coords || userMovedMapRef.current) return;
+    flyTo(regionAround(coords), 600);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coordsKey]);
+
+  const handleRegionSettled = useCallback((region: Region) => {
+    const target = lastTargetRef.current;
+    const tolerance = target.longitudeDelta * 0.05;
+    const panned =
+      Math.abs(region.latitude - target.latitude) > tolerance ||
+      Math.abs(region.longitude - target.longitude) > tolerance;
+    const zoomed = Math.abs(Math.log2(region.longitudeDelta / target.longitudeDelta)) > 0.25;
+    if (panned || zoomed) userMovedMapRef.current = true;
+    lastTargetRef.current = region;
+    setSettledRegion(region);
+  }, []);
+
+  const { pins, list, total, isLoading, isFetching, error, hasNextPage, fetchNextPage, isFetchingNextPage } =
+    useViewportCafes({ region: settledRegion, attributes: filters.categories });
 
   const handleEnableLocation = useCallback(async () => {
     setIsRequestingLocation(true);
@@ -301,417 +125,190 @@ export default function DiscoverScreen() {
     }
   }, [requestPermission]);
 
-  // When categories are selected, pull every cafe carrying them from the
-  // database rather than filtering whatever happens to be loaded. Ordered
-  // nearest-first with no radius, so results are not limited to the map view.
-  const categoryKey = filters.categories.join(',');
-  useEffect(() => {
-    let cancelled = false;
-    if (filters.categories.length === 0) {
-      setAttributeCafes([]);
-      return;
-    }
-    getCafesByAttributes(filters.categories, {
-      latitude: profileLatitude,
-      longitude: profileLongitude,
-      limitPer: NEARBY_CAFE_LIST_LIMIT,
-    }).then((rows) => {
-      if (cancelled) return;
-      // A cafe tagged with several selected categories comes back once per
-      // category; passesFilters then enforces the AND across them.
-      const byId = new Map<string, Cafe>();
-      rows.forEach((row) => {
-        if (!byId.has(row.place_id)) byId.set(row.place_id, attributeRowToCafe(row));
-      });
-      setAttributeCafes(Array.from(byId.values()));
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categoryKey, profileLatitude, profileLongitude]);
-
-  // Attributes for everything that could be rendered, in one query, so the
-  // category predicate has something to match against.
-  const attributeLookupKey = useMemo(
-    () => [...nearbyCafes.map((c) => c.id), ...attributeCafes.map((c) => c.id)].join(','),
-    [nearbyCafes, attributeCafes]
-  );
-  useEffect(() => {
-    let cancelled = false;
-    const ids = attributeLookupKey ? attributeLookupKey.split(',') : [];
-    if (ids.length === 0) {
-      setCafeAttributes(new Map());
-      return;
-    }
-    getAttributesForCafes(ids).then((map) => {
-      if (!cancelled) setCafeAttributes(map);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [attributeLookupKey]);
-
-  const initialRegion: Region = useMemo(() => {
-    const lat =
-      typeof profileLatitude === 'number' ? profileLatitude : DEFAULT_LATITUDE;
-    const lng =
-      typeof profileLongitude === 'number' ? profileLongitude : DEFAULT_LONGITUDE;
-    return {
-      latitude: lat,
-      longitude: lng,
-      latitudeDelta: DEFAULT_LATITUDE_DELTA,
-      longitudeDelta: DEFAULT_LONGITUDE_DELTA,
-    };
-  }, [profileLatitude, profileLongitude]);
-
-  const [currentRegion, setCurrentRegion] = useState<Region>(initialRegion);
-
-  // Resolve the real device location once when Discover opens. The nearby
-  // cafe set is anchored to this coordinate, not to later map panning.
-  useEffect(() => {
-    let cancelled = false;
-
-    const readCachedCafes = async (
-      coords: { latitude: number; longitude: number }
-    ): Promise<Cafe[] | null> => {
-      try {
-        const stored = await AsyncStorage.getItem(NEARBY_CAFES_CACHE_KEY);
-        if (!stored) return null;
-
-        const parsed: CachedNearbyCafes = JSON.parse(stored);
-        if (
-          typeof parsed.latitude !== 'number' ||
-          typeof parsed.longitude !== 'number' ||
-          !Array.isArray(parsed.cafes)
-        ) {
-          return null;
-        }
-
-        const nzCafes = parsed.cafes.filter(isNzCafe);
-        if (nzCafes.length !== parsed.cafes.length) {
-          if (nzCafes.length === 0) {
-            await AsyncStorage.removeItem(NEARBY_CAFES_CACHE_KEY);
-          } else {
-            await AsyncStorage.setItem(
-              NEARBY_CAFES_CACHE_KEY,
-              JSON.stringify({ ...parsed, cafes: nzCafes })
-            );
-          }
-        }
-
-        const moved = approximateDistanceMeters(
-          coords.latitude,
-          coords.longitude,
-          parsed.latitude,
-          parsed.longitude
-        );
-        return moved <= LOCATION_REFRESH_THRESHOLD_METERS
-          ? nzCafes.slice(0, NEARBY_CAFE_LIST_LIMIT)
-          : null;
-      } catch (error) {
-        console.warn('Failed to read nearby cafes cache:', error);
-        return null;
-      }
-    };
-
-    const persistNearbyCafes = async (
-      coords: { latitude: number; longitude: number },
-      cafesToPersist: Cafe[]
-    ) => {
-      try {
-        const nzCafes = cafesToPersist.filter(isNzCafe);
-        const payload: CachedNearbyCafes = {
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-          cafes: nzCafes.slice(0, NEARBY_CAFE_LIST_LIMIT),
-        };
-        await AsyncStorage.setItem(NEARBY_CAFES_CACHE_KEY, JSON.stringify(payload));
-      } catch (error) {
-        console.warn('Failed to save nearby cafes cache:', error);
-      }
-    };
-
-    const resolve = async () => {
-      setIsLoadingCafes(true);
-      setCafeError(null);
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (cancelled) return;
-        if (status !== 'granted') {
-          setHasLocationPermission(false);
-          setCafeError('Location permission is needed to find nearby cafes.');
-          return;
-        }
-        setHasLocationPermission(true);
-        const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        if (cancelled) return;
-        const coords = {
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-        };
-        const userRegion = {
-          ...coords,
-          latitudeDelta: DEFAULT_LATITUDE_DELTA,
-          longitudeDelta: DEFAULT_LONGITUDE_DELTA,
-        };
-        setUserCoords(coords);
-        setCurrentRegion(userRegion);
-        mapRef.current?.animateToRegion(userRegion, 600);
-
-        const cached = await readCachedCafes(coords);
-        if (cancelled) return;
-        if (cached) {
-          setNearbyCafes(cached);
-          setMapCafes((prev) => mergeCafesById(prev, cached));
-          cached.forEach((cafe) => addCafeRef.current(cafe));
-          return;
-        }
-
-        const results = await searchCafesNearbyByCoords(
-          coords.latitude,
-          coords.longitude,
-          NEARBY_CAFE_SEARCH_RADIUS_METERS,
-          1
-        );
-        if (cancelled) return;
-
-        const closestPlaces = [...results]
-          .sort(
-            (a, b) =>
-              getPlaceDistanceMeters(a, coords) - getPlaceDistanceMeters(b, coords)
-          )
-          .slice(0, NEARBY_CAFE_LIST_LIMIT);
-        const converted = await Promise.all(
-          closestPlaces.map((place) => convertPlaceToCafe(place))
-        );
-        const nzConverted = converted.filter(isNzCafe);
-        if (cancelled) return;
-
-        setNearbyCafes(nzConverted);
-        setMapCafes((prev) => mergeCafesById(prev, nzConverted));
-        nzConverted.forEach((cafe) => addCafeRef.current(cafe));
-        await persistNearbyCafes(coords, nzConverted);
-
-        if (nzConverted.length === 0) {
-          setCafeError('No cafes found nearby.');
-        }
-      } catch {
-        if (!cancelled) {
-          setCafeError('Unable to load nearby cafes.');
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingCafes(false);
-        }
-      }
-    };
-
-    resolve();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Map markers remain viewport-aware. This does not feed the bottom sheet,
-  // which stays anchored to the cached user-location list above.
-  useEffect(() => {
-    if (mapFetchTimeoutRef.current) {
-      clearTimeout(mapFetchTimeoutRef.current);
-    }
-
-    mapFetchTimeoutRef.current = setTimeout(async () => {
-      const radius = radiusFromRegion(currentRegion);
-      const previous = lastMapFetchRef.current;
-
-      if (previous) {
-        const moved = approximateDistanceMeters(
-          currentRegion.latitude,
-          currentRegion.longitude,
-          previous.latitude,
-          previous.longitude
-        );
-        const radiusGrew = radius > previous.radius * 1.75;
-        const movedFar = moved > previous.radius * 0.65;
-        if (!radiusGrew && !movedFar) {
-          return;
-        }
-      }
-
-      lastMapFetchRef.current = {
-        latitude: currentRegion.latitude,
-        longitude: currentRegion.longitude,
-        radius,
-      };
-
-      try {
-        const results = await searchCafesNearbyByCoords(
-          currentRegion.latitude,
-          currentRegion.longitude,
-          radius,
-          radius > 8000 ? 2 : 1
-        );
-        const converted = await Promise.all(
-          results.map((place) => convertPlaceToCafe(place))
-        );
-        const nzConverted = converted.filter(isNzCafe);
-        setMapCafes((prev) => mergeCafesById(prev, nzConverted));
-        nzConverted.forEach((cafe) => addCafeRef.current(cafe));
-      } catch (error) {
-        console.warn('Unable to load map cafes:', error);
-        lastMapFetchRef.current = null;
-      }
-    }, 450);
-
-    return () => {
-      if (mapFetchTimeoutRef.current) {
-        clearTimeout(mapFetchTimeoutRef.current);
-      }
-    };
-  }, [currentRegion]);
-
-  // Briefly enable tracksViewChanges when the zoom bucket changes so iOS
-  // rasterizes the new marker style, then turn it off to keep panning smooth.
-  // We deliberately do NOT key this on selection state any more, which used
-  // to cause markers to briefly disappear on press.
-  useEffect(() => {
-    setTracksViewChanges(true);
-    if (trackingTimeoutRef.current) {
-      clearTimeout(trackingTimeoutRef.current);
-    }
-    trackingTimeoutRef.current = setTimeout(() => {
-      setTracksViewChanges(false);
-    }, 350);
-    return () => {
-      if (trackingTimeoutRef.current) {
-        clearTimeout(trackingTimeoutRef.current);
-      }
-    };
-  }, [zoom]);
-
   // Cafe ids the current user has reviewed — drives the "Already Rated" filter.
   const reviewedCafeIds = useMemo(
     () => new Set(userReviews.map((review) => review.cafeId)),
     [userReviews]
   );
 
-  // Single client-side predicate, parameterised by a filter set so the sheet can
-  // count matches for an uncommitted draft and the screen can filter on the
-  // committed filters with the same logic.
+  const attributesFor = useCallback(
+    (cafeId: string): CafeAttribute[] | undefined => {
+      const card = getCard(cafeId);
+      return card ? cardAttributes(card) : undefined;
+    },
+    []
+  );
+
+  // Client-side filters. Categories are applied by the server (AND across
+  // the selection) for both pins and list; this checks them again only for the
+  // sheet's live count over an uncommitted draft.
   const matchesFilters = useCallback(
-    (cafe: Cafe, f: Filters) => {
+    (cafe: { id: string; rating: number | null; hours?: Cafe['hours'] }, f: Filters) => {
+      const rating = cafe.rating ?? 0;
       if (f.openNow && cafe.hours?.openNow !== true) return false;
-      if (f.topRated && cafe.rating < 4.5) return false;
+      if (f.topRated && rating < 4.5) return false;
       if (f.saved && !isBookmarked(cafe.id)) return false;
       if (f.liked && !isFavorited(cafe.id)) return false;
       if (f.alreadyRated && !reviewedCafeIds.has(cafe.id)) return false;
-      if (f.minRating > 0 && cafe.rating < f.minRating) return false;
-      if (f.categories.length > 0) {
-        const ids = new Set((cafeAttributes.get(cafe.id) ?? []).map((a) => a.attributeId));
-        if (!f.categories.every((id) => ids.has(id))) return false;
-      }
+      if (f.minRating > 0 && rating < f.minRating) return false;
       return true;
     },
-    [cafeAttributes, isBookmarked, isFavorited, reviewedCafeIds]
+    [isBookmarked, isFavorited, reviewedCafeIds]
   );
 
-  const passesFilters = useCallback(
-    (cafe: Cafe) => matchesFilters(cafe, filters),
-    [matchesFilters, filters]
+  const listCafes = useMemo(
+    () => list.map(cardToCafe).filter((cafe) => matchesFilters(cafe, filters)),
+    [list, matchesFilters, filters]
   );
 
-  // Live count for the sheet's "Show XX Cafes" button, over the list set.
-  const countFor = useCallback(
-    (f: Filters) => nearbyCafes.filter((cafe) => matchesFilters(cafe, f)).length,
-    [nearbyCafes, matchesFilters]
-  );
-
-  // With a category selected the result set is every cafe carrying it,
-  // nearest first, straight from Supabase — so filtering finds cafes that were
-  // never in the nearby list. Without one, nothing about this screen changes.
-  // Either way the remaining filters apply client-side on top.
-  const listCafes = useMemo(() => {
-    const source = filters.categories.length > 0 ? attributeCafes : nearbyCafes;
-    return source.filter(passesFilters).slice(0, NEARBY_CAFE_LIST_LIMIT);
-  }, [attributeCafes, filters.categories.length, nearbyCafes, passesFilters]);
-
-  // Cache/DB-served cafes can arrive without a stored photo, so their cards
-  // would render the placeholder. Lazily pull the real photo for just those
-  // cards via the details path (a one-time paid Google fetch per cafe, then
-  // cached in Storage forever). Cafes that already have a thumbnail must never
-  // hit this path — that would bill a Place Details call per cafe per session.
-  const enrichedImageIdsRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    let cancelled = false;
-    const pending = listCafes.filter(
-      (cafe) =>
-        cafe.place_id &&
-        !enrichedImageIdsRef.current.has(cafe.place_id) &&
-        (!cafe.image || cafe.image === DEFAULT_CAFE_IMAGE)
-    );
-    if (pending.length === 0) return;
-
-    (async () => {
-      for (const cafe of pending) {
-        const placeId = cafe.place_id as string;
-        enrichedImageIdsRef.current.add(placeId);
-        try {
-          const details = await enrichCafeWithDetails(placeId);
-          if (cancelled || !details) continue;
-          if (!details.image && !details.photos) continue;
-          setNearbyCafes((prev) =>
-            prev.map((c) =>
-              c.id === cafe.id
-                ? {
-                    ...c,
-                    image: details.image || c.image,
-                    photos: details.photos || c.photos,
-                  }
-                : c
-            )
-          );
-        } catch (error) {
-          console.warn('Failed to enrich nearby cafe image:', error);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [listCafes]);
-
-  // Markers are driven by the map viewport and stay independent of the sheet.
-  const markerCafes = useMemo(
+  const visiblePins = useMemo(
     () =>
-      mapCafes.filter(
-        (cafe) =>
-          typeof cafe.latitude === 'number' &&
-          typeof cafe.longitude === 'number' &&
-          passesFilters(cafe)
+      pins.filter((pin: MapPin) =>
+        matchesFilters({ id: pin.place_id, rating: pin.rating }, filters)
       ),
-    [mapCafes, passesFilters]
+    [pins, matchesFilters, filters]
   );
 
-  const snapPoints = useMemo(() => ['15%', '30%', '80%'], []);
+  const countFor = useCallback(
+    (f: Filters) =>
+      list.filter((card) => {
+        if (!matchesFilters({ id: card.place_id, rating: card.rating }, f)) return false;
+        if (f.categories.length === 0) return true;
+        const ids = new Set(card.attributes.map((a) => a.attribute));
+        return f.categories.every((id) => ids.has(id));
+      }).length,
+    [list, matchesFilters]
+  );
+
+  // When exactly one of Saved/Liked is filtered, style by that filter so the
+  // map reads consistently. Otherwise favorited > saved > default.
+  const kindFor = useCallback(
+    (placeId: string): MarkerKind => {
+      const favorited = isFavorited(placeId);
+      const bookmarked = isBookmarked(placeId);
+      if (filters.saved && !filters.liked && bookmarked) return 'saved';
+      if (filters.liked && !filters.saved && favorited) return 'favorite';
+      return favorited ? 'favorite' : bookmarked ? 'saved' : 'default';
+    },
+    [filters.saved, filters.liked, isBookmarked, isFavorited]
+  );
+
+  // The cafe screen reads from the review context, so a cafe is added there
+  // only when the user actually opens it.
+  const openCafe = useCallback(
+    (cafe: Cafe) => {
+      addCafe(cafe);
+      router.push(`/cafe/${cafe.id}`);
+    },
+    [addCafe]
+  );
+
+  // First tap on a pin selects it and brings its card into view; a second tap
+  // opens the cafe. A pin whose card isn't in the loaded list opens directly.
+  const handlePinPress = useCallback(
+    (placeId: string) => {
+      const inList = listCafes.some((c) => c.id === placeId);
+      if (selectedId === placeId || !inList) {
+        const card = getCard(placeId);
+        const pin = pins.find((p) => p.place_id === placeId);
+        if (card) {
+          openCafe(cardToCafe(card));
+        } else if (pin) {
+          openCafe(
+            cardToCafe({
+              place_id: pin.place_id,
+              name: pin.name,
+              formatted_address: null,
+              rating: pin.rating,
+              latitude: pin.latitude,
+              longitude: pin.longitude,
+              thumbnail_url: null,
+              distance_meters: null,
+              attributes: [],
+            })
+          );
+        }
+        return;
+      }
+      setSelectedId(placeId);
+      sheetRef.current?.revealCafe(placeId);
+    },
+    [listCafes, selectedId, pins, openCafe]
+  );
+
+  // Tapping a card opens the cafe and leaves its pin highlighted and centred,
+  // so coming back lands on the same spot.
+  const handleCardPress = useCallback(
+    (cafe: Cafe) => {
+      setSelectedId(cafe.id);
+      if (typeof cafe.latitude === 'number' && typeof cafe.longitude === 'number') {
+        userMovedMapRef.current = true;
+        lastTargetRef.current = {
+          ...lastTargetRef.current,
+          latitude: cafe.latitude,
+          longitude: cafe.longitude,
+        };
+        mapRef.current?.animateToCoordinate(
+          { latitude: cafe.latitude, longitude: cafe.longitude },
+          400
+        );
+      }
+      openCafe(cafe);
+    },
+    [openCafe]
+  );
+
+  const handleMapPress = useCallback(() => setSelectedId(null), []);
+
+  // A result picked in search (opened from this screen) comes back as params:
+  // fly to it and select it.
+  const { focusCafeId, focusLat, focusLng } = useLocalSearchParams<{
+    focusCafeId?: string;
+    focusLat?: string;
+    focusLng?: string;
+  }>();
+  useEffect(() => {
+    const lat = Number(focusLat);
+    const lng = Number(focusLng);
+    if (!focusCafeId || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const next: Region = {
+      latitude: lat,
+      longitude: lng,
+      latitudeDelta: FOCUS_LATITUDE_DELTA,
+      longitudeDelta: FOCUS_LONGITUDE_DELTA,
+    };
+    userMovedMapRef.current = true;
+    flyTo(next, 600);
+    // Select once the camera has arrived, so the pin highlights in place, then
+    // clear the params so returning to this tab doesn't fly there again.
+    const timer = setTimeout(() => {
+      setSelectedId(focusCafeId);
+      router.setParams({ focusCafeId: undefined, focusLat: undefined, focusLng: undefined });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [focusCafeId, focusLat, focusLng, flyTo]);
+
+  const handleLocateMe = useCallback(async () => {
+    if (coords) {
+      userMovedMapRef.current = false;
+      flyTo(
+        { ...coords, latitudeDelta: FOCUS_LATITUDE_DELTA, longitudeDelta: FOCUS_LONGITUDE_DELTA },
+        500
+      );
+      return;
+    }
+    // No coordinates yet: ask (or route to Settings). A grant updates coords,
+    // and the effect above re-centres the map.
+    userMovedMapRef.current = false;
+    await requestPermission();
+  }, [coords, requestPermission, flyTo]);
 
   const toggleOpenNow = useCallback(() => {
     setFilters((prev) => ({ ...prev, openNow: !prev.openNow }));
   }, []);
 
   const removeFilter = useCallback(
-    (
-      key:
-        | 'topRated'
-        | 'saved'
-        | 'liked'
-        | 'alreadyRated'
-        | 'minRating'
-        | 'categories'
-    ) => {
+    (key: 'topRated' | 'saved' | 'liked' | 'alreadyRated' | 'minRating' | 'categories') => {
       setFilters((prev) => {
         if (key === 'minRating') return { ...prev, minRating: 0 };
         if (key === 'categories') return { ...prev, categories: [] };
@@ -721,131 +318,29 @@ export default function DiscoverScreen() {
     []
   );
 
-  const handleSheetHeaderPress = useCallback(() => {
-    const nextIndex = sheetIndex === 2 ? 1 : 2;
-    bottomSheetRef.current?.snapToIndex(nextIndex);
-  }, [sheetIndex]);
+  const handleEndReached = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  const handleRegionChangeComplete = useCallback((region: Region) => {
-    const nextZoom = zoomLevelForDelta(region.longitudeDelta);
-    setZoom((prev) => (prev === nextZoom ? prev : nextZoom));
-    setCurrentRegion(region);
-  }, []);
-
-  // Marker press now navigates straight to the cafe page. Adding to context
-  // first ensures the cafe is available on the detail screen even if it
-  // hasn't been picked up via the global cafe list yet.
-  const handleMarkerPress = useCallback(
-    (cafe: Cafe) => {
-      addCafe(cafe);
-      router.push(`/cafe/${cafe.id}`);
-    },
-    [addCafe]
-  );
-
-  const handleLocateMe = useCallback(async () => {
-    if (userCoords) {
-      mapRef.current?.animateToRegion(
-        {
-          ...userCoords,
-          latitudeDelta: 0.012,
-          longitudeDelta: 0.006,
-        },
-        500
-      );
-      return;
-    }
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
-      setHasLocationPermission(true);
-      const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      const coords = {
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-      };
-      setUserCoords(coords);
-      mapRef.current?.animateToRegion(
-        {
-          ...coords,
-          latitudeDelta: 0.012,
-          longitudeDelta: 0.006,
-        },
-        500
-      );
-    } catch {
-      // Silent: keep current view.
-    }
-  }, [userCoords]);
-
-  const renderSheetHandle = useCallback(
-    () => (
-      <TouchableOpacity
-        style={styles.sheetHeader}
-        activeOpacity={0.85}
-        onPress={handleSheetHeaderPress}
-      >
-        <View style={styles.dragHandle} />
-        <View style={styles.sheetTitleRow}>
-          <Text style={styles.sheetTitle}>Nearby Cafes</Text>
-          <Text style={styles.sheetSubtitle}>
-            {listCafes.length} {listCafes.length === 1 ? 'cafe' : 'cafes'}
-          </Text>
-        </View>
-      </TouchableOpacity>
-    ),
-    [listCafes.length, handleSheetHeaderPress]
-  );
-
-  const mapProvider = Platform.OS === 'android' ? PROVIDER_GOOGLE : PROVIDER_DEFAULT;
+  const showSpinner = isLoading || (isFetching && pins.length === 0);
+  const errorMessage = error ? 'Unable to load cafes here.' : null;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
       <View style={styles.mapContainer}>
-        <MapView
+        <CafeMap
           ref={mapRef}
-          provider={mapProvider}
-          style={styles.map}
           initialRegion={initialRegion}
-          showsUserLocation={hasLocationPermission}
-          showsMyLocationButton={false}
-          showsCompass={false}
-          showsPointsOfInterests={false}
-          showsBuildings={false}
-          showsTraffic={false}
-          toolbarEnabled={false}
-          customMapStyle={
-            Platform.OS === 'android' ? APPLE_LIKE_MAP_STYLE : undefined
-          }
-          onRegionChangeComplete={handleRegionChangeComplete}
-        >
-          {markerCafes.map((cafe) => (
-            <Marker
-              key={cafe.id}
-              coordinate={{
-                latitude: cafe.latitude as number,
-                longitude: cafe.longitude as number,
-              }}
-              onPress={(e) => {
-                e.stopPropagation?.();
-                handleMarkerPress(cafe);
-              }}
-              tracksViewChanges={tracksViewChanges}
-              anchor={{ x: 0.5, y: 0.5 }}
-            >
-              <CafeMarkerView
-                cafe={cafe}
-                zoom={zoom}
-                savedActive={filters.saved}
-                likedActive={filters.liked}
-              />
-            </Marker>
-          ))}
-        </MapView>
+          pins={visiblePins}
+          kindFor={kindFor}
+          selectedId={selectedId}
+          showsUserLocation={status === 'granted'}
+          onRegionSettled={handleRegionSettled}
+          onPinPress={handlePinPress}
+          onMapPress={handleMapPress}
+        />
 
         {isFallback && (
           <LocationGateOverlay
@@ -859,7 +354,9 @@ export default function DiscoverScreen() {
         <View style={styles.searchRow}>
           <TouchableOpacity
             style={styles.searchContainer}
-            onPress={() => router.push('/search-cafes')}
+            onPress={() =>
+              router.push({ pathname: '/search-cafes', params: { origin: 'discover' } })
+            }
             activeOpacity={0.85}
           >
             <Search size={20} color="#8E8E93" style={styles.searchIcon} />
@@ -880,7 +377,6 @@ export default function DiscoverScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Active filter summary pills */}
         <FilterPillsRow
           filters={filters}
           onOpenSheet={() => filtersSheetRef.current?.open()}
@@ -889,71 +385,41 @@ export default function DiscoverScreen() {
           labelForCategory={labelForCategory}
         />
 
-        {/* Loading / error overlay above the sheet */}
-        {(isLoadingCafes || cafeError) && (
+        {(showSpinner || errorMessage) && (
           <View style={styles.statusBubble} pointerEvents="none">
-            {isLoadingCafes && (
+            {showSpinner ? (
               <>
                 <ActivityIndicator size="small" color={colors.primary} />
                 <Text style={styles.statusBubbleText}>Finding cafes…</Text>
               </>
-            )}
-            {!isLoadingCafes && cafeError && (
-              <Text style={styles.statusBubbleText}>{cafeError}</Text>
+            ) : (
+              <Text style={styles.statusBubbleText}>{errorMessage}</Text>
             )}
           </View>
         )}
 
-        {/* Locate Me button */}
-        <TouchableOpacity
-          style={styles.locateButton}
-          onPress={handleLocateMe}
-          activeOpacity={0.85}
-        >
+        <TouchableOpacity style={styles.locateButton} onPress={handleLocateMe} activeOpacity={0.85}>
           <Navigation2
             size={20}
             color={colors.primary}
-            fill={userCoords ? colors.primary : 'transparent'}
+            fill={status === 'granted' ? colors.primary : 'transparent'}
           />
         </TouchableOpacity>
       </View>
 
-      <BottomSheet
-        ref={bottomSheetRef}
-        index={1}
-        snapPoints={snapPoints}
-        onChange={setSheetIndex}
-        handleComponent={renderSheetHandle}
-        backgroundStyle={styles.sheetBackground}
-        style={styles.bottomSheet}
-        enablePanDownToClose={false}
-      >
-        <BottomSheetFlatList
-          data={listCafes}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <MapCafeCard
-              cafe={item}
-              attributes={cafeAttributes.get(item.id)}
-              categoryById={categoryById}
-            />
-          )}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>
-                {isLoadingCafes ? 'Loading cafes…' : 'No cafes here yet'}
-              </Text>
-              <Text style={styles.emptyText}>
-                {isLoadingCafes
-                  ? 'Hang tight while we find spots near you.'
-                  : cafeError ?? 'Try adjusting your filters.'}
-              </Text>
-            </View>
-          }
-        />
-      </BottomSheet>
+      <DiscoverSheet
+        ref={sheetRef}
+        cafes={listCafes}
+        total={total}
+        attributesFor={attributesFor}
+        categoryById={categoryById}
+        selectedId={selectedId}
+        isLoading={showSpinner}
+        isFetchingMore={isFetchingNextPage}
+        emptyMessage={errorMessage ?? 'Try moving the map or adjusting your filters.'}
+        onCardPress={handleCardPress}
+        onEndReached={handleEndReached}
+      />
 
       <FiltersBottomSheet
         ref={filtersSheetRef}
@@ -973,9 +439,6 @@ const styles = StyleSheet.create({
   mapContainer: {
     flex: 1,
     position: 'relative',
-  },
-  map: {
-    flex: 1,
   },
   searchRow: {
     position: 'absolute',
@@ -1064,126 +527,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 10,
     elevation: 6,
-  },
-  bottomSheet: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 12,
-  },
-  sheetBackground: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-  },
-  sheetHeader: {
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 14,
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-  },
-  dragHandle: {
-    width: 44,
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: '#D1D1D6',
-    alignSelf: 'center',
-    marginBottom: 14,
-  },
-  sheetTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  sheetTitle: {
-    fontSize: 20,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: colors.primary,
-  },
-  sheetSubtitle: {
-    fontSize: 13,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
-  },
-  listContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 120,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 32,
-    paddingHorizontal: 20,
-  },
-  emptyTitle: {
-    fontSize: 17,
-    fontFamily: 'Lato-Bold',
-    color: colors.primary,
-    marginBottom: 6,
-  },
-  emptyText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
-    textAlign: 'center',
-  },
-  markerDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  markerPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  markerPillText: {
-    fontSize: 12,
-    fontFamily: 'Lato-Regular',
-  },
-  markerExpanded: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    maxWidth: 200,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  markerExpandedText: {
-    fontSize: 12,
-    fontFamily: 'Lato-Regular',
-    maxWidth: 120,
-  },
-  markerExpandedRating: {
-    fontSize: 12,
-    fontFamily: 'Lato-Regular',
-    opacity: 0.85,
   },
 });

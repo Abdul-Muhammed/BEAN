@@ -22,9 +22,20 @@ interface MapCafeCardProps {
   attributes?: CafeAttribute[];
   /** Catalogue used to turn stored ids into labels and icons. */
   categoryById?: Map<string, CafeCategory>;
+  /** Replaces the default navigation to the cafe screen. */
+  onPress?: (cafe: Cafe) => void;
+  /** Highlights the card, e.g. while its map pin is selected. */
+  selected?: boolean;
 }
 
-function MapCafeCard({ cafe, hideBadges, attributes, categoryById }: MapCafeCardProps) {
+function MapCafeCard({
+  cafe,
+  hideBadges,
+  attributes,
+  categoryById,
+  onPress,
+  selected,
+}: MapCafeCardProps) {
   const { toggleBookmark, isBookmarked } = useReviews();
   const [imageFailed, setImageFailed] = React.useState(false);
 
@@ -37,6 +48,10 @@ function MapCafeCard({ cafe, hideBadges, attributes, categoryById }: MapCafeCard
   }, [preferredUri]);
 
   const handlePress = () => {
+    if (onPress) {
+      onPress(cafe);
+      return;
+    }
     router.push(`/cafe/${cafe.id}`);
   };
 
@@ -65,7 +80,7 @@ function MapCafeCard({ cafe, hideBadges, attributes, categoryById }: MapCafeCard
 
   return (
     <View style={styles.cardWrapper}>
-      <TouchableOpacity style={styles.card} onPress={handlePress}>
+      <TouchableOpacity style={[styles.card, selected && styles.cardSelected]} onPress={handlePress}>
         <Image
           source={{ uri: imageUri }}
           style={styles.image}
@@ -155,6 +170,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  cardSelected: {
+    borderColor: '#612B05',
+    borderWidth: 2,
   },
   image: {
     width: 100,
