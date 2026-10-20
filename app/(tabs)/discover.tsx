@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { Search, Navigation2 } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import type { Region } from 'react-native-maps';
@@ -260,34 +260,6 @@ export default function DiscoverScreen() {
 
   const handleMapPress = useCallback(() => setSelectedId(null), []);
 
-  // A result picked in search (opened from this screen) comes back as params:
-  // fly to it and select it.
-  const { focusCafeId, focusLat, focusLng } = useLocalSearchParams<{
-    focusCafeId?: string;
-    focusLat?: string;
-    focusLng?: string;
-  }>();
-  useEffect(() => {
-    const lat = Number(focusLat);
-    const lng = Number(focusLng);
-    if (!focusCafeId || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
-    const next: Region = {
-      latitude: lat,
-      longitude: lng,
-      latitudeDelta: FOCUS_LATITUDE_DELTA,
-      longitudeDelta: FOCUS_LONGITUDE_DELTA,
-    };
-    userMovedMapRef.current = true;
-    flyTo(next, 600);
-    // Select once the camera has arrived, so the pin highlights in place, then
-    // clear the params so returning to this tab doesn't fly there again.
-    const timer = setTimeout(() => {
-      setSelectedId(focusCafeId);
-      router.setParams({ focusCafeId: undefined, focusLat: undefined, focusLng: undefined });
-    }, 600);
-    return () => clearTimeout(timer);
-  }, [focusCafeId, focusLat, focusLng, flyTo]);
-
   const handleLocateMe = useCallback(async () => {
     if (coords) {
       userMovedMapRef.current = false;
@@ -354,9 +326,7 @@ export default function DiscoverScreen() {
         <View style={styles.searchRow}>
           <TouchableOpacity
             style={styles.searchContainer}
-            onPress={() =>
-              router.push({ pathname: '/search-cafes', params: { origin: 'discover' } })
-            }
+            onPress={() => router.push('/search-cafes')}
             activeOpacity={0.85}
           >
             <Search size={20} color="#8E8E93" style={styles.searchIcon} />
