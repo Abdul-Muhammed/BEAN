@@ -39,11 +39,8 @@ interface RecentSearch {
 
 export default function SearchCafesScreen() {
   const { addCafe } = useReviews();
-  const { mode, origin } = useLocalSearchParams<{ mode?: string; origin?: string }>();
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
   const isReviewMode = mode === 'review';
-  // Opened from the Discover map: a picked cafe is shown on the map rather
-  // than opened directly.
-  const returnsToMap = origin === 'discover' && !isReviewMode;
   const { coords } = useLocation();
 
   const goToReview = (params: { cafeId: string; cafeName: string; cafeImage: string }) => {
@@ -136,26 +133,10 @@ export default function SearchCafesScreen() {
     setSearchQuery(query);
   };
 
-  // Back to the Discover map, which flies to the cafe and selects it.
-  const showOnMap = (cafe: { id: string; latitude?: number; longitude?: number }) => {
-    router.navigate({
-      pathname: '/(tabs)/discover',
-      params: {
-        focusCafeId: cafe.id,
-        focusLat: String(cafe.latitude),
-        focusLng: String(cafe.longitude),
-      },
-    });
-  };
-
   const selectCafe = (cafe: any) => {
     Keyboard.dismiss();
     addCafe(cafe);
     addToRecent(cafe);
-    if (returnsToMap && typeof cafe.latitude === 'number' && typeof cafe.longitude === 'number') {
-      showOnMap(cafe);
-      return;
-    }
     if (isReviewMode) {
       goToReview({
         cafeId: cafe.id,
