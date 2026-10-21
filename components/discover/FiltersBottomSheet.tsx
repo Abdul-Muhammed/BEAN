@@ -10,7 +10,6 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-nati
 import {
   BottomSheetModal,
   BottomSheetBackdrop,
-  BottomSheetView,
   BottomSheetScrollView,
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
@@ -117,12 +116,16 @@ const FiltersBottomSheet = forwardRef<
     <BottomSheetModal
       ref={modalRef}
       snapPoints={snapPoints}
+      // Sizing to content would grow the sheet past the screen when "Show More"
+      // expands the categories, pushing the footer off. Hold it at the snap
+      // point so the scroll view takes the leftover height instead.
+      enableDynamicSizing={false}
       enablePanDownToClose
       backdropComponent={renderBackdrop}
       backgroundStyle={styles.sheetBackground}
       handleIndicatorStyle={styles.handleIndicator}
     >
-      <BottomSheetView style={styles.sheetContent}>
+      <View style={styles.sheetContent}>
         <Text style={styles.title}>Filters</Text>
         <BottomSheetScrollView
           style={styles.scroll}
@@ -216,7 +219,7 @@ const FiltersBottomSheet = forwardRef<
             </Text>
           </TouchableOpacity>
         </View>
-      </BottomSheetView>
+      </View>
     </BottomSheetModal>
   );
 });
