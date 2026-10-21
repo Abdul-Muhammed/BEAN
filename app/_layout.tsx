@@ -98,6 +98,7 @@ const AUTH_ONLY_GROUPS = [
   'diary',
   'share-review',
   'edit-top-cafes',
+  'edit-preferences',
 ];
 
 function AuthGate() {

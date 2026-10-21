@@ -58,7 +58,7 @@ function ListCafeCard({ cafe, hideBadges, attributes, categoryById }: ListCafeCa
         <Image source={{ uri: cafe.image }} style={styles.image} resizeMode="cover" />
 
         <View style={styles.content}>
-          <Text style={styles.name} numberOfLines={1}>
+          <Text style={styles.name} numberOfLines={2}>
             {cafe.name}
           </Text>
 
@@ -123,7 +123,9 @@ const styles = StyleSheet.create({
   },
   card: {
     flexDirection: 'row',
-    height: 120,
+    // A minimum rather than a fixed height: a two-line name plus chips grows
+    // the card instead of being clipped.
+    minHeight: 120,
     backgroundColor: colors.surface,
     borderRadius: 16,
     borderWidth: 1,
@@ -132,7 +134,7 @@ const styles = StyleSheet.create({
   },
   image: {
     width: 120,
-    height: 120,
+    height: '100%',
     backgroundColor: colors.warmSurface,
   },
   content: {

@@ -117,12 +117,10 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.section}>
-          {/* The frame draws an edit pencil here, but there is nowhere for it
-              to go yet: no preferences editor exists, and the onboarding
-              screen cannot be reused because it requires a username and
-              location param and completes onboarding on submit. Shown
-              read-only rather than as a pencil that does nothing. */}
-          <PreferencesSection preferenceIds={preferenceIds} editable={false} />
+          <PreferencesSection
+            preferenceIds={preferenceIds}
+            onPressEdit={() => router.push('/edit-preferences')}
+          />
         </View>
 
         <View style={styles.sectionLast}>

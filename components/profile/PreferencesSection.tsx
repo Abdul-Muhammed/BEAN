@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import Tag from '../ui/Tag';
 import SectionHeader from './SectionHeader';
 import { PENCIL_SVG } from '@/constants/figmaIcons';
 import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
-import { spacing } from '@/constants/theme';
+import { colors, spacing, type } from '@/constants/theme';
 
 interface PreferencesSectionProps {
   preferenceIds: string[];
@@ -22,6 +22,7 @@ export default function PreferencesSection({
   editable = true,
 }: PreferencesSectionProps) {
   const [categories, setCategories] = useState<CafeCategory[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -29,7 +30,10 @@ export default function PreferencesSection({
       .then((data) => {
         if (mounted) setCategories(data);
       })
-      .catch((err) => console.warn('Failed to load preference categories:', err));
+      .catch((err) => console.warn('Failed to load preference categories:', err))
+      .finally(() => {
+        if (mounted) setLoaded(true);
+      });
     return () => {
       mounted = false;
     };
@@ -41,7 +45,10 @@ export default function PreferencesSection({
     return categories.filter((c) => ids.has(c.id));
   }, [categories, preferenceIds]);
 
-  if (chips.length === 0) return null;
+  // Someone else's empty preferences have nothing to show, but the owner still
+  // needs the header and pencil to add some. Wait for the catalog so the hint
+  // doesn't flash before the chips arrive.
+  if (chips.length === 0 && (!editable || !loaded)) return null;
 
   return (
     <View style={styles.container}>
@@ -51,11 +58,15 @@ export default function PreferencesSection({
         onPressAction={onPressEdit}
         accessibilityLabel="Edit your preferences"
       />
-      <View style={styles.chips}>
-        {chips.map((chip) => (
-          <Tag key={chip.id} label={chip.label} iconXml={chip.icon_svg_xml} />
-        ))}
-      </View>
+      {chips.length > 0 ? (
+        <View style={styles.chips}>
+          {chips.map((chip) => (
+            <Tag key={chip.id} label={chip.label} iconXml={chip.icon_svg_xml} />
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.emptyText}>Add the kinds of cafes you like</Text>
+      )}
     </View>
   );
 }
@@ -68,5 +79,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
+  },
+  emptyText: {
+    ...type.body1,
+    color: colors.greyNormal,
   },
 });
