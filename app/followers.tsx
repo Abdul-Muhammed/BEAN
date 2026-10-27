@@ -55,7 +55,7 @@ export default function FollowersScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+      <StatusBar barStyle="dark-content" />
       <ConnectionsHeader title="Followers" />
       <SocialSearchBar value={query} onChangeText={setQuery} />
 

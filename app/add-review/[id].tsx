@@ -59,7 +59,7 @@ export default function AddReviewScreen() {
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+        <StatusBar barStyle="dark-content" />
         
         <View style={styles.header}>
           <TouchableOpacity

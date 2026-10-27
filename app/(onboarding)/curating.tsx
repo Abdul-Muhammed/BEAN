@@ -119,7 +119,7 @@ export default function CuratingScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+      <StatusBar barStyle="dark-content" />
 
       <View style={styles.content}>
         <OnboardingLoadingAnimation

@@ -11,6 +11,7 @@ import {
   Platform,
   Image,
 } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import { X, Camera, ChevronDown, ChevronUp, Check, Heart } from 'lucide-react-native';
 import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
 import * as ImagePicker from 'expo-image-picker';
@@ -109,7 +110,7 @@ export default function ReviewForm({
   onSubmit,
 }: ReviewFormProps) {
   const { toggleFavorite, isFavorited } = useReviews();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
 
   const [rating, setRating] = useState(initialValues?.rating ?? 0);
   const [orderedItem, setOrderedItem] = useState(initialValues?.orderedItem ?? '');

@@ -135,7 +135,7 @@ const DiscoverSheet = forwardRef<DiscoverSheetHandle, DiscoverSheetProps>(functi
         ListFooterComponent={
           isFetchingMore ? (
             <ActivityIndicator style={styles.footer} color={colors.primary} />
-          ) : null
+          ) : undefined
         }
         ListEmptyComponent={
           <View style={styles.emptyState}>

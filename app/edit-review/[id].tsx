@@ -71,7 +71,7 @@ export default function EditReviewScreen() {
   if (loading && !review) {
     return (
       <SafeAreaView style={styles.centeredContainer}>
-        <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+        <StatusBar barStyle="dark-content" />
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Loading review…</Text>
       </SafeAreaView>
@@ -81,7 +81,7 @@ export default function EditReviewScreen() {
   if (!review || !cafe) {
     return (
       <SafeAreaView style={styles.centeredContainer}>
-        <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+        <StatusBar barStyle="dark-content" />
         <BeanLogo width={58} height={98} />
         <Text style={styles.emptyTitle}>Review not found</Text>
         <Text style={styles.emptySubtitle}>
@@ -130,7 +130,7 @@ export default function EditReviewScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+      <StatusBar barStyle="dark-content" />
 
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()} hitSlop={8}>

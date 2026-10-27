@@ -80,7 +80,7 @@ export default function EditPreferencesScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+      <StatusBar barStyle="dark-content" />
 
       <TopAppBar title="Edit Preferences" />
 
