@@ -24,6 +24,7 @@ import ReviewStoryCard, {
 } from '../../components/share/ReviewStoryCard';
 import ShareTargetTile from '../../components/share/ShareTargetTile';
 import TemplateToggle from '../../components/share/TemplateToggle';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import BeanLogo from '../../components/BeanLogo';
 import { useReviews } from '../../context/ReviewContext';
 import { useToast } from '../../context/ToastContext';
@@ -39,6 +40,14 @@ import { UserReview } from '../../data/mockData';
 const PREVIEW_WIDTH = 229.5;
 const PREVIEW_HEIGHT = PREVIEW_WIDTH / STORY_ASPECT_RATIO;
 const EXPORT_HEIGHT = STORY_EXPORT_WIDTH / STORY_ASPECT_RATIO;
+
+const VARIANTS: StoryCardVariant[] = ['filled', 'transparent', 'compact'];
+/** The template the user picked last, so the screen reopens on it. */
+const SHARE_TEMPLATE_KEY = 'bean:shareTemplate';
+
+function isVariant(value: string | null): value is StoryCardVariant {
+  return VARIANTS.includes(value as StoryCardVariant);
+}
 
 /** Instagram only accepts a story share from a registered Facebook app id. */
 const FACEBOOK_APP_ID =
@@ -97,19 +106,57 @@ export default function ShareReviewScreen() {
   }, [localReview, reviewId]);
 
   const [variant, setVariant] = useState<StoryCardVariant>('filled');
+  // The template the screen opened on, once the remembered choice has been read.
+  // Captures wait for it so that template's image is ready first.
+  const [initialVariant, setInitialVariant] = useState<StoryCardVariant | null>(null);
 
-  // 0 shows the filled preview, 1 the transparent one; the two cards cross-fade.
-  const [fade] = useState(() => new Animated.Value(0));
+  // One opacity per template; the previews are stacked and cross-fade.
+  const [fades] = useState(() => ({
+    filled: new Animated.Value(1),
+    transparent: new Animated.Value(0),
+    compact: new Animated.Value(0),
+  }));
+
   useEffect(() => {
-    Animated.timing(fade, {
-      toValue: variant === 'filled' ? 0 : 1,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
-  }, [fade, variant]);
+    AsyncStorage.getItem(SHARE_TEMPLATE_KEY)
+      .catch(() => null)
+      .then((stored) => {
+        const start = isVariant(stored) ? stored : 'filled';
+        // Jump straight to the remembered template rather than fading to it.
+        VARIANTS.forEach((v) => fades[v].setValue(v === start ? 1 : 0));
+        setVariant(start);
+        setInitialVariant(start);
+      });
+  }, [fades]);
+
+  useEffect(() => {
+    Animated.parallel(
+      VARIANTS.map((v) =>
+        Animated.timing(fades[v], {
+          toValue: v === variant ? 1 : 0,
+          duration: 200,
+          useNativeDriver: true,
+        })
+      )
+    ).start();
+  }, [fades, variant]);
+
+  const handleVariantChange = useCallback((next: StoryCardVariant) => {
+    setVariant(next);
+    AsyncStorage.setItem(SHARE_TEMPLATE_KEY, next).catch(() => {});
+  }, []);
 
   const filledExportRef = useRef<ViewInstance>(null);
   const transparentExportRef = useRef<ViewInstance>(null);
+  const compactExportRef = useRef<ViewInstance>(null);
+  const exportRefs = useMemo(
+    () => ({
+      filled: filledExportRef,
+      transparent: transparentExportRef,
+      compact: compactExportRef,
+    }),
+    []
+  );
   const [assets, setAssets] = useState<
     Partial<Record<StoryCardVariant, { fileUri: string; base64: string }>>
   >({});
@@ -120,24 +167,22 @@ export default function ShareReviewScreen() {
   const natives = useMemo(() => getShareNatives(), []);
   const missingModules = useMemo(() => getMissingShareModules(), []);
 
-  // Rasterise both off-screen 1080x1920 templates once, so switching between
+  // Rasterise every off-screen 1080x1920 template once, so switching between
   // them never waits on a capture. The tmpfile feeds the OS share sheet and the
   // photo library; the base64 copy feeds Instagram's sticker payload and the
   // clipboard.
   useEffect(() => {
-    if (!review || !natives) return;
+    if (!review || !natives || !initialVariant) return;
     let cancelled = false;
     // A beat of grace so the off-screen cards have laid out before capture.
     const timer = setTimeout(async () => {
-      const targets: [StoryCardVariant, React.RefObject<ViewInstance | null>][] = [
-        ['filled', filledExportRef],
-        ['transparent', transparentExportRef],
-      ];
+      const targets = [initialVariant, ...VARIANTS.filter((v) => v !== initialVariant)];
       try {
         // Sequential, not Promise.all: each pair of calls reads the same native
         // view, and running them concurrently can interleave the snapshot. The
-        // default template goes first so its tiles unlock soonest.
-        for (const [target, ref] of targets) {
+        // template the screen opened on goes first so its tiles unlock soonest.
+        for (const target of targets) {
+          const ref = exportRefs[target];
           const fileUri = await natives.captureRef(ref, {
             format: 'png',
             quality: 1,
@@ -160,7 +205,7 @@ export default function ShareReviewScreen() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [review, natives, showToast]);
+  }, [review, natives, initialVariant, exportRefs, showToast]);
 
   const shareUrl = reviewId ? reviewLinkUrl(reviewId) : '';
 
@@ -276,16 +321,13 @@ export default function ShareReviewScreen() {
         <View style={styles.previewSection}>
           <View style={styles.previewFrame}>
             <AlphaCheckerboard width={PREVIEW_WIDTH} height={PREVIEW_HEIGHT} />
-            <Animated.View
-              style={[styles.previewLayer, { opacity: Animated.subtract(1, fade) }]}
-            >
-              <ReviewStoryCard review={review} width={PREVIEW_WIDTH} variant="filled" />
-            </Animated.View>
-            <Animated.View style={[styles.previewLayer, { opacity: fade }]}>
-              <ReviewStoryCard review={review} width={PREVIEW_WIDTH} variant="transparent" />
-            </Animated.View>
+            {VARIANTS.map((v) => (
+              <Animated.View key={v} style={[styles.previewLayer, { opacity: fades[v] }]}>
+                <ReviewStoryCard review={review} width={PREVIEW_WIDTH} variant={v} />
+              </Animated.View>
+            ))}
           </View>
-          <TemplateToggle value={variant} onChange={setVariant} />
+          <TemplateToggle value={variant} onChange={handleVariantChange} />
         </View>
 
         <View style={styles.shareSection}>
@@ -355,12 +397,11 @@ export default function ShareReviewScreen() {
       {/* Off-screen full-resolution copies, one per template — these are what
           actually get exported. */}
       <View style={styles.offscreen} pointerEvents="none">
-        <View ref={filledExportRef} collapsable={false} style={styles.exportFrame}>
-          <ReviewStoryCard review={review} width={STORY_EXPORT_WIDTH} variant="filled" />
-        </View>
-        <View ref={transparentExportRef} collapsable={false} style={styles.exportFrame}>
-          <ReviewStoryCard review={review} width={STORY_EXPORT_WIDTH} variant="transparent" />
-        </View>
+        {VARIANTS.map((v) => (
+          <View key={v} ref={exportRefs[v]} collapsable={false} style={styles.exportFrame}>
+            <ReviewStoryCard review={review} width={STORY_EXPORT_WIDTH} variant={v} />
+          </View>
+        ))}
       </View>
     </SafeAreaView>
   );

@@ -6,6 +6,7 @@ import { StoryCardVariant } from './ReviewStoryCard';
 const OPTIONS: { value: StoryCardVariant; label: string }[] = [
   { value: 'filled', label: 'Filled' },
   { value: 'transparent', label: 'Transparent' },
+  { value: 'compact', label: 'Compact' },
 ];
 
 const SEGMENT_WIDTH = 112;
@@ -37,14 +38,8 @@ export default function TemplateToggle({ value, onChange }: TemplateToggleProps)
         style={[
           styles.indicator,
           {
-            transform: [
-              {
-                translateX: position.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, SEGMENT_WIDTH],
-                }),
-              },
-            ],
+            // One segment width per step, however many options there are.
+            transform: [{ translateX: Animated.multiply(position, SEGMENT_WIDTH) }],
           },
         ]}
       />
