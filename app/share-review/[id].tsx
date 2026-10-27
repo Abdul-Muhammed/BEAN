@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Platform,
   ScrollView,
   StatusBar,
@@ -19,8 +20,10 @@ import Constants from 'expo-constants';
 import ReviewStoryCard, {
   STORY_ASPECT_RATIO,
   STORY_EXPORT_WIDTH,
+  StoryCardVariant,
 } from '../../components/share/ReviewStoryCard';
 import ShareTargetTile from '../../components/share/ShareTargetTile';
+import TemplateToggle from '../../components/share/TemplateToggle';
 import BeanLogo from '../../components/BeanLogo';
 import { useReviews } from '../../context/ReviewContext';
 import { useToast } from '../../context/ToastContext';
@@ -93,45 +96,64 @@ export default function ShareReviewScreen() {
     };
   }, [localReview, reviewId]);
 
-  const exportRef = useRef<ViewInstance>(null);
-  const [assets, setAssets] = useState<{ fileUri: string; base64: string } | null>(null);
+  const [variant, setVariant] = useState<StoryCardVariant>('filled');
+
+  // 0 shows the filled preview, 1 the transparent one; the two cards cross-fade.
+  const [fade] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    Animated.timing(fade, {
+      toValue: variant === 'filled' ? 0 : 1,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [fade, variant]);
+
+  const filledExportRef = useRef<ViewInstance>(null);
+  const transparentExportRef = useRef<ViewInstance>(null);
+  const [assets, setAssets] = useState<
+    Partial<Record<StoryCardVariant, { fileUri: string; base64: string }>>
+  >({});
+  const current = assets[variant];
 
   // Resolved once per mount. Null on a dev client built before these packages
   // were added, which is the common case right after pulling this branch.
   const natives = useMemo(() => getShareNatives(), []);
   const missingModules = useMemo(() => getMissingShareModules(), []);
 
-  // Nothing to wait for when the capture can't run at all.
-  const [capturing, setCapturing] = useState(() => !!natives);
-
-  // Rasterise the off-screen 1080x1920 card once and reuse it for every target.
-  // The tmpfile feeds the OS share sheet and the photo library; the base64 copy
-  // feeds Instagram's sticker payload and the clipboard.
+  // Rasterise both off-screen 1080x1920 templates once, so switching between
+  // them never waits on a capture. The tmpfile feeds the OS share sheet and the
+  // photo library; the base64 copy feeds Instagram's sticker payload and the
+  // clipboard.
   useEffect(() => {
     if (!review || !natives) return;
     let cancelled = false;
-    // A beat of grace so the off-screen card has laid out before capture.
+    // A beat of grace so the off-screen cards have laid out before capture.
     const timer = setTimeout(async () => {
+      const targets: [StoryCardVariant, React.RefObject<ViewInstance | null>][] = [
+        ['filled', filledExportRef],
+        ['transparent', transparentExportRef],
+      ];
       try {
-        // Sequential, not Promise.all: both calls read the same native view,
-        // and running them concurrently can interleave the snapshot.
-        const fileUri = await natives.captureRef(exportRef, {
-          format: 'png',
-          quality: 1,
-          result: 'tmpfile',
-        });
-        const dataUri = await natives.captureRef(exportRef, {
-          format: 'png',
-          quality: 1,
-          result: 'data-uri',
-        });
-        if (!cancelled) {
-          setAssets({ fileUri, base64: dataUri.replace(/^data:image\/png;base64,/, '') });
+        // Sequential, not Promise.all: each pair of calls reads the same native
+        // view, and running them concurrently can interleave the snapshot. The
+        // default template goes first so its tiles unlock soonest.
+        for (const [target, ref] of targets) {
+          const fileUri = await natives.captureRef(ref, {
+            format: 'png',
+            quality: 1,
+            result: 'tmpfile',
+          });
+          const dataUri = await natives.captureRef(ref, {
+            format: 'png',
+            quality: 1,
+            result: 'data-uri',
+          });
+          if (cancelled) return;
+          const base64 = dataUri.replace(/^data:image\/png;base64,/, '');
+          setAssets((prev) => ({ ...prev, [target]: { fileUri, base64 } }));
         }
       } catch {
         if (!cancelled) showToast({ message: 'Could not build the share image' });
-      } finally {
-        if (!cancelled) setCapturing(false);
       }
     }, 120);
     return () => {
@@ -143,7 +165,7 @@ export default function ShareReviewScreen() {
   const shareUrl = reviewId ? reviewLinkUrl(reviewId) : '';
 
   const handleInstagram = useCallback(async () => {
-    if (!assets || !natives) return;
+    if (!current || !natives) return;
     if (!FACEBOOK_APP_ID) {
       showToast({ message: 'Instagram sharing is not configured yet' });
       return;
@@ -152,7 +174,7 @@ export default function ShareReviewScreen() {
       await natives.RNShare.shareSingle({
         social: natives.Social.InstagramStories,
         appId: FACEBOOK_APP_ID,
-        stickerImage: `data:image/png;base64,${assets.base64}`,
+        stickerImage: `data:image/png;base64,${current.base64}`,
         backgroundBottomColor: colors.ink,
         backgroundTopColor: colors.ink,
         attributionURL: shareUrl,
@@ -160,10 +182,10 @@ export default function ShareReviewScreen() {
     } catch {
       showToast({ message: 'Could not open Instagram' });
     }
-  }, [assets, natives, shareUrl, showToast]);
+  }, [current, natives, shareUrl, showToast]);
 
   const handleCopyImage = useCallback(async () => {
-    if (!assets || !natives) return;
+    if (!current || !natives) return;
     // expo-clipboard can only put an image on the pasteboard on iOS. Android
     // gets the link instead so the tile still does something useful.
     if (Platform.OS !== 'ios') {
@@ -172,27 +194,27 @@ export default function ShareReviewScreen() {
       return;
     }
     try {
-      await natives.Clipboard.setImageAsync(assets.base64);
+      await natives.Clipboard.setImageAsync(current.base64);
       showToast({ message: 'Image copied' });
     } catch {
       showToast({ message: 'Could not copy the image' });
     }
-  }, [assets, natives, shareUrl, showToast]);
+  }, [current, natives, shareUrl, showToast]);
 
   const handleSave = useCallback(async () => {
-    if (!assets || !natives) return;
+    if (!current || !natives) return;
     try {
       const { granted } = await natives.MediaLibrary.requestPermissionsAsync();
       if (!granted) {
         showToast({ message: 'Photo permission is needed to save' });
         return;
       }
-      await natives.MediaLibrary.saveToLibraryAsync(assets.fileUri);
+      await natives.MediaLibrary.saveToLibraryAsync(current.fileUri);
       showToast({ message: 'Saved to your photos', variant: 'success' });
     } catch {
       showToast({ message: 'Could not save the image' });
     }
-  }, [assets, natives, showToast]);
+  }, [current, natives, showToast]);
 
   const handleCopyLink = useCallback(async () => {
     if (!natives) return;
@@ -201,17 +223,17 @@ export default function ShareReviewScreen() {
   }, [natives, shareUrl, showToast]);
 
   const handleMore = useCallback(async () => {
-    if (!assets || !natives) return;
+    if (!current || !natives) return;
     if (!(await natives.Sharing.isAvailableAsync())) {
       showToast({ message: 'Sharing is not available on this device' });
       return;
     }
-    await natives.Sharing.shareAsync(assets.fileUri, {
+    await natives.Sharing.shareAsync(current.fileUri, {
       mimeType: 'image/png',
       UTI: 'public.png',
       dialogTitle: 'Share review',
     });
-  }, [assets, natives, showToast]);
+  }, [current, natives, showToast]);
 
   if (!review) {
     return (
@@ -227,10 +249,10 @@ export default function ShareReviewScreen() {
   }
 
   const unavailable = missingModules.length > 0;
-  // Only "busy" while a capture is genuinely in flight; when the native modules
-  // are absent there is nothing to wait for, so show the tiles (inert) instead
-  // of a spinner that would never resolve.
-  const busy = !unavailable && (capturing || !assets);
+  // Only "busy" until the selected template's image is ready; when the native
+  // modules are absent there is nothing to wait for, so show the tiles (inert)
+  // instead of a spinner that would never resolve.
+  const busy = !unavailable && !current;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -254,11 +276,16 @@ export default function ShareReviewScreen() {
         <View style={styles.previewSection}>
           <View style={styles.previewFrame}>
             <AlphaCheckerboard width={PREVIEW_WIDTH} height={PREVIEW_HEIGHT} />
-            <ReviewStoryCard review={review} width={PREVIEW_WIDTH} />
-            <View style={styles.variantChip}>
-              <Text style={styles.variantChipText}>Transparent</Text>
-            </View>
+            <Animated.View
+              style={[styles.previewLayer, { opacity: Animated.subtract(1, fade) }]}
+            >
+              <ReviewStoryCard review={review} width={PREVIEW_WIDTH} variant="filled" />
+            </Animated.View>
+            <Animated.View style={[styles.previewLayer, { opacity: fade }]}>
+              <ReviewStoryCard review={review} width={PREVIEW_WIDTH} variant="transparent" />
+            </Animated.View>
           </View>
+          <TemplateToggle value={variant} onChange={setVariant} />
         </View>
 
         <View style={styles.shareSection}>
@@ -325,18 +352,14 @@ export default function ShareReviewScreen() {
         </View>
       </ScrollView>
 
-      {/* Off-screen full-resolution copy — this is what actually gets exported. */}
+      {/* Off-screen full-resolution copies, one per template — these are what
+          actually get exported. */}
       <View style={styles.offscreen} pointerEvents="none">
-        <View
-          ref={exportRef}
-          collapsable={false}
-          style={{
-            width: STORY_EXPORT_WIDTH,
-            height: EXPORT_HEIGHT,
-            backgroundColor: 'transparent',
-          }}
-        >
-          <ReviewStoryCard review={review} width={STORY_EXPORT_WIDTH} />
+        <View ref={filledExportRef} collapsable={false} style={styles.exportFrame}>
+          <ReviewStoryCard review={review} width={STORY_EXPORT_WIDTH} variant="filled" />
+        </View>
+        <View ref={transparentExportRef} collapsable={false} style={styles.exportFrame}>
+          <ReviewStoryCard review={review} width={STORY_EXPORT_WIDTH} variant="transparent" />
         </View>
       </View>
     </SafeAreaView>
@@ -402,6 +425,7 @@ const styles = StyleSheet.create({
   },
   previewSection: {
     alignItems: 'center',
+    gap: 16,
     paddingVertical: 16,
     backgroundColor: colors.cream,
   },
@@ -410,20 +434,8 @@ const styles = StyleSheet.create({
     height: PREVIEW_HEIGHT,
     overflow: 'hidden',
   },
-  variantChip: {
-    position: 'absolute',
-    top: 5.31,
-    left: 5.31,
-    padding: 4.25,
-    borderRadius: 4.25,
-    borderWidth: 0.637,
-    borderColor: colors.background,
-  },
-  variantChipText: {
-    fontFamily: 'Lato-Bold',
-    fontSize: 9.978,
-    lineHeight: 11,
-    color: '#FFFFFF',
+  previewLayer: {
+    ...StyleSheet.absoluteFill,
   },
   shareSection: {
     gap: 16,
@@ -472,5 +484,10 @@ const styles = StyleSheet.create({
     left: -9999,
     top: 0,
     opacity: 0,
+  },
+  exportFrame: {
+    width: STORY_EXPORT_WIDTH,
+    height: EXPORT_HEIGHT,
+    backgroundColor: 'transparent',
   },
 });
