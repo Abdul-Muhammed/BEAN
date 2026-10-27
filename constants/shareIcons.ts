@@ -33,23 +33,32 @@ const SHARE_BEAN_LEFT_D =
 const SHARE_BEAN_RIGHT_D =
   'M79.6161 8.59589C80.5546 2.99628 86.1885 -0.513653 91.6285 1.11215C94.6736 2.02222 97.0563 4.40361 97.9681 7.44823L106.608 36.2998C108.886 43.9061 109.757 51.8642 109.178 59.7831L108.183 73.3932C107.069 88.6261 99.545 102.671 87.4803 112.037L82.8763 115.611C78.2369 119.213 72.7126 121.498 66.8845 122.224L55.4977 123.645C49.2823 124.42 43.2115 121.376 40.1145 115.932C37.7454 111.767 37.4367 106.741 39.2783 102.318L47.5658 82.4119C49.8131 77.0141 52.8442 71.9773 56.5611 67.4639L67.0469 54.7314C71.0254 49.9005 73.6641 44.1087 74.6986 37.9365L79.6161 8.59589Z';
 
-/** assets/images/share/filled_share_bean.svg — one solid #F9F3ED bean. */
-export const SHARE_BEAN_FILLED_SVG = `<svg width="110" height="124" viewBox="0 0 110 124" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="${SHARE_BEAN_LEFT_D}" fill="#F9F3ED"/>
-<path d="${SHARE_BEAN_RIGHT_D}" fill="#F9F3ED"/>
+// Each bean is two seeds, split into one SVG per seed so a half rating can show
+// a single seed. Every seed SVG keeps the full 110x124 viewBox, so a left and a
+// right seed stacked in the same box line up into the whole bean.
+
+const filledSeed = (d: string) => `<svg width="110" height="124" viewBox="0 0 110 124" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="${d}" fill="#F9F3ED"/>
 </svg>`;
 
-/** assets/images/share/transparent_share_bean.svg — a white bean outline. */
-export const SHARE_BEAN_TRANSPARENT_SVG = `<svg width="110" height="124" viewBox="0 0 110 124" fill="none" xmlns="http://www.w3.org/2000/svg">
+// The seeds don't overlap, so clipping each outline to its own seed draws the
+// same inside-only stroke as clipping both to the whole bean.
+const outlineSeed = (d: string) => `<svg width="110" height="124" viewBox="0 0 110 124" fill="none" xmlns="http://www.w3.org/2000/svg">
 <defs>
-<clipPath id="beanClip">
-<path d="${SHARE_BEAN_LEFT_D}"/>
-<path d="${SHARE_BEAN_RIGHT_D}"/>
+<clipPath id="seedClip">
+<path d="${d}"/>
 </clipPath>
 </defs>
-<path d="${SHARE_BEAN_LEFT_D}" stroke="white" stroke-width="4" clip-path="url(#beanClip)"/>
-<path d="${SHARE_BEAN_RIGHT_D}" stroke="white" stroke-width="4" clip-path="url(#beanClip)"/>
+<path d="${d}" stroke="white" stroke-width="4" clip-path="url(#seedClip)"/>
 </svg>`;
+
+/** assets/images/share/filled_share_bean.svg — solid #F9F3ED seeds. */
+export const SHARE_BEAN_FILLED_LEFT_SVG = filledSeed(SHARE_BEAN_LEFT_D);
+export const SHARE_BEAN_FILLED_RIGHT_SVG = filledSeed(SHARE_BEAN_RIGHT_D);
+
+/** assets/images/share/transparent_share_bean.svg — white seed outlines. */
+export const SHARE_BEAN_TRANSPARENT_LEFT_SVG = outlineSeed(SHARE_BEAN_LEFT_D);
+export const SHARE_BEAN_TRANSPARENT_RIGHT_SVG = outlineSeed(SHARE_BEAN_RIGHT_D);
 
 /** Size of each bean in the story card's rating row (Figma 741:14526). */
 export const SHARE_BEAN_WIDTH = 109.35164642333984;
