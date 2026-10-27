@@ -125,7 +125,7 @@ export default function ConnectFriendsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+      <StatusBar barStyle="dark-content" />
       <ConnectionsHeader title="Connect with friends" />
       <SocialSearchBar value={query} onChangeText={setQuery} />
 

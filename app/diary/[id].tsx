@@ -154,7 +154,7 @@ export default function DiaryEntryScreen() {
   if ((loading || fetching) && !review) {
     return (
       <SafeAreaView style={styles.centeredContainer}>
-        <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+        <StatusBar barStyle="dark-content" />
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Loading diary entry...</Text>
       </SafeAreaView>
@@ -164,7 +164,7 @@ export default function DiaryEntryScreen() {
   if (!review) {
     return (
       <SafeAreaView style={styles.centeredContainer}>
-        <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+        <StatusBar barStyle="dark-content" />
         <BeanLogo width={58} height={98} />
         <Text style={styles.emptyTitle}>Diary entry not found</Text>
         <Text style={styles.emptySubtitle}>
@@ -249,7 +249,7 @@ export default function DiaryEntryScreen() {
     // The Figma frame puts the status bar on the cream background above the
     // photo rather than over it, so the hero starts below the top inset.
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+      <StatusBar barStyle="dark-content" />
 
       <ScrollView
         style={styles.scrollView}

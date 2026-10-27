@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import type { ViewInstance } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Copy, Download, Link2, Share as ShareIcon } from 'lucide-react-native';
@@ -92,7 +93,7 @@ export default function ShareReviewScreen() {
     };
   }, [localReview, reviewId]);
 
-  const exportRef = useRef<View>(null);
+  const exportRef = useRef<ViewInstance>(null);
   const [assets, setAssets] = useState<{ fileUri: string; base64: string } | null>(null);
 
   // Resolved once per mount. Null on a dev client built before these packages
@@ -215,7 +216,7 @@ export default function ShareReviewScreen() {
   if (!review) {
     return (
       <SafeAreaView style={styles.centered} edges={['top', 'bottom']}>
-        <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+        <StatusBar barStyle="dark-content" />
         <BeanLogo width={58} height={98} />
         <Text style={styles.emptyTitle}>Review not found</Text>
         <TouchableOpacity style={styles.backHomeButton} onPress={() => router.back()}>
@@ -233,7 +234,7 @@ export default function ShareReviewScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+      <StatusBar barStyle="dark-content" />
 
       <View style={styles.topBar}>
         <TouchableOpacity

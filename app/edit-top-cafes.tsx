@@ -10,6 +10,7 @@ import {
   StatusBar,
   ActivityIndicator,
 } from 'react-native';
+import type { TextInputInstance } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -221,7 +222,7 @@ export default function EditTopCafesScreen() {
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const searchRef = useRef<TextInput>(null);
+  const searchRef = useRef<TextInputInstance>(null);
 
   const dragIndex = useSharedValue(-1);
   const dragY = useSharedValue(0);
@@ -338,7 +339,7 @@ export default function EditTopCafesScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+      <StatusBar barStyle="dark-content" />
 
       <TopAppBar title="Edit Top Cafes" />
 
