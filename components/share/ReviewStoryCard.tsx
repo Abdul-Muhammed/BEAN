@@ -12,17 +12,20 @@ import {
   SHARE_HEADER_EAN_SVG,
   SHARE_HEADER_LOGO_SVG,
   SHARE_HEADER_MR_BEAN_SVG,
+  SHARE_MAP_PIN_SVG,
 } from '@/constants/shareIcons';
 import { colors } from '@/constants/theme';
 import { UserReview } from '../../data/mockData';
 
 /**
- * The shareable story sticker for a review. It comes in three templates from
+ * The shareable story sticker for a review. It comes in four templates from
  * the Figma file 2k0jn7hENJ5HZ8wTYwQbCi:
  *  - 'filled' (741:14413): solid cream beans under the BEAN lockup.
  *  - 'transparent' (741:14578): white outline beans under Mr. Bean.
  *  - 'compact' (741:14054): a smaller block in the top third of the story, so
  *    the user's photo stays visible underneath.
+ *  - 'simple' (740:13390): just the café, the rating beans and the BEAN
+ *    lockup, centred on the story.
  *
  * It is exported as a *transparent* PNG and layered over whatever background the
  * user already has in their Instagram Story. In Figma the photo behind the card
@@ -40,7 +43,7 @@ export const STORY_EXPORT_WIDTH = 1080;
 /** Width of the Figma artboard every measurement below is expressed against. */
 const DESIGN_WIDTH = 1080;
 
-export type StoryCardVariant = 'filled' | 'transparent' | 'compact';
+export type StoryCardVariant = 'filled' | 'transparent' | 'compact' | 'simple';
 
 const TEXT_COLOR = '#FFFFFF';
 
@@ -162,6 +165,29 @@ function Wordmark({ height, gap, s }: { height: number; gap: number; s: number }
   );
 }
 
+/** The full-size five-bean rating row (Figma 741:14526), unearned beans faded. */
+function BeanRow({ seeds, rating, s }: { seeds: Seeds; rating: number; s: number }) {
+  return (
+    <View
+      style={[
+        styles.row,
+        { gap: 23.433 * s, paddingHorizontal: 31.243 * s, paddingVertical: 23.432 * s },
+      ]}
+    >
+      {[1, 2, 3, 4, 5].map((index) => (
+        <ShareBean
+          key={index}
+          seeds={seeds}
+          fill={getFill(index, rating)}
+          width={SHARE_BEAN_WIDTH * s}
+          height={SHARE_BEAN_HEIGHT * s}
+          showEmpty
+        />
+      ))}
+    </View>
+  );
+}
+
 /** Filled and Transparent — Figma 741:14505 / 741:14580, centred on the story. */
 function CenteredCard({ review, s, variant }: { review: Review; s: number; variant: StoryCardVariant }) {
   const seeds = variant === 'filled' ? FILLED_SEEDS : OUTLINE_SEEDS;
@@ -202,23 +228,7 @@ function CenteredCard({ review, s, variant }: { review: Review; s: number; varia
       )}
 
       <View style={[styles.block, { gap: 24 * s, paddingVertical: 23.953 * s }]}>
-        <View
-          style={[
-            styles.row,
-            { gap: 23.433 * s, paddingHorizontal: 31.243 * s, paddingVertical: 23.432 * s },
-          ]}
-        >
-          {[1, 2, 3, 4, 5].map((index) => (
-            <ShareBean
-              key={index}
-              seeds={seeds}
-              fill={getFill(index, review.rating)}
-              width={SHARE_BEAN_WIDTH * s}
-              height={SHARE_BEAN_HEIGHT * s}
-              showEmpty
-            />
-          ))}
-        </View>
+        <BeanRow seeds={seeds} rating={review.rating} s={s} />
 
         {visit ? (
           <View style={styles.dateRow}>
@@ -294,6 +304,31 @@ function CompactCard({ review, s }: { review: Review; s: number }) {
   );
 }
 
+/**
+ * Simple — Figma 740:13390: the café beside a map pin over the rating beans,
+ * signed with the BEAN lockup (added under the beans; not in the Figma frame).
+ */
+function SimpleCard({ review, s }: { review: Review; s: number }) {
+  return (
+    <View style={[styles.block, { gap: 24 * s, paddingVertical: 23.953 * s }]}>
+      <View style={[styles.row, { gap: 11.977 * s, maxWidth: 960 * s }]}>
+        <SvgXml xml={SHARE_MAP_PIN_SVG} width={46.865 * s} height={46.865 * s} />
+        <Text
+          style={[styles.text, styles.cream, styles.shrink, textStyle(46.865, 'Lato-Bold', s)]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
+          {review.cafeName}
+        </Text>
+      </View>
+
+      <BeanRow seeds={FILLED_SEEDS} rating={review.rating} s={s} />
+
+      <Wordmark height={40} gap={4.273} s={s} />
+    </View>
+  );
+}
+
 export default function ReviewStoryCard({
   review,
   width,
@@ -313,6 +348,8 @@ export default function ReviewStoryCard({
     >
       {variant === 'compact' ? (
         <CompactCard review={review} s={s} />
+      ) : variant === 'simple' ? (
+        <SimpleCard review={review} s={s} />
       ) : (
         <CenteredCard review={review} s={s} variant={variant} />
       )}
@@ -358,6 +395,9 @@ const styles = StyleSheet.create({
   },
   cream: {
     color: colors.cream,
+  },
+  shrink: {
+    flexShrink: 1,
   },
   seed: {
     position: 'absolute',

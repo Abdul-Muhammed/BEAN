@@ -41,7 +41,7 @@ const PREVIEW_WIDTH = 229.5;
 const PREVIEW_HEIGHT = PREVIEW_WIDTH / STORY_ASPECT_RATIO;
 const EXPORT_HEIGHT = STORY_EXPORT_WIDTH / STORY_ASPECT_RATIO;
 
-const VARIANTS: StoryCardVariant[] = ['filled', 'transparent', 'compact'];
+const VARIANTS: StoryCardVariant[] = ['filled', 'transparent', 'compact', 'simple'];
 /** The template the user picked last, so the screen reopens on it. */
 const SHARE_TEMPLATE_KEY = 'bean:shareTemplate';
 
@@ -115,6 +115,7 @@ export default function ShareReviewScreen() {
     filled: new Animated.Value(1),
     transparent: new Animated.Value(0),
     compact: new Animated.Value(0),
+    simple: new Animated.Value(0),
   }));
 
   useEffect(() => {
@@ -149,11 +150,13 @@ export default function ShareReviewScreen() {
   const filledExportRef = useRef<ViewInstance>(null);
   const transparentExportRef = useRef<ViewInstance>(null);
   const compactExportRef = useRef<ViewInstance>(null);
+  const simpleExportRef = useRef<ViewInstance>(null);
   const exportRefs = useMemo(
     () => ({
       filled: filledExportRef,
       transparent: transparentExportRef,
       compact: compactExportRef,
+      simple: simpleExportRef,
     }),
     []
   );

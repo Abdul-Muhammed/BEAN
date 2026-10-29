@@ -7,9 +7,11 @@ const OPTIONS: { value: StoryCardVariant; label: string }[] = [
   { value: 'filled', label: 'Filled' },
   { value: 'transparent', label: 'Transparent' },
   { value: 'compact', label: 'Compact' },
+  { value: 'simple', label: 'Simple' },
 ];
 
-const SEGMENT_WIDTH = 112;
+// Four segments have to fit a 375pt-wide phone with room to spare.
+const SEGMENT_WIDTH = 84;
 const SEGMENT_HEIGHT = 32;
 const INSET = 3;
 
@@ -89,7 +91,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontFamily: 'Lato-Bold',
-    fontSize: 14,
+    fontSize: 13,
     color: colors.greyNormal,
   },
   labelSelected: {
