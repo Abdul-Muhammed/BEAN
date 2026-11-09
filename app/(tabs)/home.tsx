@@ -15,6 +15,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { SvgXml } from 'react-native-svg';
 
 import LocationPrimerSheet from '@/components/LocationPrimerSheet';
+import TutorialSheet from '@/components/TutorialSheet';
 import BeanScore from '@/components/ui/BeanScore';
 import CafeCard from '@/components/ui/CafeCard';
 import Tag from '@/components/ui/Tag';
@@ -30,6 +31,7 @@ import {
   convertPlaceToCafe,
 } from '../../services/googlePlaces';
 import { useUserProfile } from '../../hooks/useUserProfile';
+import { updateProfile } from '../../lib/profile';
 import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
 import {
   attributeRowToCafe,
@@ -174,7 +176,7 @@ const HomeCafeCard = React.memo(function HomeCafeCard({
 
 export default function HomeScreen() {
   const { cafes, addCafe, toggleBookmark, isBookmarked, isFavorited } = useReviews();
-  const { profile } = useUserProfile();
+  const { profile, refetch: refetchProfile } = useUserProfile();
   const {
     coords,
     isFallback,
@@ -183,6 +185,14 @@ export default function HomeScreen() {
     requestPermission,
   } = useLocation();
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
+  // The post-onboarding tutorial shows once, over Home, before the location
+  // primer. tutorialClosed hides it for the rest of the session even if the
+  // tutorial_completed write fails; in that case it just shows again next launch.
+  const [tutorialClosed, setTutorialClosed] = useState(false);
+  const showTutorial =
+    profile?.onboarding_completed === true &&
+    profile.tutorial_completed === false &&
+    !tutorialClosed;
   const [categories, setCategories] = useState<CafeCategory[]>([]);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [isLoadingNearby, setIsLoadingNearby] = useState(false);
@@ -259,6 +269,16 @@ export default function HomeScreen() {
       setIsRequestingLocation(false);
     }
   }, [requestPermission]);
+
+  const handleTutorialClosed = useCallback(async () => {
+    setTutorialClosed(true);
+    try {
+      await updateProfile({ tutorialCompleted: true });
+      await refetchProfile();
+    } catch (err) {
+      console.error('Failed to mark tutorial completed:', err);
+    }
+  }, [refetchProfile]);
 
   // Re-check location each time the Home tab gains focus so the list refreshes
   // when the user has moved, without reloading on every render.
@@ -590,8 +610,10 @@ export default function HomeScreen() {
         )}
       />
 
+      <TutorialSheet visible={showTutorial} onClosed={handleTutorialClosed} />
+
       <LocationPrimerSheet
-        visible={shouldShowPrimer}
+        visible={shouldShowPrimer && !showTutorial}
         requesting={isRequestingLocation}
         onEnable={handleEnableLocation}
         onDismiss={dismissPrimer}

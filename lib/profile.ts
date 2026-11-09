@@ -13,6 +13,8 @@ export interface UpdateProfileParams {
   /** Hand-picked cafe ids for the profile's Top Cafes, in display order. */
   topCafes?: string[];
   onboardingCompleted?: boolean;
+  /** Set once the post-onboarding tutorial sheet is finished or skipped. */
+  tutorialCompleted?: boolean;
 }
 
 /**
@@ -72,6 +74,7 @@ export async function updateProfile(params: UpdateProfileParams) {
     preferences,
     topCafes,
     onboardingCompleted,
+    tutorialCompleted,
   } = params;
 
   const {
@@ -109,6 +112,7 @@ export async function updateProfile(params: UpdateProfileParams) {
   if (preferences !== undefined) updateData.preferences = preferences || [];
   if (topCafes !== undefined) updateData.top_cafes = topCafes || [];
   if (onboardingCompleted !== undefined) updateData.onboarding_completed = onboardingCompleted;
+  if (tutorialCompleted !== undefined) updateData.tutorial_completed = tutorialCompleted;
 
   const { data, error } = await supabase
     .from('profiles')
