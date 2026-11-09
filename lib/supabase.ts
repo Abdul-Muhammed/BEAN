@@ -76,6 +76,7 @@ export type Database = {
           preferences: string[] | null;
           profile_image_url: string | null;
           onboarding_completed: boolean;
+          tutorial_completed: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -92,6 +93,7 @@ export type Database = {
           preferences?: string[] | null;
           profile_image_url?: string | null;
           onboarding_completed?: boolean;
+          tutorial_completed?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -108,6 +110,7 @@ export type Database = {
           preferences?: string[] | null;
           profile_image_url?: string | null;
           onboarding_completed?: boolean;
+          tutorial_completed?: boolean;
           created_at?: string;
           updated_at?: string;
         };

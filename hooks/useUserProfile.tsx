@@ -25,6 +25,8 @@ export interface UserProfile {
   top_cafes: string[] | null;
   profile_image_url: string | null;
   onboarding_completed: boolean;
+  /** False until the post-onboarding tutorial sheet is finished or skipped. */
+  tutorial_completed: boolean;
   created_at: string;
   updated_at: string;
 }
