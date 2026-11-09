@@ -1,13 +1,13 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { SvgXml } from 'react-native-svg';
-import { useReviews } from '../context/ReviewContext';
 import { FAVORITES_SVG, BOOKMARKS_SVG } from '../constants/savedScreenIcons';
 
 export type CafeBadgeKind = 'liked' | 'saved';
 
 interface CafeStatusBadgesProps {
-  cafeId: string;
+  liked: boolean;
+  saved: boolean;
   /**
    * Badges to suppress in contexts where the state is implied by the screen
    * itself — e.g. every card on the Favorites list is liked, so a heart on each
@@ -22,23 +22,20 @@ const BADGE_HEIGHT = 24;
 
 /**
  * Corner overlay showing whether the current user has liked and/or saved a
- * cafe. Rendered as a sibling of the card (not a child), absolutely positioned
- * against a padded wrapper so it can overhang the card's corner — cards set
- * overflow:'hidden', which would otherwise clip it.
+ * cafe. Rendered as a sibling of the card (not a child) and absolutely
+ * positioned so it can overhang the card's top-left corner, matching the
+ * Figma "Rate" badge (tilted -15deg, centred just inside the corner). Cards
+ * set overflow:'hidden', which would otherwise clip it.
  *
  * Purely a status display: pointerEvents is disabled so it never intercepts a
- * tap meant for the card underneath. Saving/unsaving stays with the existing
- * in-card bookmark control.
+ * tap meant for the card underneath.
  *
- * Reads state straight from ReviewContext (as CafeMarkerView does on Discover)
- * so every card can drop it in with just a cafeId, and a like/save toggle
- * re-renders only this badge rather than the memoized card around it.
+ * State comes in as props rather than from ReviewContext, so a badge only
+ * re-renders when its own cafe's liked/saved state changes.
  */
-function CafeStatusBadges({ cafeId, hide }: CafeStatusBadgesProps) {
-  const { isFavorited, isBookmarked } = useReviews();
-
-  const showLiked = !hide?.includes('liked') && isFavorited(cafeId);
-  const showSaved = !hide?.includes('saved') && isBookmarked(cafeId);
+function CafeStatusBadges({ liked, saved, hide }: CafeStatusBadgesProps) {
+  const showLiked = liked && !hide?.includes('liked');
+  const showSaved = saved && !hide?.includes('saved');
 
   if (!showLiked && !showSaved) return null;
 
@@ -61,12 +58,14 @@ function CafeStatusBadges({ cafeId, hide }: CafeStatusBadgesProps) {
 export default React.memo(CafeStatusBadges);
 
 const styles = StyleSheet.create({
-  // Anchored to the wrapper's top-left so the row sits diagonally off the
-  // card's corner. The left edge stays put whether one badge shows or two.
+  // Figma places the tilted badge's bounding box at (-13, -11) from the card's
+  // corner; for an untilted 32x24 badge rotated about its centre that is
+  // (-10, -7). The left edge stays put whether one badge shows or two.
   container: {
     position: 'absolute',
-    top: 2,
-    left: 2,
+    top: -7,
+    left: -10,
+    transform: [{ rotate: '-15deg' }],
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -77,7 +76,7 @@ const styles = StyleSheet.create({
   badge: {
     borderRadius: 12,
     // Android draws by elevation before z-index, so this has to clear the
-    // cards' own elevation (3) or the badge renders beneath them.
+    // card's elevation or the badge renders beneath them.
     elevation: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },

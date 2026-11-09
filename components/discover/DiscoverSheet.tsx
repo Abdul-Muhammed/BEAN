@@ -8,11 +8,11 @@ import React, {
 } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
-import MapCafeCard from '../MapCafeCard';
+import CafeListCard, { EMPTY_ATTRIBUTES } from '../cafe/CafeListCard';
 import type { Cafe } from '../../data/mockData';
 import type { CafeAttribute } from '../../lib/cafeAttributes';
 import type { CafeCategory } from '../../lib/cafeCategories';
-import { colors } from '@/constants/theme';
+import { colors, radius, spacing, type } from '@/constants/theme';
 
 export interface DiscoverSheetHandle {
   /** Scroll the list to a cafe and lift the sheet so it is visible. */
@@ -25,12 +25,20 @@ interface DiscoverSheetProps {
   total: number;
   attributesFor: (cafeId: string) => CafeAttribute[] | undefined;
   categoryById: Map<string, CafeCategory>;
-  selectedId: string | null;
+  isBookmarked: (cafeId: string) => boolean;
+  isFavorited: (cafeId: string) => boolean;
+  distanceFor: (cafe: Cafe) => string | undefined;
   isLoading: boolean;
   isFetchingMore: boolean;
   emptyMessage: string;
   onCardPress: (cafe: Cafe) => void;
+  onToggleBookmark: (cafe: Cafe) => void;
   onEndReached: () => void;
+}
+
+// Figma's card stacks are spaced 16pt apart.
+function CardGap() {
+  return <View style={styles.cardGap} />;
 }
 
 const DiscoverSheet = forwardRef<DiscoverSheetHandle, DiscoverSheetProps>(function DiscoverSheet(
@@ -39,11 +47,14 @@ const DiscoverSheet = forwardRef<DiscoverSheetHandle, DiscoverSheetProps>(functi
     total,
     attributesFor,
     categoryById,
-    selectedId,
+    isBookmarked,
+    isFavorited,
+    distanceFor,
     isLoading,
     isFetchingMore,
     emptyMessage,
     onCardPress,
+    onToggleBookmark,
     onEndReached,
   },
   ref
@@ -71,32 +82,83 @@ const DiscoverSheet = forwardRef<DiscoverSheetHandle, DiscoverSheetProps>(functi
     sheetRef.current?.snapToIndex(sheetIndex === 2 ? 1 : 2);
   }, [sheetIndex]);
 
+  // Figma "Search / Results": a 40x4 ink handle over a "N cafes found" footnote.
   const renderHandle = useCallback(
     () => (
-      <TouchableOpacity style={styles.header} activeOpacity={0.85} onPress={handleHeaderPress}>
+      <TouchableOpacity
+        style={styles.header}
+        activeOpacity={0.85}
+        onPress={handleHeaderPress}
+        accessibilityRole="button"
+        accessibilityLabel={sheetIndex === 2 ? 'Collapse cafe list' : 'Expand cafe list'}
+      >
         <View style={styles.dragHandle} />
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>Cafes in this area</Text>
-          <Text style={styles.subtitle}>
-            {total} {total === 1 ? 'cafe' : 'cafes'}
-          </Text>
-        </View>
+        <Text style={styles.count}>
+          {total} {total === 1 ? 'cafe' : 'cafes'} found
+        </Text>
       </TouchableOpacity>
     ),
-    [handleHeaderPress, total]
+    [handleHeaderPress, sheetIndex, total]
   );
 
   const renderItem = useCallback(
     ({ item }: { item: Cafe }) => (
-      <MapCafeCard
+      <CafeListCard
         cafe={item}
-        attributes={attributesFor(item.id)}
+        bookmarked={isBookmarked(item.id)}
+        favorited={isFavorited(item.id)}
+        distanceLabel={distanceFor(item)}
+        attributes={attributesFor(item.id) ?? EMPTY_ATTRIBUTES}
         categoryById={categoryById}
         onPress={onCardPress}
-        selected={item.id === selectedId}
+        onToggleBookmark={onToggleBookmark}
       />
     ),
-    [attributesFor, categoryById, onCardPress, selectedId]
+    [
+      attributesFor,
+      categoryById,
+      distanceFor,
+      isBookmarked,
+      isFavorited,
+      onCardPress,
+      onToggleBookmark,
+    ]
+  );
+
+  // Cards have variable height (chips can wrap), so a scroll to an unmeasured
+  // row can fail; fall back to the nearest estimated offset and retry once.
+  const handleScrollToIndexFailed = useCallback(
+    (info: { index: number; averageItemLength: number }) => {
+      listRef.current?.scrollToOffset({
+        offset: info.averageItemLength * info.index,
+        animated: true,
+      });
+      setTimeout(
+        () => listRef.current?.scrollToIndex({ index: info.index, animated: true }),
+        250
+      );
+    },
+    []
+  );
+
+  const footer = useMemo(
+    () =>
+      isFetchingMore ? <ActivityIndicator style={styles.footer} color={colors.ink} /> : undefined,
+    [isFetchingMore]
+  );
+
+  const empty = useMemo(
+    () => (
+      <View style={styles.emptyState}>
+        <Text style={styles.emptyTitle}>
+          {isLoading ? 'Loading cafes…' : 'No cafes here yet'}
+        </Text>
+        <Text style={styles.emptyText}>
+          {isLoading ? 'Hang tight while we find spots in this area.' : emptyMessage}
+        </Text>
+      </View>
+    ),
+    [isLoading, emptyMessage]
   );
 
   return (
@@ -115,38 +177,14 @@ const DiscoverSheet = forwardRef<DiscoverSheetHandle, DiscoverSheetProps>(functi
         data={cafes}
         keyExtractor={(item: Cafe) => item.id}
         renderItem={renderItem}
-        extraData={selectedId}
+        ItemSeparatorComponent={CardGap}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         onEndReached={onEndReached}
         onEndReachedThreshold={0.5}
-        // Cards have variable height, so a scroll to an unmeasured row can
-        // fail; fall back to the nearest measured offset and retry once.
-        onScrollToIndexFailed={(info: { index: number; averageItemLength: number }) => {
-          listRef.current?.scrollToOffset({
-            offset: info.averageItemLength * info.index,
-            animated: true,
-          });
-          setTimeout(
-            () => listRef.current?.scrollToIndex({ index: info.index, animated: true }),
-            250
-          );
-        }}
-        ListFooterComponent={
-          isFetchingMore ? (
-            <ActivityIndicator style={styles.footer} color={colors.primary} />
-          ) : undefined
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>
-              {isLoading ? 'Loading cafes…' : 'No cafes here yet'}
-            </Text>
-            <Text style={styles.emptyText}>
-              {isLoading ? 'Hang tight while we find spots in this area.' : emptyMessage}
-            </Text>
-          </View>
-        }
+        onScrollToIndexFailed={handleScrollToIndexFailed}
+        ListFooterComponent={footer}
+        ListEmptyComponent={empty}
       />
     </BottomSheet>
   );
@@ -155,72 +193,64 @@ const DiscoverSheet = forwardRef<DiscoverSheetHandle, DiscoverSheetProps>(functi
 export default DiscoverSheet;
 
 const styles = StyleSheet.create({
+  // softShadow at Figma's 5pt blur, cast upward over the map.
   sheet: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 12,
+    shadowColor: '#262626',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 8,
   },
   background: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radius.md,
+    borderTopRightRadius: radius.md,
   },
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 14,
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radius.md,
+    borderTopRightRadius: radius.md,
   },
   dragHandle: {
-    width: 44,
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: '#D1D1D6',
+    width: 40,
+    height: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.ink,
     alignSelf: 'center',
-    marginBottom: 14,
   },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: 12,
+  count: {
+    ...type.footnote1,
+    color: colors.greyNormal,
   },
-  title: {
-    fontSize: 20,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: colors.primary,
-  },
-  subtitle: {
-    fontSize: 13,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
-  },
+  // The top padding doubles as the 16pt gap under the count, and gives the
+  // first card's corner badge room to overhang without being clipped.
   listContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
     paddingBottom: 120,
   },
+  cardGap: {
+    height: spacing.md,
+  },
   footer: {
-    paddingVertical: 16,
+    paddingVertical: spacing.md,
   },
   emptyState: {
     alignItems: 'center',
     paddingVertical: 32,
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.lg,
+    gap: 6,
   },
   emptyTitle: {
-    fontSize: 17,
-    fontFamily: 'Lato-Bold',
-    color: colors.primary,
-    marginBottom: 6,
+    ...type.title1,
+    color: colors.ink,
   },
   emptyText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
+    ...type.body1,
+    color: colors.greyNormal,
     textAlign: 'center',
   },
 });

@@ -11,18 +11,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronRight } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import { useRouter } from 'expo-router';
-import ListCafeCard from '../../components/ListCafeCard';
+import CafeListCard from '../../components/cafe/CafeListCard';
 import CollectionCard from '../../components/CollectionCard';
 import { useReviews } from '../../context/ReviewContext';
 import { useCafeAttributes } from '../../hooks/useCafeAttributes';
+import { useCafeCardActions } from '../../hooks/useCafeCardActions';
+import { useLocation } from '../../hooks/useLocation';
+import { distanceLabelFor } from '../../lib/geo';
 import { colors, fonts } from '@/constants/theme';
 import { FAVORITES_SVG, DIARY_SVG, BOOKMARKS_SVG } from '@/constants/savedScreenIcons';
 
 const PREVIEW_COUNT = 3;
 
 export default function ListsScreen() {
-  const { bookmarkedCafes, favoritedCafeIds, favoritedCafes, userReviews } =
+  const { bookmarkedCafes, favoritedCafeIds, favoritedCafes, userReviews, isFavorited } =
     useReviews();
+  const { openCafe, toggleCafeBookmark } = useCafeCardActions();
+  const { coords } = useLocation();
   const router = useRouter();
 
   // "Where I've Bean" = the unique cafes the user has reviewed. Reviews carry a
@@ -71,17 +76,23 @@ export default function ListsScreen() {
         </TouchableOpacity>
 
         {previewCafes.length > 0 ? (
-          // Every cafe in this preview is bookmarked by definition, so the
-          // saved badge would be noise; a heart still marks the ones also liked.
-          previewCafes.map((cafe) => (
-            <ListCafeCard
-              key={cafe.id}
-              cafe={cafe}
-              hideBadges={['saved']}
-              attributes={attributesFor(cafe.id)}
-              categoryById={categoryById}
-            />
-          ))
+          // Every cafe in this preview is bookmarked by definition; a heart
+          // still marks the ones also liked. Unsaving drops the card.
+          <View style={styles.previewCards}>
+            {previewCafes.map((cafe) => (
+              <CafeListCard
+                key={cafe.id}
+                cafe={cafe}
+                bookmarked
+                favorited={isFavorited(cafe.id)}
+                distanceLabel={distanceLabelFor(coords, cafe)}
+                attributes={attributesFor(cafe.id)}
+                categoryById={categoryById}
+                onPress={openCafe}
+                onToggleBookmark={toggleCafeBookmark}
+              />
+            ))}
+          </View>
         ) : (
           <Text style={styles.emptyHint}>No cafes yet — start saving.</Text>
         )}
@@ -152,6 +163,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontFamily: fonts.bodyBold,
     color: colors.primary,
+  },
+  previewCards: {
+    gap: 16,
   },
   emptyHint: {
     fontSize: 14,

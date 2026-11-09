@@ -18,6 +18,9 @@ interface TagProps {
    *  The review screen's attribute chips are the one place the frames pair
    *  body-size text with small-chip padding. */
   dense?: boolean;
+  /** Overrides the size's default icon (12 for s/dense, 16 for m). The Figma
+   *  filter rows mix 12 and 14pt icons on body-size chips. */
+  iconSize?: number;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
 }
@@ -34,11 +37,12 @@ export default function Tag({
   variant = 'outline',
   size = 'm',
   dense = false,
+  iconSize: iconSizeProp,
   onPress,
   style,
 }: TagProps) {
   const filled = variant === 'filled';
-  const iconSize = size === 's' || dense ? 12 : 16;
+  const iconSize = iconSizeProp ?? (size === 's' || dense ? 12 : 16);
 
   const body = (
     <View

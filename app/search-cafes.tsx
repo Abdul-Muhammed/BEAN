@@ -12,21 +12,29 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Search, X, Clock, MapPin } from 'lucide-react-native';
-import { CoffeeBean } from '../components/BeanRating';
+import { Image } from 'expo-image';
+import { SvgXml } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { convertPlaceToCafe, isNzCafe } from '../services/googlePlaces';
+import {
+  convertPlaceToCafe,
+  isNzCafe,
+  DEFAULT_CAFE_IMAGE,
+} from '../services/googlePlaces';
 import { useReviews } from '../context/ReviewContext';
 import { useLocation } from '../hooks/useLocation';
 import { useCafeSearch, MIN_QUERY_LENGTH } from '../hooks/useCafeSearch';
 import { cardToCafe } from '../lib/mapSearch';
+import { extractLocation } from '../lib/geo';
 import BeanLogo from '../components/BeanLogo';
-import { colors } from '@/constants/theme';
+import type { Cafe } from '../data/mockData';
+import { colors, fonts, radius, softShadow, spacing, type } from '@/constants/theme';
+import { CHEVRON_LEFT_14_SVG, CLOSE_14_SVG } from '@/constants/figmaIcons';
 
 const RECENT_SEARCHES_KEY = '@bean/recent_searches';
 const MAX_RECENT_SEARCHES = 8;
-const DEFAULT_CAFE_IMAGE =
-  'https://images.pexels.com/photos/302899/pexels-photo-302899.jpeg?auto=compress&cs=tinysrgb&w=800';
+
+/** Figma row: a 40pt thumbnail with 8pt vertical padding. */
+const ROW_HEIGHT = 56;
 
 interface RecentSearch {
   id: string;
@@ -37,15 +45,84 @@ interface RecentSearch {
   place_id?: string;
 }
 
+const getRowLayout = (_: unknown, index: number) => ({
+  length: ROW_HEIGHT,
+  offset: ROW_HEIGHT * index,
+  index,
+});
+
+/**
+ * One search row per Figma "Search / Recent" and "Typing": a 40pt rounded
+ * thumbnail, the cafe name in Title 1 and its suburb in Footnote 1. A cafe
+ * without a real photo gets the same ink-and-bean tile the cafe cards use,
+ * rather than the stock placeholder photo.
+ */
+const SearchRow = React.memo(function SearchRow({
+  name,
+  location,
+  image,
+  onPress,
+  onRemove,
+}: {
+  name: string;
+  location: string;
+  image?: string;
+  onPress: () => void;
+  onRemove?: () => void;
+}) {
+  const hasPhoto = !!image && image !== DEFAULT_CAFE_IMAGE;
+  return (
+    <TouchableOpacity
+      style={styles.row}
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={name}
+    >
+      {hasPhoto ? (
+        <Image
+          source={{ uri: image }}
+          style={styles.thumb}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          recyclingKey={image}
+          transition={150}
+        />
+      ) : (
+        <View style={[styles.thumb, styles.thumbFallback]}>
+          <BeanLogo width={10} height={17} color={colors.background} />
+        </View>
+      )}
+      <View style={styles.rowText}>
+        <Text style={styles.rowName} numberOfLines={1}>
+          {name}
+        </Text>
+        {!!location && (
+          <Text style={styles.rowLocation} numberOfLines={1}>
+            {extractLocation(location)}
+          </Text>
+        )}
+      </View>
+      {onRemove && (
+        <TouchableOpacity
+          hitSlop={10}
+          onPress={onRemove}
+          accessibilityRole="button"
+          accessibilityLabel={'Remove ' + name + ' from recent searches'}
+        >
+          <SvgXml xml={CLOSE_14_SVG} width={14} height={14} />
+        </TouchableOpacity>
+      )}
+    </TouchableOpacity>
+  );
+});
+
 export default function SearchCafesScreen() {
   const { addCafe } = useReviews();
   const { mode } = useLocalSearchParams<{ mode?: string }>();
   const isReviewMode = mode === 'review';
   const { coords } = useLocation();
 
-  const goToReview = (params: { cafeId: string; cafeName: string; cafeImage: string }) => {
-    router.push({ pathname: '/(tabs)/add-review', params });
-  };
   const [searchQuery, setSearchQuery] = useState('');
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([]);
 
@@ -82,26 +159,21 @@ export default function SearchCafesScreen() {
     })();
   }, []);
 
-  const persistRecent = useCallback(async (next: RecentSearch[]) => {
-    setRecentSearches(next);
-    try {
-      await AsyncStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
-    } catch (err) {
-      console.warn('Failed to save recent searches:', err);
-    }
+  // Functional updates keep these callbacks stable, so the memoized rows don't
+  // re-render every time the recents list changes.
+  const updateRecent = useCallback((update: (prev: RecentSearch[]) => RecentSearch[]) => {
+    setRecentSearches((prev) => {
+      const next = update(prev);
+      AsyncStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next)).catch((err) =>
+        console.warn('Failed to save recent searches:', err)
+      );
+      return next;
+    });
   }, []);
 
   const addToRecent = useCallback(
-    (cafe: {
-      id: string;
-      name: string;
-      location: string;
-      image?: string;
-      rating?: number;
-      place_id?: string;
-    }) => {
+    (cafe: RecentSearch) => {
       if (!isNzCafe(cafe)) return;
-
       const entry: RecentSearch = {
         id: cafe.id,
         name: cafe.name,
@@ -110,70 +182,90 @@ export default function SearchCafesScreen() {
         rating: cafe.rating,
         place_id: cafe.place_id || cafe.id,
       };
-      const filtered = recentSearches.filter((c) => c.id !== entry.id);
-      const next = [entry, ...filtered].slice(0, MAX_RECENT_SEARCHES);
-      persistRecent(next);
+      updateRecent((prev) =>
+        [entry, ...prev.filter((c) => c.id !== entry.id)].slice(0, MAX_RECENT_SEARCHES)
+      );
     },
-    [recentSearches, persistRecent]
+    [updateRecent]
   );
 
   const removeFromRecent = useCallback(
-    (id: string) => {
-      const next = recentSearches.filter((c) => c.id !== id);
-      persistRecent(next);
-    },
-    [recentSearches, persistRecent]
+    (id: string) => updateRecent((prev) => prev.filter((c) => c.id !== id)),
+    [updateRecent]
   );
 
-  const clearAllRecent = useCallback(() => {
-    persistRecent([]);
-  }, [persistRecent]);
+  const clearAllRecent = useCallback(() => updateRecent(() => []), [updateRecent]);
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-  };
+  const openPicked = useCallback(
+    (cafe: { id: string; name: string; image?: string }) => {
+      if (isReviewMode) {
+        router.push({
+          pathname: '/(tabs)/add-review',
+          params: { cafeId: cafe.id, cafeName: cafe.name, cafeImage: cafe.image || '' },
+        });
+        return;
+      }
+      router.push(`/cafe/${cafe.id}`);
+    },
+    [isReviewMode]
+  );
 
-  const selectCafe = (cafe: any) => {
-    Keyboard.dismiss();
-    addCafe(cafe);
-    addToRecent(cafe);
-    if (isReviewMode) {
-      goToReview({
-        cafeId: cafe.id,
-        cafeName: cafe.name,
-        cafeImage: cafe.image || '',
+  const selectCafe = useCallback(
+    (cafe: Cafe) => {
+      Keyboard.dismiss();
+      addCafe(cafe);
+      addToRecent(cafe);
+      openPicked(cafe);
+    },
+    [addCafe, addToRecent, openPicked]
+  );
+
+  const selectRecent = useCallback(
+    (entry: RecentSearch) => {
+      Keyboard.dismiss();
+      addToRecent(entry);
+      addCafe({
+        id: entry.id,
+        name: entry.name,
+        location: entry.location,
+        // A 0 here won't clobber a real rating already loaded for this cafe —
+        // addCafe preserves the existing rating when the incoming one is falsy.
+        rating: entry.rating ?? 0,
+        image: entry.image || DEFAULT_CAFE_IMAGE,
+        description: entry.location ? `A cafe located at ${entry.location}.` : '',
+        reviews: [],
+        place_id: entry.place_id || entry.id,
+        photos: [entry.image || DEFAULT_CAFE_IMAGE],
       });
-      return;
-    }
-    router.push(`/cafe/${cafe.id}`);
-  };
+      openPicked(entry);
+    },
+    [addCafe, addToRecent, openPicked]
+  );
 
-  const selectRecent = (entry: RecentSearch) => {
-    Keyboard.dismiss();
-    addToRecent(entry);
-    addCafe({
-      id: entry.id,
-      name: entry.name,
-      location: entry.location,
-      // A 0 here won't clobber a real rating already loaded for this cafe —
-      // addCafe preserves the existing rating when the incoming one is falsy.
-      rating: entry.rating ?? 0,
-      image: entry.image || DEFAULT_CAFE_IMAGE,
-      description: entry.location ? `A cafe located at ${entry.location}.` : '',
-      reviews: [],
-      place_id: entry.place_id || entry.id,
-      photos: [entry.image || DEFAULT_CAFE_IMAGE],
-    });
-    if (isReviewMode) {
-      goToReview({
-        cafeId: entry.id,
-        cafeName: entry.name,
-        cafeImage: entry.image || '',
-      });
-      return;
-    }
-    router.push(`/cafe/${entry.id}`);
-  };
+  const renderRecent = useCallback(
+    ({ item }: { item: RecentSearch }) => (
+      <SearchRow
+        name={item.name}
+        location={item.location}
+        image={item.image}
+        onPress={() => selectRecent(item)}
+        onRemove={() => removeFromRecent(item.id)}
+      />
+    ),
+    [selectRecent, removeFromRecent]
+  );
+
+  const renderResult = useCallback(
+    ({ item }: { item: Cafe }) => (
+      <SearchRow
+        name={item.name}
+        location={item.location}
+        image={item.image}
+        onPress={() => selectCafe(item)}
+      />
+    ),
+    [selectCafe]
+  );
 
   const isIdle = searchQuery.trim() === '' && !isSearching && searchResults.length === 0;
   const showRecents = isIdle && recentSearches.length > 0;
@@ -183,27 +275,34 @@ export default function SearchCafesScreen() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
+      {/* Figma Input: back chevron and clear inside one bordered field. */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <ArrowLeft size={24} color="#1C1C1E" />
-        </TouchableOpacity>
-        <View style={styles.searchInputContainer}>
-          <Search size={20} color="#8E8E93" style={styles.searchIcon} />
+        <View style={styles.input}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <SvgXml xml={CHEVRON_LEFT_14_SVG} width={14} height={14} />
+          </TouchableOpacity>
           <TextInput
-            style={styles.searchInput}
+            style={styles.inputText}
             placeholder="Search Cafes"
-            placeholderTextColor="#8E8E93"
+            placeholderTextColor={colors.greyNormal}
             value={searchQuery}
-            onChangeText={handleSearch}
+            onChangeText={setSearchQuery}
             autoFocus
             returnKeyType="search"
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity
-              style={styles.clearButton}
               onPress={() => setSearchQuery('')}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
             >
-              <X size={18} color="#8E8E93" />
+              <SvgXml xml={CLOSE_14_SVG} width={14} height={14} />
             </TouchableOpacity>
           )}
         </View>
@@ -220,46 +319,19 @@ export default function SearchCafesScreen() {
       )}
 
       {showRecents && (
-        <View style={styles.recentsContainer}>
+        <View style={styles.body}>
           <View style={styles.recentsHeader}>
             <Text style={styles.recentsTitle}>Recent Searches</Text>
-            <TouchableOpacity onPress={clearAllRecent}>
+            <TouchableOpacity onPress={clearAllRecent} hitSlop={8}>
               <Text style={styles.clearAllText}>Clear</Text>
             </TouchableOpacity>
           </View>
           <FlatList
             data={recentSearches}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContent}
+            renderItem={renderRecent}
+            getItemLayout={getRowLayout}
             keyboardShouldPersistTaps="always"
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.recentItem}
-                onPress={() => selectRecent(item)}
-              >
-                <View style={styles.recentIconWrap}>
-                  <Clock size={18} color="#8E8E93" />
-                </View>
-                <View style={styles.recentInfo}>
-                  <Text style={styles.recentName} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                  <View style={styles.recentLocationRow}>
-                    <MapPin size={12} color="#8E8E93" />
-                    <Text style={styles.recentLocation} numberOfLines={1}>
-                      {item.location}
-                    </Text>
-                  </View>
-                </View>
-                <TouchableOpacity
-                  hitSlop={8}
-                  onPress={() => removeFromRecent(item.id)}
-                  style={styles.recentRemove}
-                >
-                  <X size={18} color="#8E8E93" />
-                </TouchableOpacity>
-              </TouchableOpacity>
-            )}
           />
         </View>
       )}
@@ -276,7 +348,7 @@ export default function SearchCafesScreen() {
 
       {searchResults.length === 0 && (isSearching || isSearchingMore) && (
         <View style={styles.emptyState}>
-          <ActivityIndicator color={colors.primary} />
+          <ActivityIndicator color={colors.ink} />
           <Text style={styles.emptyText}>
             {isSearchingMore ? 'Searching more places…' : 'Searching...'}
           </Text>
@@ -285,27 +357,12 @@ export default function SearchCafesScreen() {
 
       {searchResults.length > 0 && (
         <FlatList
+          style={styles.body}
           data={searchResults}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          renderItem={renderResult}
+          getItemLayout={getRowLayout}
           keyboardShouldPersistTaps="always"
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.cafeItem}
-              onPress={() => selectCafe(item)}
-            >
-              <View style={styles.cafeInfo}>
-                <Text style={styles.cafeName}>{item.name}</Text>
-                <Text style={styles.cafeLocation}>{item.location}</Text>
-              </View>
-              {item.rating ? (
-                <View style={styles.ratingContainer}>
-                  <CoffeeBean size={16} />
-                  <Text style={styles.ratingText}>{item.rating.toFixed(1)}</Text>
-                </View>
-              ) : null}
-            </TouchableOpacity>
-          )}
         />
       )}
     </SafeAreaView>
@@ -318,157 +375,92 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
+    paddingHorizontal: spacing.md,
+  },
+  input: {
+    ...softShadow,
+    height: 36,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.inputGrey,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    borderRadius: radius.md,
   },
-  backButton: {
+  inputText: {
+    ...type.body1,
+    flex: 1,
+    height: '100%',
+    paddingVertical: 0,
+    color: colors.ink,
+  },
+  body: {
+    flex: 1,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+  },
+  recentsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  recentsTitle: {
+    ...type.h2,
+    color: colors.ink,
+  },
+  clearAllText: {
+    ...type.footnote1,
+    color: colors.slate,
+  },
+  row: {
+    height: ROW_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  thumb: {
     width: 40,
     height: 40,
+    borderRadius: radius.md,
+  },
+  thumbFallback: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
+    backgroundColor: colors.ink,
   },
-  searchInputContainer: {
+  rowText: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F2F2F7',
-    borderRadius: 12,
-    paddingHorizontal: 12,
+    gap: spacing.xs,
   },
-  searchIcon: {
-    marginRight: 8,
+  rowName: {
+    ...type.title1,
+    color: colors.ink,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    fontFamily: 'Lato-Regular',
-    color: '#1C1C1E',
-    paddingVertical: 12,
-  },
-  clearButton: {
-    padding: 4,
-    marginLeft: 8,
-  },
-  listContent: {
-    paddingVertical: 8,
-  },
-  cafeItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  cafeInfo: {
-    flex: 1,
-  },
-  cafeName: {
-    fontSize: 16,
-    fontFamily: 'Lato-Bold',
-    color: '#1C1C1E',
-    marginBottom: 4,
-  },
-  cafeLocation: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginLeft: 12,
-  },
-  ratingText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Bold',
-    color: '#1C1C1E',
+  rowLocation: {
+    ...type.footnote1,
+    color: colors.ink,
   },
   emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 40,
-    gap: 8,
+    gap: spacing.sm,
   },
   emptyTitle: {
+    fontFamily: fonts.heading,
     fontSize: 20,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: '#1C1C1E',
-    marginTop: 16,
+    color: colors.ink,
+    marginTop: spacing.md,
     textAlign: 'center',
   },
   emptyText: {
-    fontSize: 15,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
-    textAlign: 'center',
+    ...type.body1,
     lineHeight: 22,
-  },
-  recentsContainer: {
-    flex: 1,
-  },
-  recentsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 8,
-  },
-  recentsTitle: {
-    fontSize: 18,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: '#1C1C1E',
-  },
-  clearAllText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
-  },
-  recentItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-  },
-  recentIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F2F2F7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  recentInfo: {
-    flex: 1,
-  },
-  recentName: {
-    fontSize: 16,
-    fontFamily: 'Lato-Bold',
-    color: '#1C1C1E',
-    marginBottom: 2,
-  },
-  recentLocationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  recentLocation: {
-    fontSize: 13,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
-    flex: 1,
-  },
-  recentRemove: {
-    padding: 4,
-    marginLeft: 8,
+    color: colors.greyNormal,
+    textAlign: 'center',
   },
 });

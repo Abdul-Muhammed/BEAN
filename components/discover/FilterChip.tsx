@@ -7,7 +7,9 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { ChevronDown, X } from 'lucide-react-native';
-import { colors } from '@/constants/theme';
+import { SvgXml } from 'react-native-svg';
+import { colors, radius, spacing, type } from '@/constants/theme';
+import { CHEVRON_DOWN_14_SVG, tintIcon } from '@/constants/figmaIcons';
 import { ACTIVE_CHIP_BG } from './filterTypes';
 
 interface FilterChipProps {
@@ -18,8 +20,13 @@ interface FilterChipProps {
   onRemove?: () => void;
   showChevron?: boolean;
   leadingIcon?: React.ReactNode;
+  /** The Figma Discover pill row: 8pt padding, 12pt regular grey label, the
+   *  design-system chevron. The filters sheet keeps the default size. */
+  compact?: boolean;
   style?: ViewStyle;
 }
+
+const CHEVRON_ACTIVE_SVG = tintIcon(CHEVRON_DOWN_14_SVG, '#FFFFFF');
 
 /**
  * Shared pill used by both the summary pill row and inside the filters sheet.
@@ -32,20 +39,35 @@ export default function FilterChip({
   onRemove,
   showChevron = false,
   leadingIcon,
+  compact = false,
   style,
 }: FilterChipProps) {
-  const textColor = active ? '#FFFFFF' : colors.primary;
+  const restColor = compact ? colors.greyNormal : colors.primary;
+  const textColor = active ? '#FFFFFF' : restColor;
   return (
     <TouchableOpacity
-      style={[styles.chip, active ? styles.chipActive : styles.chipInactive, style]}
+      style={[
+        styles.chip,
+        compact && styles.chipCompact,
+        active ? styles.chipActive : compact ? styles.chipCompactInactive : styles.chipInactive,
+        style,
+      ]}
       onPress={onPress}
       activeOpacity={0.85}
     >
       {leadingIcon}
-      <Text style={[styles.label, { color: textColor }]}>{label}</Text>
-      {showChevron && !onRemove && (
+      <Text style={[compact ? styles.labelCompact : styles.label, { color: textColor }]}>
+        {label}
+      </Text>
+      {showChevron && !onRemove && (compact ? (
+        <SvgXml
+          xml={active ? CHEVRON_ACTIVE_SVG : CHEVRON_DOWN_14_SVG}
+          width={14}
+          height={14}
+        />
+      ) : (
         <ChevronDown size={14} color={textColor} />
-      )}
+      ))}
       {onRemove && (
         <TouchableOpacity
           onPress={onRemove}
@@ -67,8 +89,18 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     gap: 6,
   },
+  chipCompact: {
+    borderRadius: radius.pill,
+    padding: spacing.sm,
+    gap: spacing.xs,
+  },
   chipActive: {
     backgroundColor: ACTIVE_CHIP_BG,
+  },
+  chipCompactInactive: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.separator,
   },
   chipInactive: {
     backgroundColor: colors.surface,
@@ -78,5 +110,8 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontFamily: 'Lato-Bold',
+  },
+  labelCompact: {
+    ...type.footnote1,
   },
 });

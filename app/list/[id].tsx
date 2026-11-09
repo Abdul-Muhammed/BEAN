@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
-import ListCafeCard from '../../components/ListCafeCard';
+import CafeListCard from '../../components/cafe/CafeListCard';
 import { type CafeBadgeKind } from '../../components/CafeStatusBadges';
 import { useReviews } from '../../context/ReviewContext';
 import { Cafe } from '../../data/mockData';
 import { useCafeAttributes } from '../../hooks/useCafeAttributes';
+import { useCafeCardActions } from '../../hooks/useCafeCardActions';
+import { useLocation } from '../../hooks/useLocation';
+import { distanceLabelFor } from '../../lib/geo';
 import { colors, fonts } from '@/constants/theme';
 
 const LIST_TITLES: Record<string, string> = {
@@ -26,7 +29,10 @@ const LIST_TITLES: Record<string, string> = {
 export default function ListDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const { bookmarkedCafes, favoritedCafes, userReviews, getCafeById } = useReviews();
+  const { bookmarkedCafes, favoritedCafes, userReviews, getCafeById, isBookmarked, isFavorited } =
+    useReviews();
+  const { openCafe, toggleCafeBookmark } = useCafeCardActions();
+  const { coords } = useLocation();
 
   const listId = Array.isArray(id) ? id[0] : id || '';
   const title = LIST_TITLES[listId] || 'List';
@@ -57,8 +63,36 @@ export default function ListDetailScreen() {
 
   // On a single-state list every card carries the same badge, which tells the
   // user nothing. Hide the implied one so only the cross-state stands out.
-  const hiddenBadges: CafeBadgeKind[] | undefined =
-    listId === 'favorites' ? ['liked'] : listId === 'diary' ? undefined : ['saved'];
+  const hiddenBadges = useMemo<CafeBadgeKind[] | undefined>(
+    () => (listId === 'favorites' ? ['liked'] : undefined),
+    [listId]
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: Cafe }) => (
+      <CafeListCard
+        cafe={item}
+        bookmarked={isBookmarked(item.id)}
+        favorited={isFavorited(item.id)}
+        distanceLabel={distanceLabelFor(coords, item)}
+        hideBadges={hiddenBadges}
+        attributes={attributesFor(item.id)}
+        categoryById={categoryById}
+        onPress={openCafe}
+        onToggleBookmark={toggleCafeBookmark}
+      />
+    ),
+    [
+      attributesFor,
+      categoryById,
+      coords,
+      hiddenBadges,
+      isBookmarked,
+      isFavorited,
+      openCafe,
+      toggleCafeBookmark,
+    ]
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -80,14 +114,8 @@ export default function ListDetailScreen() {
         showsVerticalScrollIndicator={false}
         data={cafes}
         keyExtractor={(cafe) => cafe.id}
-        renderItem={({ item }) => (
-          <ListCafeCard
-            cafe={item}
-            hideBadges={hiddenBadges}
-            attributes={attributesFor(item.id)}
-            categoryById={categoryById}
-          />
-        )}
+        renderItem={renderItem}
+        ItemSeparatorComponent={CardGap}
         ListEmptyComponent={
           <Text style={styles.emptyHint}>No cafes in this list yet.</Text>
         }
@@ -96,7 +124,15 @@ export default function ListDetailScreen() {
   );
 }
 
+// Figma's card stacks are spaced 16pt apart.
+function CardGap() {
+  return <View style={styles.cardGap} />;
+}
+
 const styles = StyleSheet.create({
+  cardGap: {
+    height: 16,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.background,

@@ -39,3 +39,18 @@ export function extractLocation(address: string): string {
   }
   return 'Auckland';
 }
+
+// Distance label from the user to a cafe, or undefined when either point is
+// unknown (cards then show the suburb on its own). Shared by every cafe list so
+// the same cafe shows the same distance on Home, Discover and Lists.
+export function distanceLabelFor(
+  from: { latitude: number; longitude: number } | null | undefined,
+  cafe: { latitude?: number; longitude?: number }
+): string | undefined {
+  if (!from || typeof cafe.latitude !== 'number' || typeof cafe.longitude !== 'number') {
+    return undefined;
+  }
+  return formatDistance(
+    approximateDistanceMeters(from.latitude, from.longitude, cafe.latitude, cafe.longitude)
+  );
+}
