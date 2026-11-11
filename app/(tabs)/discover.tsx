@@ -9,12 +9,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Search, Navigation2 } from 'lucide-react-native';
+import { Navigation2 } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import type { Region } from 'react-native-maps';
 import { useReviews } from '../../context/ReviewContext';
-import { colors } from '@/constants/theme';
-import { SLIDERS_FILTER_SVG } from '@/constants/searchIcons';
+import { colors, radius, spacing, type } from '@/constants/theme';
+import { SEARCH_SMALL_SVG, SLIDERS_24_SVG } from '@/constants/figmaIcons';
 import type { MarkerKind } from '../../constants/mapMarkerIcons';
 import type { Cafe } from '../../data/mockData';
 import FilterPillsRow from '../../components/discover/FilterPillsRow';
@@ -25,6 +25,8 @@ import CafeMap, { type CafeMapHandle } from '../../components/discover/CafeMap';
 import DiscoverSheet, { type DiscoverSheetHandle } from '../../components/discover/DiscoverSheet';
 import LocationGateOverlay from '../../components/discover/LocationGateOverlay';
 import { AUCKLAND_CBD, useLocation } from '../../hooks/useLocation';
+import { useCafeCardActions } from '../../hooks/useCafeCardActions';
+import { distanceLabelFor } from '../../lib/geo';
 import { useViewportCafes, type ViewportRegion } from '../../hooks/useViewportCafes';
 import { useCategories } from '../../hooks/useCategories';
 import { cardAttributes, cardToCafe, getCard, type MapPin } from '../../lib/mapSearch';
@@ -32,7 +34,6 @@ import type { CafeAttribute } from '../../lib/cafeAttributes';
 import {
   type Filters,
   DEFAULT_FILTERS,
-  ACTIVE_CHIP_BG,
   hasAnyFilter,
 } from '../../components/discover/filterTypes';
 
@@ -51,7 +52,8 @@ function regionAround(coords: { latitude: number; longitude: number }): Region {
 }
 
 export default function DiscoverScreen() {
-  const { addCafe, isBookmarked, isFavorited, userReviews } = useReviews();
+  const { isBookmarked, isFavorited, userReviews } = useReviews();
+  const { openCafe, toggleCafeBookmark } = useCafeCardActions();
   const mapRef = useRef<CafeMapHandle>(null);
   const sheetRef = useRef<DiscoverSheetHandle>(null);
   const filtersSheetRef = useRef<FiltersBottomSheetHandle>(null);
@@ -131,13 +133,18 @@ export default function DiscoverScreen() {
     [userReviews]
   );
 
-  const attributesFor = useCallback(
-    (cafeId: string): CafeAttribute[] | undefined => {
-      const card = getCard(cafeId);
-      return card ? cardAttributes(card) : undefined;
-    },
-    []
+  // Built once per page of results: cardAttributes makes a new array on every
+  // call, which would hand each memoized card a fresh prop on every render.
+  const attributesById = useMemo(
+    () => new Map(list.map((card) => [card.place_id, cardAttributes(card)])),
+    [list]
   );
+  const attributesFor = useCallback(
+    (cafeId: string): CafeAttribute[] | undefined => attributesById.get(cafeId),
+    [attributesById]
+  );
+
+  const distanceFor = useCallback((cafe: Cafe) => distanceLabelFor(coords, cafe), [coords]);
 
   // Client-side filters. Categories are applied by the server (AND across
   // the selection) for both pins and list; this checks them again only for the
@@ -156,9 +163,12 @@ export default function DiscoverScreen() {
     [isBookmarked, isFavorited, reviewedCafeIds]
   );
 
+  // Shaped once per page so a filter or bookmark change re-filters the same
+  // Cafe objects; re-shaping would give every memoized card a new `cafe` prop.
+  const shapedCafes = useMemo(() => list.map(cardToCafe), [list]);
   const listCafes = useMemo(
-    () => list.map(cardToCafe).filter((cafe) => matchesFilters(cafe, filters)),
-    [list, matchesFilters, filters]
+    () => shapedCafes.filter((cafe) => matchesFilters(cafe, filters)),
+    [shapedCafes, matchesFilters, filters]
   );
 
   const visiblePins = useMemo(
@@ -191,16 +201,6 @@ export default function DiscoverScreen() {
       return favorited ? 'favorite' : bookmarked ? 'saved' : 'default';
     },
     [filters.saved, filters.liked, isBookmarked, isFavorited]
-  );
-
-  // The cafe screen reads from the review context, so a cafe is added there
-  // only when the user actually opens it.
-  const openCafe = useCallback(
-    (cafe: Cafe) => {
-      addCafe(cafe);
-      router.push(`/cafe/${cafe.id}`);
-    },
-    [addCafe]
   );
 
   // First tap on a pin selects it and brings its card into view; a second tap
@@ -301,6 +301,43 @@ export default function DiscoverScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="dark-content" />
 
+      {/* Figma "Search / Results": search + filters on a cream bar above the map. */}
+      <View style={styles.header}>
+        <View style={styles.searchRow}>
+          <TouchableOpacity
+            style={styles.searchInput}
+            onPress={() => router.push('/search-cafes')}
+            activeOpacity={0.85}
+            accessibilityRole="search"
+            accessibilityLabel="Search cafes"
+          >
+            <SvgXml xml={SEARCH_SMALL_SVG} width={14} height={14} />
+            <Text style={styles.searchPlaceholder} numberOfLines={1}>
+              Search Cafes
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => filtersSheetRef.current?.open()}
+            hitSlop={10}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={filtersActive ? 'All filters, some applied' : 'All filters'}
+          >
+            <SvgXml xml={SLIDERS_24_SVG} width={24} height={24} />
+            {filtersActive && <View style={styles.filtersDot} />}
+          </TouchableOpacity>
+        </View>
+
+        <FilterPillsRow
+          filters={filters}
+          onOpenSheet={() => filtersSheetRef.current?.open()}
+          onToggleOpenNow={toggleOpenNow}
+          onRemove={removeFilter}
+          labelForCategory={labelForCategory}
+        />
+      </View>
+
       <View style={styles.mapContainer}>
         <CafeMap
           ref={mapRef}
@@ -321,39 +358,6 @@ export default function DiscoverScreen() {
             onEnable={handleEnableLocation}
           />
         )}
-
-        {/* Search bar + filters button — siblings on one row, never nested */}
-        <View style={styles.searchRow}>
-          <TouchableOpacity
-            style={styles.searchContainer}
-            onPress={() => router.push('/search-cafes')}
-            activeOpacity={0.85}
-          >
-            <Search size={20} color="#8E8E93" style={styles.searchIcon} />
-            <Text style={styles.searchPlaceholder}>Search Cafes</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.filtersButton, filtersActive && styles.filtersButtonActive]}
-            onPress={() => filtersSheetRef.current?.open()}
-            activeOpacity={0.7}
-          >
-            <SvgXml
-              xml={SLIDERS_FILTER_SVG}
-              width={20}
-              height={18}
-              color={filtersActive ? colors.surface : colors.primary}
-            />
-          </TouchableOpacity>
-        </View>
-
-        <FilterPillsRow
-          filters={filters}
-          onOpenSheet={() => filtersSheetRef.current?.open()}
-          onToggleOpenNow={toggleOpenNow}
-          onRemove={removeFilter}
-          labelForCategory={labelForCategory}
-        />
 
         {(showSpinner || errorMessage) && (
           <View style={styles.statusBubble} pointerEvents="none">
@@ -383,11 +387,14 @@ export default function DiscoverScreen() {
         total={total}
         attributesFor={attributesFor}
         categoryById={categoryById}
-        selectedId={selectedId}
+        isBookmarked={isBookmarked}
+        isFavorited={isFavorited}
+        distanceFor={distanceFor}
         isLoading={showSpinner}
         isFetchingMore={isFetchingNextPage}
         emptyMessage={errorMessage ?? 'Try moving the map or adjusting your filters.'}
         onCardPress={handleCardPress}
+        onToggleBookmark={toggleCafeBookmark}
         onEndReached={handleEndReached}
       />
 
@@ -410,59 +417,50 @@ const styles = StyleSheet.create({
     flex: 1,
     position: 'relative',
   },
+  header: {
+    gap: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+    backgroundColor: colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cream,
+  },
   searchRow: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
-    right: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    paddingHorizontal: spacing.md,
   },
-  searchContainer: {
+  searchInput: {
     flex: 1,
+    height: 36,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  searchIcon: {
-    marginRight: 12,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.inputGrey,
+    borderRadius: radius.md,
   },
   searchPlaceholder: {
+    ...type.body1,
     flex: 1,
-    fontSize: 16,
-    fontFamily: 'Lato-Regular',
-    color: '#8E8E93',
+    color: colors.greyNormal,
   },
-  // Standalone control beside the search bar. Mirrors the search pill's
-  // surface, radius and shadow so the two read as a deliberate pair.
-  filtersButton: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  filtersButtonActive: {
-    backgroundColor: ACTIVE_CHIP_BG,
+  // Marks that filters are applied, since the bare icon has no active fill.
+  filtersDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.ink,
+    borderWidth: 1,
+    borderColor: colors.background,
   },
   statusBubble: {
     position: 'absolute',
-    top: 134,
+    top: spacing.md,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',

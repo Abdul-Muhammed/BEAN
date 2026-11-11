@@ -1,5 +1,6 @@
-import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, type StyleProp, type ViewStyle } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, type StyleProp, type ViewStyle } from 'react-native';
+import { Image } from 'expo-image';
 import { SvgXml } from 'react-native-svg';
 import BeanLogo from '../BeanLogo';
 import { MAP_PIN_12_SVG } from '@/constants/figmaIcons';
@@ -36,6 +37,10 @@ export default function CafeCard({
   style,
 }: CafeCardProps) {
   const Container: React.ComponentType<any> = onPress ? TouchableOpacity : View;
+  // Remember which uri failed rather than a boolean, so a new image (e.g. after
+  // lazy enrichment) gets its own chance to load.
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+  const showImage = !!imageUri && imageUri !== failedUri;
 
   return (
     <Container
@@ -44,8 +49,16 @@ export default function CafeCard({
       activeOpacity={0.85}
       accessibilityRole={onPress ? 'button' : undefined}
     >
-      {imageUri ? (
-        <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
+      {showImage ? (
+        <Image
+          source={{ uri: imageUri }}
+          style={styles.image}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          recyclingKey={imageUri}
+          transition={150}
+          onError={() => setFailedUri(imageUri ?? null)}
+        />
       ) : (
         <View style={[styles.image, styles.imageFallback]}>
           <BeanLogo width={22} height={38} color={colors.background} />

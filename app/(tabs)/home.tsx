@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   StatusBar,
   ActivityIndicator,
-  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
@@ -16,11 +15,10 @@ import { SvgXml } from 'react-native-svg';
 
 import LocationPrimerSheet from '@/components/LocationPrimerSheet';
 import TutorialSheet from '@/components/TutorialSheet';
-import BeanScore from '@/components/ui/BeanScore';
-import CafeCard from '@/components/ui/CafeCard';
 import Tag from '@/components/ui/Tag';
 import SectionHeader from '@/components/profile/SectionHeader';
-import CafeStatusBadges from '@/components/CafeStatusBadges';
+import CafeListCard, { EMPTY_ATTRIBUTES } from '@/components/cafe/CafeListCard';
+import { useCafeCardActions } from '../../hooks/useCafeCardActions';
 import FiltersBottomSheet, {
   type FiltersBottomSheetHandle,
 } from '@/components/discover/FiltersBottomSheet';
@@ -42,7 +40,7 @@ import {
 } from '../../lib/cafeAttributes';
 import { getUnreadFollowCount } from '../../lib/follows';
 import { getNotificationsLastSeen } from '../../lib/notifications';
-import { approximateDistanceMeters, extractLocation, formatDistance } from '../../lib/geo';
+import { approximateDistanceMeters, distanceLabelFor } from '../../lib/geo';
 import {
   AUCKLAND_CBD,
   LOCATION_REFRESH_THRESHOLD_METERS,
@@ -53,9 +51,9 @@ import { colors, spacing, type } from '@/constants/theme';
 import {
   ARROW_RIGHT_SVG,
   BELL_SVG,
-  BOOKMARK_SVG,
+  SHOP_OPEN_12_SVG,
   SLIDERS_SVG,
-  tintIcon,
+  STAR_SVG,
 } from '@/constants/figmaIcons';
 
 // How many cafes the Auckland fallback shows when we have no location. A
@@ -67,14 +65,8 @@ const FALLBACK_CAFE_COUNT = 10;
 // don't queue redundant network round-trips.
 const NOTIFICATIONS_CHECK_INTERVAL_MS = 30_000;
 
-// How many amenity chips a card shows before collapsing the rest into "+N".
-const CARD_TAG_LIMIT = 2;
-
 /** How many cards a section shows before deferring to Discover. */
 const SECTION_CARD_LIMIT = 3;
-
-/** Shared empty array so a chipless card keeps a stable prop identity. */
-const EMPTY_ATTRIBUTES: CafeAttribute[] = [];
 
 interface CafeSection {
   /** cafe_categories id, or "near-me" for the leading section. */
@@ -83,99 +75,9 @@ interface CafeSection {
   cafes: Cafe[];
 }
 
-const BOOKMARK_SAVED_SVG = tintIcon(BOOKMARK_SVG, colors.ink);
-
-function CardTags({
-  attributes,
-  categoryById,
-}: {
-  attributes: CafeAttribute[];
-  categoryById: Map<string, CafeCategory>;
-}) {
-  // A cafe nobody has reviewed yet carries no attributes, and shows no chips.
-  // The empty View keeps the bean score pushed to the right of the footer row.
-  if (attributes.length === 0) return <View />;
-
-  const shown = attributes.slice(0, CARD_TAG_LIMIT);
-  const overflow = attributes.length - shown.length;
-
-  return (
-    <View style={styles.cardTags}>
-      {shown.map(({ attributeId }) => {
-        const category = categoryById.get(attributeId);
-        return (
-          <Tag
-            key={attributeId}
-            label={category?.label ?? attributeId}
-            iconXml={category?.icon_svg_xml}
-            size="s"
-          />
-        );
-      })}
-      {overflow > 0 && <Tag label={'+' + overflow} size="s" />}
-    </View>
-  );
-}
-
-const HomeCafeCard = React.memo(function HomeCafeCard({
-  cafe,
-  bookmarked,
-  distanceLabel,
-  attributes,
-  categoryById,
-  onPress,
-  onToggleBookmark,
-}: {
-  cafe: Cafe;
-  bookmarked: boolean;
-  distanceLabel?: string;
-  attributes: CafeAttribute[];
-  categoryById: Map<string, CafeCategory>;
-  onPress: (cafe: Cafe) => void;
-  onToggleBookmark: (cafe: Cafe) => void;
-}) {
-  return (
-    // The status badge overhangs the card's corner and the card clips its own
-    // children, so the badge lives in this wrapper rather than inside the card.
-    <View style={styles.cardWrapper}>
-      <CafeCard
-        name={cafe.name}
-        city={extractLocation(cafe.location)}
-        distanceLabel={distanceLabel}
-        imageUri={cafe.image}
-        onPress={() => onPress(cafe)}
-        trailing={
-          <TouchableOpacity
-            onPress={() => onToggleBookmark(cafe)}
-            hitSlop={8}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={
-              bookmarked ? 'Unsave ' + cafe.name : 'Save ' + cafe.name
-            }
-          >
-            <SvgXml
-              xml={bookmarked ? BOOKMARK_SAVED_SVG : BOOKMARK_SVG}
-              width={24}
-              height={24}
-              opacity={bookmarked ? 1 : 0.55}
-            />
-          </TouchableOpacity>
-        }
-        footer={
-          <>
-            <CardTags attributes={attributes} categoryById={categoryById} />
-            <BeanScore rating={cafe.rating} />
-          </>
-        }
-      />
-      <CafeStatusBadges cafeId={cafe.id} />
-    </View>
-  );
-});
-
 export default function HomeScreen() {
-  const { cafes, addCafe, toggleBookmark, isBookmarked, isFavorited } = useReviews();
+  const { cafes, addCafes, isBookmarked, isFavorited } = useReviews();
+  const { openCafe, toggleCafeBookmark } = useCafeCardActions();
   const { profile, refetch: refetchProfile } = useUserProfile();
   const {
     coords,
@@ -251,15 +153,16 @@ export default function HomeScreen() {
         ? [...results].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0)).slice(0, FALLBACK_CAFE_COUNT)
         : results.slice(0, 15);
 
-      const converted = await Promise.all(ranked.map((place) => convertPlaceToCafe(place)));
-      converted.forEach((cafe) => addCafe(cafe));
+      // One context update for the whole batch: adding cafes one by one would
+      // re-render every ReviewContext consumer once per cafe.
+      addCafes(ranked.map((place) => convertPlaceToCafe(place)));
       lastFetchCoordsRef.current = { lat: target.latitude, lng: target.longitude };
       lastFetchWasFallbackRef.current = usingFallback;
     } catch {
       setNearbyError('Unable to load nearby cafes.');
     }
     setIsLoadingNearby(false);
-  }, [addCafe, coords]);
+  }, [addCafes, coords]);
 
   const handleEnableLocation = useCallback(async () => {
     setIsRequestingLocation(true);
@@ -379,26 +282,7 @@ export default function HomeScreen() {
     return map;
   }, [categories]);
 
-  const distanceFor = useCallback(
-    (cafe: Cafe): string | undefined => {
-      if (
-        !coords ||
-        typeof cafe.latitude !== 'number' ||
-        typeof cafe.longitude !== 'number'
-      ) {
-        return undefined;
-      }
-      return formatDistance(
-        approximateDistanceMeters(
-          coords.latitude,
-          coords.longitude,
-          cafe.latitude,
-          cafe.longitude
-        )
-      );
-    },
-    [coords]
-  );
+  const distanceFor = useCallback((cafe: Cafe) => distanceLabelFor(coords, cafe), [coords]);
 
   // Single client-side predicate, parameterised by a filter set so the sheet can
   // count matches for an uncommitted draft while the screen filters on the
@@ -467,37 +351,31 @@ export default function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attributeRows, categoryById, isFallback, nearMe, preferenceIds.join(',')]);
 
-  const handleCafeClick = useCallback(
-    (cafe: Cafe) => {
-      Keyboard.dismiss();
-      addCafe(cafe);
-      router.push({ pathname: '/cafe/[id]', params: { id: cafe.id } });
-    },
-    [addCafe]
+  const toggleQuickFilter = useCallback(
+    (key: 'openNow' | 'topRated') => setFilters((prev) => ({ ...prev, [key]: !prev[key] })),
+    []
   );
 
-  const handleToggleBookmark = useCallback(
-    (cafe: Cafe) => {
-      addCafe(cafe);
-      toggleBookmark(cafe.id);
-    },
-    [addCafe, toggleBookmark]
+  const toggleCategory = useCallback(
+    (id: string) =>
+      setFilters((prev) => ({
+        ...prev,
+        categories: prev.categories.includes(id)
+          ? prev.categories.filter((c) => c !== id)
+          : [...prev.categories, id],
+      })),
+    []
   );
 
-  const toggleQuickFilter = (key: 'openNow' | 'topRated') =>
-    setFilters((prev) => ({ ...prev, [key]: !prev[key] }));
+  const preferenceChips = useMemo(
+    () => categories.filter((c) => preferenceIds.includes(c.id)),
+    // preferenceIds is rebuilt every render; preferenceKey is its stable form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [categories, preferenceKey]
+  );
 
-  const toggleCategory = (id: string) =>
-    setFilters((prev) => ({
-      ...prev,
-      categories: prev.categories.includes(id)
-        ? prev.categories.filter((c) => c !== id)
-        : [...prev.categories, id],
-    }));
-
-  const preferenceChips = categories.filter((c) => preferenceIds.includes(c.id));
-
-  const listHeader = (
+  // Memoized so FlatList keeps the same header element between renders.
+  const listHeader = useMemo(() => (
     <View style={styles.header}>
       <View style={styles.titleRow}>
         <Text style={styles.screenTitle}>Explore</Text>
@@ -519,36 +397,45 @@ export default function HomeScreen() {
         contentContainerStyle={styles.filterRow}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Icon sizes and padding per the Figma Explore filter row. */}
         <Tag
           label="All Filters"
           iconXml={SLIDERS_SVG}
+          iconSize={14}
           onPress={() => filtersSheetRef.current?.open()}
-          style={styles.allFiltersTag}
+          style={styles.wideTag}
         />
         <Tag
           label="Open Now"
+          iconXml={SHOP_OPEN_12_SVG}
+          iconSize={14}
           variant={filters.openNow ? 'filled' : 'outline'}
           onPress={() => toggleQuickFilter('openNow')}
         />
         <Tag
           label="Top Rated"
+          iconXml={STAR_SVG}
+          iconSize={12}
           variant={filters.topRated ? 'filled' : 'outline'}
           onPress={() => toggleQuickFilter('topRated')}
+          style={styles.wideTag}
         />
         {preferenceChips.map((category) => (
           <Tag
             key={category.id}
             label={category.label}
             iconXml={category.icon_svg_xml}
+            iconSize={12}
             variant={filters.categories.includes(category.id) ? 'filled' : 'outline'}
             onPress={() => toggleCategory(category.id)}
+            style={styles.wideTag}
           />
         ))}
       </ScrollView>
     </View>
-  );
+  ), [filters, hasUnread, preferenceChips, toggleCategory, toggleQuickFilter]);
 
-  const renderStatus = () => {
+  const statusElement = useMemo(() => {
     if (isLoadingNearby) {
       return (
         <View style={styles.status}>
@@ -569,7 +456,44 @@ export default function HomeScreen() {
         <Text style={styles.statusText}>No cafes match these filters.</Text>
       </View>
     );
-  };
+  }, [isLoadingNearby, nearbyError]);
+
+  const renderSection = useCallback(
+    ({ item: section }: { item: CafeSection }) => (
+      <View style={styles.section}>
+        <SectionHeader
+          title={section.title}
+          action={<SvgXml xml={ARROW_RIGHT_SVG} width={16} height={16} />}
+          onPressAction={() => router.push('/(tabs)/discover')}
+          accessibilityLabel={'See more ' + section.title + ' cafes'}
+        />
+        <View style={styles.sectionCards}>
+          {section.cafes.map((cafe) => (
+            <CafeListCard
+              key={cafe.id}
+              cafe={cafe}
+              bookmarked={isBookmarked(cafe.id)}
+              favorited={isFavorited(cafe.id)}
+              distanceLabel={distanceFor(cafe)}
+              attributes={cafeAttributes.get(cafe.id) ?? EMPTY_ATTRIBUTES}
+              categoryById={categoryById}
+              onPress={openCafe}
+              onToggleBookmark={toggleCafeBookmark}
+            />
+          ))}
+        </View>
+      </View>
+    ),
+    [
+      cafeAttributes,
+      categoryById,
+      distanceFor,
+      isBookmarked,
+      isFavorited,
+      openCafe,
+      toggleCafeBookmark,
+    ]
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -580,34 +504,11 @@ export default function HomeScreen() {
         data={sections}
         keyExtractor={(section) => section.id}
         ListHeaderComponent={listHeader}
-        ListEmptyComponent={renderStatus()}
+        ListEmptyComponent={statusElement}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        renderItem={({ item: section }) => (
-          <View style={styles.section}>
-            <SectionHeader
-              title={section.title}
-              action={<SvgXml xml={ARROW_RIGHT_SVG} width={16} height={16} />}
-              onPressAction={() => router.push('/(tabs)/discover')}
-              accessibilityLabel={'See more ' + section.title + ' cafes'}
-            />
-            <View style={styles.sectionCards}>
-              {section.cafes.map((cafe) => (
-                <HomeCafeCard
-                  key={cafe.id}
-                  cafe={cafe}
-                  bookmarked={isBookmarked(cafe.id)}
-                  distanceLabel={distanceFor(cafe)}
-                  attributes={cafeAttributes.get(cafe.id) ?? EMPTY_ATTRIBUTES}
-                  categoryById={categoryById}
-                  onPress={handleCafeClick}
-                  onToggleBookmark={handleToggleBookmark}
-                />
-              ))}
-            </View>
-          </View>
-        )}
+        renderItem={renderSection}
       />
 
       <TutorialSheet visible={showTutorial} onClosed={handleTutorialClosed} />
@@ -673,7 +574,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingRight: spacing.md,
   },
-  allFiltersTag: {
+  wideTag: {
     paddingHorizontal: spacing.md,
   },
   section: {
@@ -684,19 +585,6 @@ const styles = StyleSheet.create({
   },
   sectionCards: {
     gap: spacing.md,
-  },
-  cardWrapper: {
-    // Reserves room for the status badge to overhang the card's top-left corner.
-    paddingTop: 12,
-    paddingLeft: 12,
-    marginLeft: -12,
-  },
-  cardTags: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: spacing.xs,
-    flexShrink: 1,
   },
   status: {
     paddingVertical: 40,

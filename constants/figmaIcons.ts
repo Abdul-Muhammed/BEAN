@@ -264,6 +264,48 @@ export const SEARCH_SMALL_SVG = `<svg width="11.6651" height="11.669" viewBox="0
 </g>
 </svg>`;
 
+/** Discover header: filters toggle beside the search input (Interface / Slider_03) */
+export const SLIDERS_24_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M10 18H21M3 18H6M6 18V20M6 18V16M20 12H21M3 12H16M16 12V14M16 12V10M14 6H21M3 6H10M10 6V8M10 6V4" stroke="#0F1312" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+/** Open Now filter chip (Shop-Sign-Open, Streamline Ultimate) */
+export const SHOP_OPEN_12_SVG = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M10.5435 4.56519H1.45652C0.92825 4.56519 0.5 4.99344 0.5 5.52169V9.34779C0.5 9.87609 0.92825 10.3043 1.45652 10.3043H10.5435C11.0717 10.3043 11.5 9.87609 11.5 9.34779V5.52169C11.5 4.99344 11.0717 4.56519 10.5435 4.56519Z" fill="#78EB7B"/>
+<path d="M1.45652 4.56519C1.20284 4.56519 0.95954 4.66596 0.78016 4.84535C0.600775 5.02474 0.5 5.26804 0.5 5.52169V9.34779C0.500265 9.49759 0.535875 9.64524 0.603935 9.77869C0.671995 9.91219 0.770585 10.0277 0.891695 10.1159L6.44285 4.56519H1.45652Z" fill="#C9F7CA"/>
+<path d="M10.5435 4.56519H1.45652C0.92825 4.56519 0.5 4.99344 0.5 5.52169V9.34779C0.5 9.87609 0.92825 10.3043 1.45652 10.3043H10.5435C11.0717 10.3043 11.5 9.87609 11.5 9.34779V5.52169C11.5 4.99344 11.0717 4.56519 10.5435 4.56519Z" stroke="#191919" stroke-width="0.666667" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M2.89108 8.15215C2.89108 8.34245 2.81549 8.52495 2.68096 8.65945C2.54643 8.794 2.36395 8.86955 2.17369 8.86955C1.98343 8.86955 1.80095 8.794 1.66642 8.65945C1.53188 8.52495 1.4563 8.34245 1.4563 8.15215V6.7174C1.4563 6.52715 1.53188 6.34465 1.66642 6.2101C1.80095 6.07555 1.98343 6 2.17369 6C2.36395 6 2.54643 6.07555 2.68096 6.2101C2.81549 6.34465 2.89108 6.52715 2.89108 6.7174V8.15215Z" stroke="#191919" stroke-width="0.666667" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M8.63013 8.86955V6L10.0649 8.86955V6" stroke="#191919" stroke-width="0.666667" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M7.67381 8.86955H6.71726C6.59046 8.86955 6.46876 8.81915 6.37911 8.7295C6.28941 8.6398 6.23901 8.51815 6.23901 8.3913V6.47825C6.23901 6.35145 6.28941 6.22975 6.37911 6.1401C6.46876 6.0504 6.59046 6 6.71726 6H7.67381" stroke="#191919" stroke-width="0.666667" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M6.23901 7.43481H7.19556" stroke="#191919" stroke-width="0.666667" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M5.28245 6.7174C5.28245 6.90765 5.20685 7.09015 5.07235 7.2247C4.93779 7.3592 4.75531 7.4348 4.56505 7.4348H3.84766V6H4.56505C4.75531 6 4.93779 6.07555 5.07235 6.2101C5.20685 6.34465 5.28245 6.52715 5.28245 6.7174Z" stroke="#191919" stroke-width="0.666667" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M3.84766 8.86961V7.43481" stroke="#191919" stroke-width="0.666667" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M8.152 4.56539L6.7172 2.10904C6.6439 1.98329 6.53895 1.87897 6.4127 1.80646C6.2865 1.73396 6.14345 1.6958 5.9979 1.6958C5.8524 1.6958 5.70935 1.73396 5.5831 1.80646C5.4569 1.87897 5.35195 1.98329 5.2786 2.10904L3.84766 4.56539" stroke="#191919" stroke-width="0.666667" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+/** Filter chip dropdown affordance (14pt container, glyph inset as in Figma) */
+export const CHEVRON_DOWN_14_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path transform="translate(2.9167 4.6667)" fill-rule="evenodd" clip-rule="evenodd" d="M0.170854 0.170854C0.39866 -0.0569515 0.768006 -0.0569515 0.995812 0.170854L4.08333 3.25838L7.17085 0.170854C7.39866 -0.0569515 7.76801 -0.0569515 7.99581 0.170854C8.22362 0.39866 8.22362 0.768006 7.99581 0.995812L4.49581 4.49581C4.26801 4.72362 3.89866 4.72362 3.67085 4.49581L0.170854 0.995812C-0.0569515 0.768006 -0.0569515 0.39866 0.170854 0.170854Z" fill="#474747"/>
+</svg>`;
+
+/** Search input back affordance: the chevron-down glyph turned to point left */
+export const CHEVRON_LEFT_14_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path transform="translate(9.3333 2.9167) rotate(90)" fill-rule="evenodd" clip-rule="evenodd" d="M0.170854 0.170854C0.39866 -0.0569515 0.768006 -0.0569515 0.995812 0.170854L4.08333 3.25838L7.17085 0.170854C7.39866 -0.0569515 7.76801 -0.0569515 7.99581 0.170854C8.22362 0.39866 8.22362 0.768006 7.99581 0.995812L4.49581 4.49581C4.26801 4.72362 3.89866 4.72362 3.67085 4.49581L0.170854 0.995812C-0.0569515 0.768006 -0.0569515 0.39866 0.170854 0.170854Z" fill="#0F1312"/>
+</svg>`;
+
+/** Search input clear (14pt container, glyph inset as in Figma) */
+export const CLOSE_14_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g transform="translate(2.9167 2.9167)">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M7.99581 0.170854C8.22362 0.39866 8.22362 0.768006 7.99581 0.995812L0.995812 7.99581C0.768006 8.22362 0.39866 8.22362 0.170854 7.99581C-0.0569515 7.76801 -0.0569515 7.39866 0.170854 7.17085L7.17085 0.170854C7.39866 -0.0569515 7.76801 -0.0569515 7.99581 0.170854Z" fill="#474747"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M0.170854 0.170854C0.39866 -0.0569515 0.768006 -0.0569515 0.995812 0.170854L7.99581 7.17085C8.22362 7.39866 8.22362 7.76801 7.99581 7.99581C7.76801 8.22362 7.39866 8.22362 7.17085 7.99581L0.170854 0.995812C-0.0569515 0.768006 -0.0569515 0.39866 0.170854 0.170854Z" fill="#474747"/>
+</g>
+</svg>`;
+
+/** Search row placeholder for a cafe with no photo (Interface / Search_Magnifying_Glass, 16pt) */
+export const SEARCH_16_SVG = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M10 10L14 14M6.66667 11.3333C4.08934 11.3333 2 9.244 2 6.66667C2 4.08934 4.08934 2 6.66667 2C9.244 2 11.3333 4.08934 11.3333 6.66667C11.3333 9.244 9.244 11.3333 6.66667 11.3333Z" stroke="#474747" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
 /**
  * Recolour an exported icon. The Figma assets carry literal stroke and fill
  * values, so a variant differing only by colour (an active tab, an icon on a

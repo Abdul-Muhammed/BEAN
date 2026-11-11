@@ -1,6 +1,9 @@
 import React from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
+import { SvgXml } from 'react-native-svg';
 import FilterChip from './FilterChip';
+import { SHOP_OPEN_12_SVG } from '@/constants/figmaIcons';
+import { spacing } from '@/constants/theme';
 import {
   type Filters,
   categoriesSummary,
@@ -26,8 +29,11 @@ interface FilterPillsRowProps {
   labelForCategory?: (id: string) => string | undefined;
 }
 
+const OPEN_NOW_ICON = <SvgXml xml={SHOP_OPEN_12_SVG} width={12} height={12} />;
+
 /**
- * Summary pill row below the search bar. Three fixed pills (Open Now toggle,
+ * Summary pill row below the search bar, in the Discover header (Figma
+ * "Search / Results"). Rendered inline, not over the map. Three fixed pills (Open Now toggle,
  * Rating, Categories) plus a dismissible pill per active quick-filter.
  */
 export default function FilterPillsRow({
@@ -52,7 +58,9 @@ export default function FilterPillsRow({
         label="Open Now"
         active={filters.openNow}
         onPress={onToggleOpenNow}
-        style={styles.shadow}
+        leadingIcon={OPEN_NOW_ICON}
+        onRemove={filters.openNow ? onToggleOpenNow : undefined}
+        compact
       />
 
       <FilterChip
@@ -61,7 +69,7 @@ export default function FilterPillsRow({
         showChevron={!ratingActive}
         onPress={onOpenSheet}
         onRemove={ratingActive ? () => onRemove('minRating') : undefined}
-        style={styles.shadow}
+        compact
       />
 
       <FilterChip
@@ -70,7 +78,7 @@ export default function FilterPillsRow({
         showChevron={!categoriesActive}
         onPress={onOpenSheet}
         onRemove={categoriesActive ? () => onRemove('categories') : undefined}
-        style={styles.shadow}
+        compact
       />
 
       {REMOVABLE.filter(({ key }) => filters[key]).map(({ key, label }) => (
@@ -79,7 +87,7 @@ export default function FilterPillsRow({
           label={label}
           active
           onRemove={() => onRemove(key)}
-          style={styles.shadow}
+          compact
         />
       ))}
     </ScrollView>
@@ -88,20 +96,10 @@ export default function FilterPillsRow({
 
 const styles = StyleSheet.create({
   row: {
-    position: 'absolute',
-    top: 80,
-    left: 0,
-    right: 0,
+    flexGrow: 0,
   },
   content: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  shadow: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
   },
 });

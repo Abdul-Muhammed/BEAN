@@ -58,8 +58,12 @@ interface ReviewContextType {
   // Resolves true when the review was successfully removed from the backend.
   deleteReview: (reviewId: string) => Promise<boolean>;
   addCafe: (cafe: Cafe) => void;
+  /** Merge many cafes in one state update (one re-render for every consumer). */
+  addCafes: (cafes: Cafe[]) => void;
   getCafeById: (cafeId: string) => Cafe | undefined;
-  toggleBookmark: (cafeId: string) => Promise<void>;
+  /** `cafe` is used when the id isn't in context yet (e.g. a Discover card the
+   *  user hasn't opened), so the bookmark row still gets a name and image. */
+  toggleBookmark: (cafeId: string, cafe?: Cafe) => Promise<void>;
   isBookmarked: (cafeId: string) => boolean;
   toggleFavorite: (cafeId: string) => Promise<void>;
   isFavorited: (cafeId: string) => boolean;
@@ -239,11 +243,19 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
     };
   }, [userId]);
 
-  const addCafe = useCallback((cafe: Cafe) => {
+  const addCafes = useCallback((incoming: Cafe[]) => {
+    if (incoming.length === 0) return;
     setCafes((prev) => {
-      const existingIndex = prev.findIndex((c) => c.id === cafe.id);
-      if (existingIndex >= 0) {
-        const existing = prev[existingIndex];
+      const updated = [...prev];
+      const indexById = new Map(prev.map((c, i) => [c.id, i]));
+      for (const cafe of incoming) {
+        const existingIndex = indexById.get(cafe.id);
+        if (existingIndex === undefined) {
+          indexById.set(cafe.id, updated.length);
+          updated.push(cafe);
+          continue;
+        }
+        const existing = updated[existingIndex];
         const merged = { ...existing, ...cafe };
         // Don't let a stock placeholder coming from search/recent overwrite a
         // real image/photos already loaded for this cafe (e.g. from the map or
@@ -259,23 +271,33 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         if (!cafe.rating && existing.rating) {
           merged.rating = existing.rating;
         }
-        const updated = [...prev];
         updated[existingIndex] = merged;
-        return updated;
       }
-      return [...prev, cafe];
+      return updated;
     });
   }, []);
 
+  const addCafe = useCallback((cafe: Cafe) => addCafes([cafe]), [addCafes]);
+
+  // Latest values for the toggle callbacks, read through refs so the callbacks
+  // keep a stable identity. Otherwise every addCafe would hand each memoized
+  // card a new onToggleBookmark and re-render the whole list.
+  const cafesRef = React.useRef(cafes);
+  const bookmarkedIdsRef = React.useRef(bookmarkedCafeIds);
+  React.useLayoutEffect(() => {
+    cafesRef.current = cafes;
+    bookmarkedIdsRef.current = bookmarkedCafeIds;
+  }, [cafes, bookmarkedCafeIds]);
+
   const toggleBookmark = useCallback(
-    async (cafeId: string) => {
+    async (cafeId: string, fallbackCafe?: Cafe) => {
       if (!userId) {
         console.warn('Cannot bookmark while signed out');
         return;
       }
       triggerSaveHaptic();
-      const cafe = cafes.find((c) => c.id === cafeId);
-      const isCurrentlyBookmarked = bookmarkedCafeIds.includes(cafeId);
+      const cafe = cafesRef.current.find((c) => c.id === cafeId) ?? fallbackCafe;
+      const isCurrentlyBookmarked = bookmarkedIdsRef.current.includes(cafeId);
 
       if (isCurrentlyBookmarked) {
         setBookmarkedCafeIds((prev) => prev.filter((id) => id !== cafeId));
@@ -339,12 +361,13 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [userId, cafes, bookmarkedCafeIds, showToast]
+    [userId, showToast]
   );
 
+  const bookmarkedIdSet = useMemo(() => new Set(bookmarkedCafeIds), [bookmarkedCafeIds]);
   const isBookmarked = useCallback(
-    (cafeId: string) => bookmarkedCafeIds.includes(cafeId),
-    [bookmarkedCafeIds]
+    (cafeId: string) => bookmarkedIdSet.has(cafeId),
+    [bookmarkedIdSet]
   );
 
   const toggleFavorite = useCallback(
@@ -405,9 +428,10 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
     [userId, cafes, favoritedCafeIds, showToast]
   );
 
+  const favoritedIdSet = useMemo(() => new Set(favoritedCafeIds), [favoritedCafeIds]);
   const isFavorited = useCallback(
-    (cafeId: string) => favoritedCafeIds.includes(cafeId),
-    [favoritedCafeIds]
+    (cafeId: string) => favoritedIdSet.has(cafeId),
+    [favoritedIdSet]
   );
 
   const buildReviewsForCafe = useCallback(
@@ -856,6 +880,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
       updateReview,
       deleteReview,
       addCafe,
+      addCafes,
       getCafeById,
       toggleBookmark,
       isBookmarked,
@@ -873,6 +898,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
       updateReview,
       deleteReview,
       addCafe,
+      addCafes,
       getCafeById,
       toggleBookmark,
       isBookmarked,
