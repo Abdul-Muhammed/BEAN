@@ -95,8 +95,13 @@ export default function CafeCard({
   );
 }
 
+/** The image is square and sets the card's height, so the height can't depend
+ *  on the card's content (extra chips, a newly loaded rating, a longer title). */
+const IMAGE_SIZE = 87;
+
 const styles = StyleSheet.create({
   card: {
+    height: IMAGE_SIZE,
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: radius.md,
@@ -106,8 +111,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   image: {
-    width: 87,
-    height: 87,
+    width: IMAGE_SIZE,
+    height: IMAGE_SIZE,
     backgroundColor: colors.greyExtraLight,
   },
   imageFallback: {
@@ -115,9 +120,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.ink,
   },
+  // Title block pinned to the top, footer to the bottom, within the fixed height.
   body: {
     flex: 1,
-    gap: spacing.md,
+    alignSelf: 'stretch',
+    justifyContent: 'space-between',
     padding: spacing.sm,
   },
   titleRow: {
@@ -148,5 +155,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
+    overflow: 'hidden',
   },
 });
