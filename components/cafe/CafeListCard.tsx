@@ -121,7 +121,7 @@ function CafeListCard({
         footer={
           <>
             <CardTags attributes={attributes} categoryById={categoryById} />
-            <BeanScore rating={cafe.rating} />
+            <BeanScore rating={cafe.rating} style={styles.score} />
           </>
         }
       />
@@ -135,11 +135,17 @@ function CafeListCard({
 export default React.memo(CafeListCard);
 
 const styles = StyleSheet.create({
+  // One row only: chips that don't fit are clipped rather than wrapping onto a
+  // second line, which would make this card taller than its neighbours.
   cardTags: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     alignItems: 'center',
     gap: spacing.xs,
     flexShrink: 1,
+    overflow: 'hidden',
+  },
+  score: {
+    flexShrink: 0,
   },
 });

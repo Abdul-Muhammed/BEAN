@@ -123,6 +123,40 @@ export const NAV_USER_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" fil
 </g>
 </svg>`;
 
+// Tab bar selected/unselected pairs, from assets/images/navbar/. The filled
+// exports have tight viewBoxes (e.g. 14x19), so each is placed in the same
+// 24x24 frame as its outline with a translate, so the glyph neither grows nor
+// shifts when its tab is selected. NAV_HOUSE_SVG above is already the filled
+// home; the outline is Home.svg.
+
+/** Tab bar: home, unselected */
+export const NAV_HOUSE_OUTLINE_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M2 20.0001H4M4 20.0001H10M4 20.0001V11.4522C4 10.9179 4 10.6506 4.06497 10.4019C4.12255 10.1816 4.21779 9.97307 4.3457 9.78464C4.49004 9.57201 4.69064 9.39569 5.09277 9.04383L9.89436 4.84244C10.6398 4.19014 11.0126 3.86397 11.4324 3.73982C11.8026 3.63035 12.1972 3.63035 12.5674 3.73982C12.9875 3.86406 13.3608 4.19054 14.1074 4.84383L18.9074 9.04383C19.3095 9.39568 19.5102 9.57202 19.6546 9.78464C19.7825 9.97307 19.877 10.1816 19.9346 10.4019C19.9995 10.6506 20 10.9179 20 11.4522V20.0001M10 20.0001H14M10 20.0001V16.0001C10 14.8955 10.8954 14.0001 12 14.0001C13.1046 14.0001 14 14.8955 14 16.0001V20.0001M14 20.0001H20M20 20.0001H22" stroke="#0F1312" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+/** Tab bar: discover, selected */
+export const NAV_SEARCH_FILLED_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g transform="translate(2 2)">
+<path d="M1 8C1 11.866 4.13401 15 8 15C11.866 15 15 11.866 15 8C15 4.13401 11.866 1 8 1C4.13401 1 1 4.13401 1 8Z" fill="#ADAFA4"/>
+<path d="M13 13L19 19M8 15C4.13401 15 1 11.866 1 8C1 4.13401 4.13401 1 8 1C11.866 1 15 4.13401 15 8C15 11.866 11.866 15 8 15Z" stroke="#0F1312" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</svg>`;
+
+/** Tab bar: lists, selected */
+export const NAV_BOOKMARK_FILLED_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g transform="translate(5 3)">
+<path d="M1 4.2002V13.6854C1 15.0464 1 15.7268 1.20412 16.1433C1.58245 16.9151 2.41157 17.3588 3.26367 17.2454C3.7234 17.1842 4.28964 16.8067 5.4221 16.0518L5.42481 16.0499C5.87368 15.7507 6.09815 15.6011 6.33295 15.5181C6.76421 15.3656 7.23476 15.3656 7.66602 15.5181C7.90129 15.6012 8.12664 15.7515 8.57732 16.0519C9.70978 16.8069 10.2767 17.1841 10.7364 17.2452C11.5885 17.3586 12.4176 16.9151 12.7959 16.1433C13 15.7269 13 15.0462 13 13.6854V4.19691C13 3.07899 13 2.5192 12.7822 2.0918C12.5905 1.71547 12.2837 1.40973 11.9074 1.21799C11.4796 1 10.9203 1 9.8002 1H4.2002C3.08009 1 2.51962 1 2.0918 1.21799C1.71547 1.40973 1.40973 1.71547 1.21799 2.0918C1 2.51962 1 3.08009 1 4.2002Z" fill="#ADAFA4" stroke="#0F1312" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</svg>`;
+
+/** Tab bar: profile, selected */
+export const NAV_USER_FILLED_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g transform="translate(5 3)">
+<path d="M3 5C3 7.20914 4.79086 9 7 9C9.20914 9 11 7.20914 11 5C11 2.79086 9.20914 1 7 1C4.79086 1 3 2.79086 3 5Z" fill="#ADAFA4"/>
+<path d="M13 16C13 13.7909 10.3137 12 7 12C3.68629 12 1 13.7909 1 16M7 9C4.79086 9 3 7.20914 3 5C3 2.79086 4.79086 1 7 1C9.20914 1 11 2.79086 11 5C11 7.20914 9.20914 9 7 9Z" stroke="#0F1312" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</svg>`;
+
 /** Save toggle on a cafe card */
 export const BOOKMARK_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
 <g id="Interface / Bookmark">
