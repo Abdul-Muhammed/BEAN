@@ -6,11 +6,9 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft } from 'lucide-react-native';
 import BeanLogo from '../../components/BeanLogo';
 import ReviewForm, {
   type ReviewFormValues,
@@ -132,14 +130,6 @@ export default function EditReviewScreen() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()} hitSlop={8}>
-          <ArrowLeft size={24} color={colors.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Edit Review</Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
       <ReviewForm
         cafe={cafe}
         cafeLocked
@@ -148,7 +138,6 @@ export default function EditReviewScreen() {
         cancelLabel="Cancel"
         submitLabel="Save"
         submittingLabel="Saving…"
-        emphasizeSubmit
         onCancel={() => router.back()}
         onSubmit={handleSubmit}
       />
@@ -160,29 +149,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.warmBorder,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: colors.primary,
-  },
-  headerSpacer: {
-    width: 40,
   },
   centeredContainer: {
     flex: 1,

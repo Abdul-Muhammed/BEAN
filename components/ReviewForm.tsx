@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,17 +9,46 @@ import {
   Alert,
   ActionSheetIOS,
   Platform,
-  Image,
+  LayoutChangeEvent,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
-import type { ScrollViewInstance } from 'react-native';
-import { X, Camera, ChevronDown, ChevronUp, Check, Heart } from 'lucide-react-native';
-import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
+import { Image } from 'expo-image';
+import { SvgXml } from 'react-native-svg';
+import { X } from 'lucide-react-native';
+import Animated, { FadeIn, FadeInUp, Layout } from 'react-native-reanimated';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import {
+  KeyboardAwareScrollView,
+  useKeyboardController,
+} from 'react-native-keyboard-controller';
 import { useReviews } from '../context/ReviewContext';
+import { useLocation } from '../hooks/useLocation';
 import { getCafeCategories, type CafeCategory } from '../lib/cafeCategories';
-import { colors } from '@/constants/theme';
+import { distanceLabelFor, extractLocation } from '../lib/geo';
+import { colors, radius, spacing, type } from '@/constants/theme';
+import {
+  CHECK_12_CREAM_SVG,
+  CHEVRON_DOWN_16_SVG,
+  HEART_40_FILLED_SVG,
+  HEART_40_SVG,
+  MAP_PIN_12_SVG,
+  PENCIL_SVG,
+  PLUS_16_SVG,
+  SEARCH_16_SVG,
+} from '@/constants/figmaIcons';
 import SwipeableBeanRating from '@/components/SwipeableBeanRating';
+import Tag from '@/components/ui/Tag';
+
+/**
+ * The Log a Visit form shared by Add Review and Edit Review.
+ * Figma: file rj73f43oVHWbM7N9VhmVeP, section 834:15093 ("Log a Visit").
+ *
+ * Flow: the rating starts as a big centred row of beans. Shortly after the
+ * user lifts their finger it collapses into a compact "Rating" row with the
+ * favourite heart, and the four optional sections appear below.
+ */
 
 type ReviewStep = 'order' | 'likes' | 'notes' | 'photos';
 
@@ -47,7 +76,7 @@ export interface ReviewFormCafe {
 
 interface ReviewFormProps {
   cafe: ReviewFormCafe | null;
-  /** When true, the cafe row is read-only (edit mode). */
+  /** When true, the cafe card is read-only (edit mode). */
   cafeLocked?: boolean;
   /** Opens the cafe picker (create mode). Ignored when cafeLocked. */
   onPressCafe?: () => void;
@@ -55,8 +84,6 @@ interface ReviewFormProps {
   cancelLabel?: string;
   submitLabel?: string;
   submittingLabel?: string;
-  /** Give the submit button visual emphasis (70/30 split) — used by edit mode. */
-  emphasizeSubmit?: boolean;
   submitting: boolean;
   onCancel: () => void;
   onSubmit: (values: ReviewFormValues) => void;
@@ -64,35 +91,150 @@ interface ReviewFormProps {
 
 const ORDER_ITEMS = [
   'Flat White',
-  'Latte',
-  'Long Black',
   'Cappuccino',
+  'Latte',
+  'Americano',
   'Espresso',
   'Mocha',
-  'Cold Brew',
-  'Filter Coffee',
+  'Macchiato',
   'Matcha',
-  'Tea',
-  'Pastry',
-  'Brunch',
+  'Hot Chocolate',
 ];
 
-const sectionEntering = FadeInUp.springify().duration(250);
-const sectionLayout = Layout.springify().duration(250);
+const MAX_LIKES = 3;
+const MAX_PHOTOS = 5;
+/** How long the big rating lingers after the finger lifts before collapsing. */
+const RATING_COLLAPSE_DELAY_MS = 600;
+/** The "(Optional)" / hint grey in the frames. */
+const HINT_GREY = '#707070';
 
-function AnimatedSection({ children }: { children: React.ReactNode }) {
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function ordinal(day: number): string {
+  if (day % 100 >= 11 && day % 100 <= 13) return `${day}th`;
+  switch (day % 10) {
+    case 1:
+      return `${day}st`;
+    case 2:
+      return `${day}nd`;
+    case 3:
+      return `${day}rd`;
+    default:
+      return `${day}th`;
+  }
+}
+
+/** "Friday 3rd October, 2025" */
+function formatVisitDate(date: Date): string {
+  return `${WEEKDAYS[date.getDay()]} ${ordinal(date.getDate())} ${MONTHS[date.getMonth()]}, ${date.getFullYear()}`;
+}
+
+function formatRating(rating: number): string {
+  return Number.isInteger(rating) ? String(rating) : rating.toFixed(1);
+}
+
+const enterFade = FadeIn.duration(250);
+const enterSection = FadeInUp.springify().duration(250);
+const layoutSpring = Layout.springify().duration(250);
+
+function Chevron({ open }: { open: boolean }) {
   return (
-    <Animated.View entering={sectionEntering} layout={sectionLayout} style={styles.field}>
-      {children}
+    <View style={open ? styles.chevronOpen : undefined}>
+      <SvgXml xml={CHEVRON_DOWN_16_SVG} width={16} height={16} />
+    </View>
+  );
+}
+
+function Section({
+  title,
+  done,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  done: boolean;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Animated.View entering={enterSection} layout={layoutSpring} style={styles.section}>
+      <TouchableOpacity
+        style={[styles.sectionHeader, !open && styles.sectionHeaderClosed]}
+        onPress={onToggle}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.label}>{title}</Text>
+        <Text style={styles.optional}>(Optional)</Text>
+        <View style={styles.sectionIcons}>
+          {done && (
+            <View style={styles.checkCircle}>
+              <SvgXml xml={CHECK_12_CREAM_SVG} width={12} height={12} />
+            </View>
+          )}
+          <Chevron open={open} />
+        </View>
+      </TouchableOpacity>
+      {open && <View style={[styles.sectionBody, styles.underlined]}>{children}</View>}
     </Animated.View>
   );
 }
 
-function StepEyebrow({ title }: { title: string }) {
+function CafeCard({
+  cafe,
+  locked,
+  onPress,
+}: {
+  cafe: ReviewFormCafe | null;
+  locked: boolean;
+  onPress?: () => void;
+}) {
+  const { cafes } = useReviews();
+  const { coords } = useLocation();
+  const details = useMemo(
+    () => (cafe ? cafes.find((c) => String(c.id) === String(cafe.id)) : undefined),
+    [cafes, cafe]
+  );
+  const image = cafe?.image || details?.image;
+  const city = details?.location ? extractLocation(details.location) : '';
+  const distance = details ? distanceLabelFor(coords, details) : undefined;
+
   return (
-    <Text style={styles.stepEyebrow}>
-      {title} <Text style={styles.optionalTag}>(Optional)</Text>
-    </Text>
+    <TouchableOpacity
+      style={styles.cafeCard}
+      onPress={onPress}
+      disabled={locked}
+      activeOpacity={0.85}
+    >
+      {image ? (
+        <Image source={{ uri: image }} style={styles.cafeImage} contentFit="cover" />
+      ) : (
+        <View style={[styles.cafeImage, styles.cafeImagePlaceholder]} />
+      )}
+      <View style={styles.cafeBody}>
+        <View style={styles.cafeText}>
+          <Text style={cafe ? styles.cafeName : styles.cafePlaceholder} numberOfLines={1}>
+            {cafe ? cafe.name : 'Search for a cafe'}
+          </Text>
+          {cafe && (city || distance) ? (
+            <View style={styles.cafeMeta}>
+              <SvgXml xml={MAP_PIN_12_SVG} width={12} height={12} />
+              {city ? <Text style={styles.cafeMetaText}>{city}</Text> : null}
+              {city && distance ? <Text style={styles.cafeMetaText}>•</Text> : null}
+              {distance ? <Text style={styles.cafeMetaText}>{distance}</Text> : null}
+            </View>
+          ) : null}
+        </View>
+        {!locked && (
+          <SvgXml xml={cafe ? PENCIL_SVG : SEARCH_16_SVG} width={16} height={16} />
+        )}
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -104,25 +246,58 @@ export default function ReviewForm({
   cancelLabel = 'Cancel',
   submitLabel = 'Submit',
   submittingLabel = 'Submitting...',
-  emphasizeSubmit = false,
   submitting,
   onCancel,
   onSubmit,
 }: ReviewFormProps) {
   const { toggleFavorite, isFavorited } = useReviews();
-  const scrollRef = useRef<ScrollViewInstance>(null);
 
+  const initialOrdered = initialValues?.orderedItem ?? '';
   const [rating, setRating] = useState(initialValues?.rating ?? 0);
-  const [orderedItem, setOrderedItem] = useState(initialValues?.orderedItem ?? '');
+  const [ratingMode, setRatingMode] = useState<'big' | 'compact'>(
+    initialValues?.rating ? 'compact' : 'big'
+  );
+  const [orderedItem, setOrderedItem] = useState(initialOrdered);
+  const [otherSelected, setOtherSelected] = useState(
+    initialOrdered.trim().length > 0 && !ORDER_ITEMS.includes(initialOrdered)
+  );
   const [notes, setNotes] = useState(initialValues?.notes ?? '');
   const [selectedAttributes, setSelectedAttributes] = useState<string[]>(
     initialValues?.attributes ?? []
   );
   const [photos, setPhotos] = useState<ReviewPhoto[]>(initialValues?.photos ?? []);
+  const [photoIndex, setPhotoIndex] = useState(0);
+  const [carouselWidth, setCarouselWidth] = useState(0);
   const [date, setDate] = useState<Date>(initialValues?.date ?? new Date());
   const [likeCategories, setLikeCategories] = useState<CafeCategory[]>([]);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [activeStep, setActiveStep] = useState<ReviewStep | null>(null);
+
+  // The gesture callbacks fire onChange and onRelease in the same frame, so the
+  // release handler reads the rating from a ref rather than stale state.
+  const ratingRef = useRef(rating);
+  const orderedRef = useRef(orderedItem);
+  useEffect(() => {
+    orderedRef.current = orderedItem;
+  }, [orderedItem]);
+  const collapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearCollapseTimer = () => {
+    if (collapseTimer.current) {
+      clearTimeout(collapseTimer.current);
+      collapseTimer.current = null;
+    }
+  };
+
+  useEffect(() => clearCollapseTimer, []);
+
+  // KeyboardProvider is off app-wide (see app/_layout.tsx); switch it on while
+  // this form is mounted so the scroll view can follow the keyboard.
+  const { setEnabled: setKeyboardHandling } = useKeyboardController();
+  useEffect(() => {
+    setKeyboardHandling(true);
+    return () => setKeyboardHandling(false);
+  }, [setKeyboardHandling]);
 
   // Load the "What did you like?" options from the same cafe_categories table
   // used during onboarding, so the two stay in sync.
@@ -140,38 +315,46 @@ export default function ReviewForm({
     };
   }, []);
 
-  const orderCompleted = orderedItem.trim().length > 0;
-  const sectionsRevealed = rating > 0;
   const favoriteCafeId = cafe?.id ? String(cafe.id) : null;
   const isLovedCafe = favoriteCafeId ? isFavorited(favoriteCafeId) : false;
   const canSubmit = Boolean(cafe && rating > 0 && !submitting);
+  const sectionsRevealed = ratingMode === 'compact';
 
   const toggleStep = (step: ReviewStep) => {
     setShowDatePicker(false);
     setActiveStep((current) => (current === step ? null : step));
   };
 
-  const visibleStepCount = sectionsRevealed ? 4 : 0;
-
-  useEffect(() => {
-    if (visibleStepCount === 0) return;
-    const timer = setTimeout(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
-    }, 120);
-    return () => clearTimeout(timer);
-  }, [visibleStepCount]);
-
-  const handleRatingSelect = (nextRating: number) => {
-    const wasZero = rating === 0;
+  const handleRatingChange = (next: number) => {
+    clearCollapseTimer();
     setShowDatePicker(false);
-    setRating(nextRating);
-    if (wasZero && !orderCompleted) {
-      setActiveStep('order');
-    }
+    ratingRef.current = next;
+    setRating(next);
+  };
+
+  const handleRatingRelease = () => {
+    if (ratingMode !== 'big' || ratingRef.current <= 0) return;
+    clearCollapseTimer();
+    collapseTimer.current = setTimeout(() => {
+      collapseTimer.current = null;
+      setRatingMode('compact');
+      if (orderedRef.current.trim().length === 0) setActiveStep('order');
+    }, RATING_COLLAPSE_DELAY_MS);
   };
 
   const selectOrderItem = (item: string) => {
-    setOrderedItem(item);
+    setOtherSelected(false);
+    setOrderedItem((current) => (current === item ? '' : item));
+  };
+
+  const toggleOther = () => {
+    if (otherSelected) {
+      setOtherSelected(false);
+      setOrderedItem('');
+    } else {
+      setOtherSelected(true);
+      if (ORDER_ITEMS.includes(orderedItem)) setOrderedItem('');
+    }
   };
 
   const toggleAttribute = (attributeId: string) => {
@@ -180,7 +363,7 @@ export default function ReviewForm({
       if (prev.includes(attributeId)) {
         return prev.filter((id) => id !== attributeId);
       }
-      if (prev.length >= 3) {
+      if (prev.length >= MAX_LIKES) {
         return prev;
       }
       return [...prev, attributeId];
@@ -191,7 +374,7 @@ export default function ReviewForm({
     const picked = assets
       .filter((asset) => asset.base64)
       .map((asset) => ({ uri: asset.uri, base64: asset.base64 as string }));
-    setPhotos((prev) => [...prev, ...picked].slice(0, 5));
+    setPhotos((prev) => [...prev, ...picked].slice(0, MAX_PHOTOS));
   };
 
   const pickFromLibrary = async () => {
@@ -247,6 +430,17 @@ export default function ReviewForm({
 
   const removePhoto = (index: number) => {
     setPhotos((prev) => prev.filter((_, i) => i !== index));
+    setPhotoIndex((current) => Math.max(0, Math.min(current, photos.length - 2)));
+  };
+
+  const handleCarouselScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (carouselWidth <= 0) return;
+    const index = Math.round(event.nativeEvent.contentOffset.x / carouselWidth);
+    setPhotoIndex(Math.max(0, Math.min(index, photos.length - 1)));
+  };
+
+  const handleCarouselLayout = (event: LayoutChangeEvent) => {
+    setCarouselWidth(event.nativeEvent.layout.width);
   };
 
   const handleDateChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
@@ -274,364 +468,259 @@ export default function ReviewForm({
 
   return (
     <>
-      <ScrollView
-        ref={scrollRef}
+      <KeyboardAwareScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        bottomOffset={24}
         onScrollBeginDrag={() => setShowDatePicker(false)}
       >
-        <View style={styles.contextCard}>
-          <Text style={styles.contextLabel}>Cafe visited</Text>
-          <TouchableOpacity
-            style={styles.dropdown}
-            onPress={() => {
-              if (cafeLocked) return;
-              setShowDatePicker(false);
-              onPressCafe?.();
-            }}
-            activeOpacity={cafeLocked ? 1 : 0.85}
-            disabled={cafeLocked}
-          >
-            <Text style={cafe ? styles.dropdownText : styles.dropdownPlaceholder}>
-              {cafe ? cafe.name : 'Search for a cafe'}
-            </Text>
-            {!cafeLocked && <ChevronDown size={20} color={colors.mutedText} />}
-          </TouchableOpacity>
+        <Text style={styles.title}>Where You Bean?</Text>
 
-          <Text style={[styles.contextLabel, styles.dateLabel]}>Date</Text>
+        <CafeCard
+          cafe={cafe}
+          locked={cafeLocked}
+          onPress={() => {
+            setShowDatePicker(false);
+            onPressCafe?.();
+          }}
+        />
+
+        <View style={styles.formControl}>
+          <Text style={styles.label}>Date</Text>
           <TouchableOpacity
-            style={styles.dateDisplay}
+            style={[styles.inputRow, styles.underlined]}
             onPress={() => setShowDatePicker(!showDatePicker)}
-            activeOpacity={0.85}
+            activeOpacity={0.8}
           >
-            <Text style={styles.dateText}>
-              {date.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-              })}
+            <Text style={styles.inputText} numberOfLines={1}>
+              {formatVisitDate(date)}
             </Text>
-            <ChevronDown size={20} color={colors.mutedText} />
+            <Chevron open={showDatePicker} />
           </TouchableOpacity>
           {showDatePicker && (
-            <>
-              <View style={styles.datePickerHeader}>
-                <Text style={styles.datePickerHint}>Pick a visit date</Text>
-                <TouchableOpacity
-                  onPress={() => setShowDatePicker(false)}
-                  hitSlop={8}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.datePickerClose}>Done</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.datePickerWrap}>
-                <DateTimePicker
-                  value={date}
-                  onChange={handleDateChange}
-                  mode="date"
-                  display="spinner"
-                  themeVariant="light"
-                  maximumDate={new Date()}
-                  style={styles.datePickerWheel}
-                />
-              </View>
-            </>
+            <View style={styles.datePickerWrap}>
+              <DateTimePicker
+                value={date}
+                onChange={handleDateChange}
+                mode="date"
+                display="spinner"
+                themeVariant="light"
+                maximumDate={new Date()}
+                style={styles.datePickerWheel}
+              />
+            </View>
           )}
         </View>
 
-        <AnimatedSection>
-          <Text style={styles.stepEyebrow}>Rating</Text>
-          <Text style={styles.stepTitle}>How was your experience?</Text>
-          <View style={styles.ratingControlRow}>
-            <View style={styles.ratingStarsBlock}>
+        {ratingMode === 'big' ? (
+          <Animated.View entering={enterFade} style={styles.bigRating}>
+            <Text style={[styles.label, styles.centered]}>How Was Your Experience?</Text>
+            <Text style={styles.ratingHint}>
+              {rating > 0 ? `${formatRating(rating)}/5` : 'Tap a bean to rate'}
+            </Text>
+            <View style={styles.bigBeans}>
               <SwipeableBeanRating
+                variant="share"
                 rating={rating}
-                onChange={handleRatingSelect}
-                size={42}
+                onChange={handleRatingChange}
+                onRelease={handleRatingRelease}
+                spacing={24}
               />
-              {rating > 0 && (
-                <Text style={styles.ratingValue}>{rating.toFixed(1)} / 5</Text>
-              )}
             </View>
-            <TouchableOpacity
-              style={[
-                styles.loveButton,
-                isLovedCafe && styles.loveButtonActive,
-                !favoriteCafeId && styles.loveButtonDisabled,
-              ]}
-              onPress={handleToggleFavorite}
-              disabled={!favoriteCafeId}
-              activeOpacity={0.85}
-            >
-              <Heart
-                size={26}
-                color={isLovedCafe ? colors.danger : colors.primary}
-                fill={isLovedCafe ? colors.danger : 'transparent'}
-              />
-            </TouchableOpacity>
-          </View>
-        </AnimatedSection>
+          </Animated.View>
+        ) : (
+          <Animated.View entering={enterFade} layout={layoutSpring} style={styles.formControl}>
+            <Text style={styles.label}>Rating</Text>
+            <View style={[styles.compactRatingRow, styles.underlined]}>
+              <View style={styles.compactBeans}>
+                <SwipeableBeanRating
+                  variant="share"
+                  rating={rating}
+                  onChange={handleRatingChange}
+                  spacing={8}
+                />
+              </View>
+              <TouchableOpacity
+                onPress={handleToggleFavorite}
+                disabled={!favoriteCafeId}
+                activeOpacity={0.8}
+                hitSlop={8}
+                style={!favoriteCafeId && styles.disabled}
+                accessibilityRole="button"
+                accessibilityLabel={isLovedCafe ? 'Remove from favourites' : 'Add to favourites'}
+              >
+                <SvgXml
+                  xml={isLovedCafe ? HEART_40_FILLED_SVG : HEART_40_SVG}
+                  width={40}
+                  height={40}
+                />
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        )}
 
         {sectionsRevealed && (
-          <AnimatedSection>
-            {activeStep === 'order' ? (
-              <>
-                <TouchableOpacity
-                  style={styles.expandedHeader}
-                  onPress={() => toggleStep('order')}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.collapsedStepText}>
-                    <StepEyebrow title="What Did You Order?" />
-                    <Text style={styles.stepHint}>Choose one</Text>
-                  </View>
-                  <ChevronUp size={20} color={colors.mutedText} />
-                </TouchableOpacity>
-                <View style={styles.orderPillsContainer}>
-                  {ORDER_ITEMS.map((item) => {
-                    const isSelected = orderedItem === item;
-                    return (
-                      <TouchableOpacity
-                        key={item}
-                        style={[
-                          styles.attributeButton,
-                          isSelected && styles.attributeButtonActive,
-                        ]}
-                        onPress={() => selectOrderItem(item)}
-                        activeOpacity={0.8}
-                      >
-                        {isSelected && <Check size={14} color={colors.white} />}
-                        <Text
-                          style={[
-                            styles.attributeText,
-                            isSelected && styles.attributeTextActive,
-                          ]}
-                        >
-                          {item}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-                <Text style={styles.orderOtherLabel}>Something else?</Text>
+          <>
+            <Section
+              title="What Did You Order?"
+              done={orderedItem.trim().length > 0}
+              open={activeStep === 'order'}
+              onToggle={() => toggleStep('order')}
+            >
+              <View style={styles.chips}>
+                {ORDER_ITEMS.map((item) => (
+                  <Tag
+                    key={item}
+                    label={item}
+                    dense
+                    variant={!otherSelected && orderedItem === item ? 'filled' : 'outlineDark'}
+                    onPress={() => selectOrderItem(item)}
+                  />
+                ))}
+                <Tag
+                  label="Other"
+                  dense
+                  variant={otherSelected ? 'filled' : 'outlineDark'}
+                  onPress={toggleOther}
+                />
+              </View>
+              {otherSelected && (
                 <TextInput
-                  style={styles.orderOtherInput}
-                  placeholder="Type what you ordered"
-                  placeholderTextColor={colors.mutedText}
-                  value={ORDER_ITEMS.includes(orderedItem) ? '' : orderedItem}
+                  style={styles.otherInput}
+                  placeholder="Tell us what you ordered!"
+                  placeholderTextColor={HINT_GREY}
+                  value={orderedItem}
                   onChangeText={setOrderedItem}
                   onFocus={() => setShowDatePicker(false)}
                   returnKeyType="done"
+                  submitBehavior="blurAndSubmit"
+                  autoFocus={!orderedItem}
                 />
-              </>
-            ) : (
-              <TouchableOpacity
-                style={styles.collapsedStep}
-                onPress={() => toggleStep('order')}
-                activeOpacity={0.85}
-              >
-                <View style={styles.collapsedStepText}>
-                  <StepEyebrow title="What Did You Order?" />
-                  <Text style={orderCompleted ? styles.collapsedSummary : styles.stepHint}>
-                    {orderCompleted ? orderedItem : 'Choose what you had'}
-                  </Text>
-                </View>
-                <ChevronDown size={20} color={colors.mutedText} />
-              </TouchableOpacity>
-            )}
-          </AnimatedSection>
-        )}
+              )}
+            </Section>
 
-        {sectionsRevealed && (
-          <AnimatedSection>
-            {activeStep === 'likes' ? (
-              <>
-                <TouchableOpacity
-                  style={styles.expandedHeader}
-                  onPress={() => toggleStep('likes')}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.collapsedStepText}>
-                    <StepEyebrow title="What Did You Like?" />
-                    <Text style={styles.stepHint}>Choose up to 3</Text>
-                  </View>
-                  <ChevronUp size={20} color={colors.mutedText} />
-                </TouchableOpacity>
-
-                <View style={styles.attributesContainer}>
-                  {likeCategories.map((category) => {
-                    const isSelected = selectedAttributes.includes(category.id);
-                    const isDisabled = !isSelected && selectedAttributes.length >= 3;
-                    return (
-                      <TouchableOpacity
-                        key={category.id}
-                        style={[
-                          styles.attributeButton,
-                          isSelected && styles.attributeButtonActive,
-                          isDisabled && styles.attributeButtonDisabled,
-                        ]}
-                        onPress={() => toggleAttribute(category.id)}
-                        disabled={isDisabled}
-                        activeOpacity={0.8}
-                      >
-                        {isSelected && <Check size={14} color={colors.white} />}
-                        <Text
-                          style={[
-                            styles.attributeText,
-                            isSelected && styles.attributeTextActive,
-                            isDisabled && styles.attributeTextDisabled,
-                          ]}
-                        >
-                          {category.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </>
-            ) : (
-              <TouchableOpacity
-                style={styles.collapsedStep}
-                onPress={() => toggleStep('likes')}
-                activeOpacity={0.85}
-              >
-                <View style={styles.collapsedStepText}>
-                  <StepEyebrow title="What Did You Like?" />
-                  <Text style={selectedAttributes.length > 0 ? styles.collapsedSummary : styles.stepHint}>
-                    {selectedAttributes.length > 0
-                      ? selectedAttributes.join(', ')
-                      : 'Choose up to 3'}
-                  </Text>
-                </View>
-                <ChevronDown size={20} color={colors.mutedText} />
-              </TouchableOpacity>
-            )}
-          </AnimatedSection>
-        )}
-
-        {sectionsRevealed && (
-          <AnimatedSection>
-            {activeStep === 'notes' ? (
-              <>
-                <TouchableOpacity
-                  style={styles.expandedHeader}
-                  onPress={() => toggleStep('notes')}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.collapsedStepText}>
-                    <StepEyebrow title="Notes" />
-                    <Text style={styles.stepHint}>Optional</Text>
-                  </View>
-                  <ChevronUp size={20} color={colors.mutedText} />
-                </TouchableOpacity>
-                <TextInput
-                  style={styles.notesInput}
-                  placeholder="Anything memorable about the visit?"
-                  placeholderTextColor={colors.mutedText}
-                  value={notes}
-                  onChangeText={setNotes}
-                  onFocus={() => setShowDatePicker(false)}
-                  multiline
-                  numberOfLines={4}
-                  textAlignVertical="top"
-                />
-              </>
-            ) : (
-              <TouchableOpacity
-                style={styles.collapsedStep}
-                onPress={() => toggleStep('notes')}
-                activeOpacity={0.85}
-              >
-                <View style={styles.collapsedStepText}>
-                  <StepEyebrow title="Notes" />
-                  <Text style={notes.trim().length > 0 ? styles.collapsedSummary : styles.stepHint}>
-                    {notes.trim().length > 0 ? notes.trim() : 'Optional'}
-                  </Text>
-                </View>
-                <ChevronDown size={20} color={colors.mutedText} />
-              </TouchableOpacity>
-            )}
-          </AnimatedSection>
-        )}
-
-        {sectionsRevealed && (
-          <AnimatedSection>
-            {activeStep === 'photos' ? (
-              <>
-                <TouchableOpacity
-                  style={styles.expandedHeader}
-                  onPress={() => toggleStep('photos')}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.collapsedStepText}>
-                    <StepEyebrow title="Upload Photo" />
-                    <Text style={styles.stepHint}>Optional</Text>
-                  </View>
-                  <ChevronUp size={20} color={colors.mutedText} />
-                </TouchableOpacity>
-                <View style={styles.photosContainer}>
-                  {photos.map((photo, index) => (
-                    <View key={`${photo.uri}-${index}`} style={styles.photoWrapper}>
-                      <Image source={{ uri: photo.uri }} style={styles.photoPreview} />
-                      <TouchableOpacity
-                        style={styles.removePhotoButton}
-                        onPress={() => removePhoto(index)}
-                      >
-                        <X size={16} color={colors.white} />
-                      </TouchableOpacity>
+            <Section
+              title="What Did You Like?"
+              done={selectedAttributes.length > 0}
+              open={activeStep === 'likes'}
+              onToggle={() => toggleStep('likes')}
+            >
+              <Text style={styles.counter}>
+                {selectedAttributes.length}/{MAX_LIKES}
+              </Text>
+              <View style={styles.chips}>
+                {likeCategories.map((category) => {
+                  const isSelected = selectedAttributes.includes(category.id);
+                  const isDisabled = !isSelected && selectedAttributes.length >= MAX_LIKES;
+                  return (
+                    <View key={category.id} style={isDisabled && styles.disabled}>
+                      <Tag
+                        label={category.label}
+                        iconXml={category.icon_svg_xml}
+                        dense
+                        variant={isSelected ? 'filled' : 'outlineDark'}
+                        onPress={isDisabled ? undefined : () => toggleAttribute(category.id)}
+                      />
                     </View>
-                  ))}
-                  {photos.length < 5 && (
-                    <TouchableOpacity style={styles.addPhotoButton} onPress={addPhoto}>
-                      <Camera size={26} color={colors.mutedText} />
-                      <Text style={styles.addPhotoText}>Add Photo</Text>
+                  );
+                })}
+              </View>
+            </Section>
+
+            <Section
+              title="Notes"
+              done={notes.trim().length > 0}
+              open={activeStep === 'notes'}
+              onToggle={() => toggleStep('notes')}
+            >
+              <TextInput
+                style={styles.textArea}
+                placeholder="Tell us about the coffee!"
+                placeholderTextColor={HINT_GREY}
+                value={notes}
+                onChangeText={setNotes}
+                onFocus={() => setShowDatePicker(false)}
+                multiline
+                textAlignVertical="top"
+              />
+            </Section>
+
+            <Section
+              title="Upload Photo"
+              done={photos.length > 0}
+              open={activeStep === 'photos'}
+              onToggle={() => toggleStep('photos')}
+            >
+              {photos.length === 0 ? (
+                <TouchableOpacity style={styles.uploadBox} onPress={addPhoto} activeOpacity={0.8}>
+                  <View style={styles.plusIcon}>
+                    <SvgXml xml={PLUS_16_SVG} width={16} height={16} />
+                  </View>
+                  <Text style={styles.uploadText}>Tap To Upload Image</Text>
+                </TouchableOpacity>
+              ) : (
+                <>
+                  <View style={styles.carousel} onLayout={handleCarouselLayout}>
+                    <ScrollView
+                      horizontal
+                      pagingEnabled
+                      showsHorizontalScrollIndicator={false}
+                      onMomentumScrollEnd={handleCarouselScroll}
+                    >
+                      {photos.map((photo, index) => (
+                        <Image
+                          key={`${photo.uri}-${index}`}
+                          source={{ uri: photo.uri }}
+                          style={[styles.carouselPhoto, { width: carouselWidth }]}
+                          contentFit="cover"
+                        />
+                      ))}
+                    </ScrollView>
+                    <TouchableOpacity
+                      style={styles.removePhoto}
+                      onPress={() => removePhoto(photoIndex)}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel="Remove photo"
+                    >
+                      <X size={16} color={colors.background} />
                     </TouchableOpacity>
-                  )}
-                </View>
-              </>
-            ) : (
-              <TouchableOpacity
-                style={styles.collapsedStep}
-                onPress={() => toggleStep('photos')}
-                activeOpacity={0.85}
-              >
-                <View style={styles.collapsedStepText}>
-                  <StepEyebrow title="Upload Photo" />
-                  <Text style={photos.length > 0 ? styles.collapsedSummary : styles.stepHint}>
-                    {photos.length > 0
-                      ? `${photos.length} photo${photos.length === 1 ? '' : 's'} selected`
-                      : 'Optional'}
-                  </Text>
-                </View>
-                <ChevronDown size={20} color={colors.mutedText} />
-              </TouchableOpacity>
-            )}
-          </AnimatedSection>
+                  </View>
+                  <View style={styles.carouselFooter}>
+                    <View style={styles.dots}>
+                      {photos.length > 1 &&
+                        photos.map((photo, index) => (
+                          <View
+                            key={`${photo.uri}-dot-${index}`}
+                            style={[styles.dot, index === photoIndex && styles.dotActive]}
+                          />
+                        ))}
+                    </View>
+                    {photos.length < MAX_PHOTOS && (
+                      <Tag label="+ Add Photo" dense variant="outlineDark" onPress={addPhoto} />
+                    )}
+                  </View>
+                </>
+              )}
+            </Section>
+          </>
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <View style={styles.actionBar}>
-        <TouchableOpacity
-          style={[styles.cancelButton, emphasizeSubmit && styles.cancelButtonNarrow]}
-          onPress={onCancel}
-          activeOpacity={0.85}
-        >
+        <TouchableOpacity style={styles.cancelButton} onPress={onCancel} activeOpacity={0.85}>
           <Text style={styles.cancelButtonText}>{cancelLabel}</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[
-            styles.continueButton,
-            emphasizeSubmit && styles.continueButtonWide,
-            !canSubmit && styles.continueButtonDisabled,
-          ]}
+          style={[styles.submitButton, !canSubmit && styles.submitButtonDisabled]}
           onPress={handleSubmitPress}
           disabled={!canSubmit}
           activeOpacity={0.9}
         >
-          <Text style={styles.continueButtonText}>
+          <Text style={styles.submitButtonText}>
             {submitting ? submittingLabel : submitLabel}
           </Text>
         </TouchableOpacity>
@@ -645,337 +734,292 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
-    paddingBottom: 140,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md * 2,
+    gap: 24,
   },
-  contextCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 24,
-    padding: 16,
-    marginBottom: 18,
+  title: {
+    ...type.h1,
+    color: colors.ink,
+  },
+  label: {
+    ...type.title1,
+    color: colors.ink,
+  },
+  centered: {
+    textAlign: 'center',
+  },
+  underlined: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.accent,
+  },
+  disabled: {
+    opacity: 0.4,
+  },
+
+  // Cafe card
+  cafeCard: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: colors.background,
     borderWidth: 1,
-    borderColor: colors.warmBorder,
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.04,
-    shadowRadius: 16,
-    elevation: 1,
+    borderColor: colors.separator,
+    borderRadius: radius.md,
+    overflow: 'hidden',
   },
-  contextLabel: {
-    fontSize: 12,
-    fontFamily: 'Lato-Bold',
-    color: colors.mutedText,
-    textTransform: 'uppercase',
-    letterSpacing: 0.7,
-    marginBottom: 8,
+  cafeImage: {
+    width: 50,
+    alignSelf: 'stretch',
+    minHeight: 50,
   },
-  dateLabel: {
-    marginTop: 16,
+  cafeImagePlaceholder: {
+    backgroundColor: colors.cream,
   },
-  field: {
-    backgroundColor: colors.surface,
-    borderRadius: 28,
-    padding: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.warmBorder,
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.05,
-    shadowRadius: 18,
-    elevation: 1,
-  },
-  stepEyebrow: {
-    fontSize: 13,
-    fontFamily: 'Lato-Bold',
-    color: colors.goldText,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 8,
-  },
-  optionalTag: {
-    fontSize: 11,
-    fontFamily: 'Lato-Regular',
-    color: '#707070',
-    textTransform: 'none',
-    letterSpacing: 0,
-  },
-  stepTitle: {
-    fontSize: 24,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: colors.primary,
-    lineHeight: 32,
-    marginBottom: 18,
-  },
-  stepHint: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: colors.mutedText,
-  },
-  dropdown: {
+  cafeBody: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.warmSurface,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    gap: spacing.sm,
+    padding: spacing.sm,
   },
-  dropdownText: {
-    fontSize: 16,
-    fontFamily: 'Lato-Bold',
-    color: colors.primary,
+  cafeText: {
     flex: 1,
+    gap: spacing.xs,
   },
-  dropdownPlaceholder: {
-    fontSize: 16,
-    fontFamily: 'Lato-Regular',
-    color: colors.mutedText,
-    flex: 1,
+  cafeName: {
+    ...type.title1,
+    color: colors.ink,
   },
-  dateDisplay: {
+  cafePlaceholder: {
+    ...type.body1,
+    color: HINT_GREY,
+  },
+  cafeMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.warmSurface,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    gap: spacing.xs,
   },
-  dateText: {
-    fontSize: 16,
-    fontFamily: 'Lato-Regular',
-    color: colors.primary,
-    flex: 1,
+  cafeMetaText: {
+    ...type.footnote1,
+    color: colors.slate,
   },
-  datePickerHeader: {
+
+  // Date / rating form controls
+  formControl: {
+    gap: spacing.sm,
+  },
+  inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 14,
-    paddingHorizontal: 2,
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
   },
-  datePickerHint: {
-    fontSize: 13,
-    fontFamily: 'Lato-Regular',
-    color: colors.mutedText,
+  inputText: {
+    ...type.body1,
+    color: colors.ink,
+    flex: 1,
   },
-  datePickerClose: {
-    fontSize: 14,
-    fontFamily: 'Lato-Bold',
-    color: colors.primary,
+  uploadText: {
+    ...type.body1,
+    color: colors.ink,
+  },
+  chevronOpen: {
+    transform: [{ rotate: '180deg' }],
   },
   datePickerWrap: {
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 18,
-    marginTop: 10,
     overflow: 'hidden',
   },
   datePickerWheel: {
     height: 180,
-    width: 310,
+    width: '100%',
   },
-  ratingControlRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 16,
-  },
-  ratingStarsBlock: {
-    alignItems: 'flex-start',
-  },
-  ratingValue: {
-    fontSize: 14,
-    fontFamily: 'Lato-Bold',
-    color: colors.goldText,
-    marginTop: 10,
-  },
-  loveButton: {
-    width: 50,
-    height: 50,
+  bigRating: {
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 8,
+    gap: spacing.sm,
   },
-  loveButtonActive: {
-    transform: [{ scale: 1.04 }],
+  ratingHint: {
+    ...type.body1,
+    color: HINT_GREY,
+    textAlign: 'center',
   },
-  loveButtonDisabled: {
-    opacity: 0.45,
+  bigBeans: {
+    width: '100%',
+    paddingVertical: spacing.sm,
   },
-  expandedHeader: {
+  compactRatingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
-    marginBottom: 8,
+    gap: 80,
   },
-  collapsedStep: {
+  compactBeans: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+  },
+
+  // Sections
+  section: {
+    gap: spacing.md,
+  },
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
+    gap: spacing.xs,
   },
-  collapsedStepText: {
+  sectionHeaderClosed: {
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.accent,
+  },
+  optional: {
+    ...type.footnote1,
+    color: HINT_GREY,
     flex: 1,
   },
-  collapsedSummary: {
-    fontSize: 16,
-    fontFamily: 'Lato-Bold',
-    color: colors.primary,
-  },
-  orderPillsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 16,
-  },
-  orderOtherLabel: {
-    fontSize: 13,
-    fontFamily: 'Lato-Bold',
-    color: colors.mutedText,
-    marginTop: 18,
-    marginBottom: 8,
-  },
-  orderOtherInput: {
-    backgroundColor: colors.warmSurface,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    fontFamily: 'Lato-Regular',
-    color: colors.primary,
-  },
-  attributesContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  attributeButton: {
+  sectionIcons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.warmSurface,
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderWidth: 1,
-    borderColor: colors.warmBorder,
+    gap: spacing.sm,
   },
-  attributeButtonActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+  checkCircle: {
+    backgroundColor: colors.ink,
+    borderRadius: radius.pill,
+    padding: spacing.xs,
   },
-  attributeButtonDisabled: {
-    opacity: 0.45,
+  sectionBody: {
+    gap: spacing.sm,
+    paddingBottom: spacing.md,
   },
-  attributeText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Bold',
-    color: colors.primary,
-  },
-  attributeTextActive: {
-    color: colors.white,
-  },
-  attributeTextDisabled: {
-    color: colors.mutedText,
-  },
-  notesInput: {
-    backgroundColor: colors.warmSurface,
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    fontSize: 16,
-    fontFamily: 'Lato-Regular',
-    color: colors.primary,
-    minHeight: 124,
-    lineHeight: 22,
-  },
-  photosContainer: {
+  chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: spacing.sm,
   },
-  photoWrapper: {
-    position: 'relative',
+  counter: {
+    ...type.footnote1,
+    color: HINT_GREY,
   },
-  photoPreview: {
-    width: 86,
-    height: 86,
-    borderRadius: 18,
+  textArea: {
+    ...type.body1,
+    color: colors.ink,
+    minHeight: 88,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm + spacing.xs,
+    paddingTop: spacing.sm + spacing.xs,
+    paddingBottom: spacing.sm + spacing.xs,
+    marginTop: spacing.sm,
   },
-  removePhotoButton: {
-    position: 'absolute',
-    top: -8,
-    right: -8,
-    backgroundColor: colors.danger,
-    borderRadius: 12,
+  // Single line, so Return can close the keyboard.
+  otherInput: {
+    ...type.body1,
+    color: colors.ink,
+    height: 40,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm + spacing.xs,
+    paddingVertical: 0,
+    marginTop: spacing.sm,
+  },
+
+  // Photos
+  uploadBox: {
+    height: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.cream,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.ink,
+    borderRadius: radius.md,
+  },
+  plusIcon: {
     width: 24,
     height: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addPhotoButton: {
-    width: 112,
-    height: 86,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: colors.warmBorder,
-    borderStyle: 'dashed',
-    backgroundColor: colors.background,
+  carousel: {
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
+  carouselPhoto: {
+    height: 240,
+  },
+  removePhoto: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    width: 28,
+    height: 28,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(15, 19, 18, 0.7)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addPhotoText: {
-    fontSize: 12,
-    fontFamily: 'Lato-Bold',
-    color: colors.mutedText,
-    marginTop: 6,
+  carouselFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 23,
   },
+  dots: {
+    flexDirection: 'row',
+    gap: spacing.xs + 2,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accent,
+  },
+  dotActive: {
+    backgroundColor: colors.ink,
+  },
+
+  // Action bar
   actionBar: {
     flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 18,
+    alignItems: 'center',
+    gap: 10,
+    padding: spacing.md,
     backgroundColor: colors.background,
-    borderTopWidth: 1,
-    borderTopColor: colors.warmBorder,
   },
   cancelButton: {
-    flex: 1,
+    backgroundColor: colors.cream,
     borderWidth: 1,
-    borderColor: colors.black,
-    borderRadius: 18,
-    paddingVertical: 16,
+    borderColor: colors.ink,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  cancelButtonNarrow: {
-    flex: 3,
+    justifyContent: 'center',
   },
   cancelButtonText: {
-    fontSize: 16,
-    fontFamily: 'Lato-Bold',
-    color: colors.black,
+    ...type.title1,
+    color: colors.ink,
   },
-  continueButton: {
+  submitButton: {
     flex: 1,
-    backgroundColor: colors.black,
-    borderRadius: 18,
-    paddingVertical: 16,
+    backgroundColor: colors.ink,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     alignItems: 'center',
+    justifyContent: 'center',
+    // Match the 1px border on Cancel so both buttons are the same height.
+    borderWidth: 1,
+    borderColor: colors.ink,
   },
-  continueButtonWide: {
-    flex: 7,
+  submitButtonDisabled: {
+    opacity: 0.4,
   },
-  continueButtonDisabled: {
-    opacity: 0.45,
-  },
-  continueButtonText: {
-    fontSize: 16,
-    fontFamily: 'Lato-Bold',
-    color: colors.white,
+  submitButtonText: {
+    ...type.title1,
+    color: colors.background,
   },
 });

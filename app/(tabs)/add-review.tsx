@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, StatusBar, Alert } from 'react-native';
+import { StyleSheet, StatusBar, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useReviews } from '../../context/ReviewContext';
@@ -93,10 +93,6 @@ export default function AddReviewScreen() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Add Review</Text>
-      </View>
-
       <ReviewForm
         key={formKey}
         cafe={selectedCafe}
@@ -116,19 +112,5 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.warmBorder,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontFamily: 'OtomanopeeOne-Regular',
-    color: colors.primary,
   },
 });

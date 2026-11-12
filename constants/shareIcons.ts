@@ -28,18 +28,22 @@ export const BEAN_WORDMARK_RATIO = 17.759 / 5.11035;
 //  - Mr. Bean's feet use outside-only strokes over a fill of the same colour,
 //    so a centred stroke draws the same pixels.
 
-const SHARE_BEAN_LEFT_D =
+export const SHARE_BEAN_LEFT_D =
   'M33.3972 113.639C32.8952 118.4 28.5971 121.831 23.8429 121.267C21.0674 120.937 18.6258 119.277 17.2981 116.818L6.35684 96.5488C-0.31548 84.1883 -1.80433 69.6834 2.21784 56.2252L7.2022 39.5474C10.6818 27.9044 17.8439 17.7041 27.6134 10.4775L34.7788 5.17721C38.039 2.76562 41.8784 1.25801 45.9084 0.806967L52.2834 0.0934683C59.2037 -0.681063 65.7429 3.42302 68.0545 9.99164C68.8059 12.1267 69.0628 14.4045 68.806 16.6532L67.6704 26.5973C66.296 38.6332 61.2175 49.9451 53.1367 58.9701L44.6986 68.3942C39.8865 73.7686 36.8895 80.5221 36.1329 87.6963L33.3972 113.639Z';
-const SHARE_BEAN_RIGHT_D =
+export const SHARE_BEAN_RIGHT_D =
   'M79.6161 8.59589C80.5546 2.99628 86.1885 -0.513653 91.6285 1.11215C94.6736 2.02222 97.0563 4.40361 97.9681 7.44823L106.608 36.2998C108.886 43.9061 109.757 51.8642 109.178 59.7831L108.183 73.3932C107.069 88.6261 99.545 102.671 87.4803 112.037L82.8763 115.611C78.2369 119.213 72.7126 121.498 66.8845 122.224L55.4977 123.645C49.2823 124.42 43.2115 121.376 40.1145 115.932C37.7454 111.767 37.4367 106.741 39.2783 102.318L47.5658 82.4119C49.8131 77.0141 52.8442 71.9773 56.5611 67.4639L67.0469 54.7314C71.0254 49.9005 73.6641 44.1087 74.6986 37.9365L79.6161 8.59589Z';
 
 // Each bean is two seeds, split into one SVG per seed so a half rating can show
 // a single seed. Every seed SVG keeps the full 110x124 viewBox, so a left and a
 // right seed stacked in the same box line up into the whole bean.
 
-const filledSeed = (d: string) => `<svg width="110" height="124" viewBox="0 0 110 124" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="${d}" fill="#F9F3ED"/>
+/** One seed of the share bean as a solid shape in any colour. The review form
+ *  reuses this with the Bean/Fill brown and Accent grey. */
+export const shareSeedSvg = (d: string, fill: string) => `<svg width="110" height="124" viewBox="0 0 110 124" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="${d}" fill="${fill}"/>
 </svg>`;
+
+const filledSeed = (d: string) => shareSeedSvg(d, '#F9F3ED');
 
 // The seeds don't overlap, so clipping each outline to its own seed draws the
 // same inside-only stroke as clipping both to the whole bean.

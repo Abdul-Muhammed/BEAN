@@ -10,15 +10,41 @@ import {
   BEAN_HALF_RATIO,
   BEAN_EMPTY_OPACITY,
 } from '@/constants/beans';
+import {
+  SHARE_BEAN_HEIGHT,
+  SHARE_BEAN_LEFT_D,
+  SHARE_BEAN_RIGHT_D,
+  SHARE_BEAN_WIDTH,
+  shareSeedSvg,
+} from '@/constants/shareIcons';
+import { colors } from '@/constants/theme';
 
 interface SwipeableBeanRatingProps {
   rating: number;
   onChange: (rating: number) => void;
+  /** Fired when the finger lifts after a tap or a swipe. */
+  onRelease?: () => void;
+  /**
+   * classic = the half-bean artwork used across the app (default).
+   * share = the Share Review bean shape in Bean/Fill brown with solid Accent grey
+   * empties, stretched to fill the row. Used by the review form.
+   */
+  variant?: 'classic' | 'share';
+  /** classic only: bean height in pt. */
   size?: number;
+  /** Gap between beans. */
   spacing?: number;
 }
 
 const BEAN_COUNT = 5;
+const SHARE_ASPECT = SHARE_BEAN_HEIGHT / SHARE_BEAN_WIDTH;
+
+const SHARE_SEEDS = {
+  leftFilled: shareSeedSvg(SHARE_BEAN_LEFT_D, colors.beanFill),
+  rightFilled: shareSeedSvg(SHARE_BEAN_RIGHT_D, colors.beanFill),
+  leftEmpty: shareSeedSvg(SHARE_BEAN_LEFT_D, colors.accent),
+  rightEmpty: shareSeedSvg(SHARE_BEAN_RIGHT_D, colors.accent),
+};
 
 function clampToHalfStep(raw: number) {
   const stepped = Math.round(raw * 2) / 2;
@@ -45,9 +71,35 @@ function BeanIcon({ size, fill }: { size: number; fill: Fill }) {
   );
 }
 
+/** Both seeds stacked in one box, as ShareBean does on the story card. A half
+ *  rating fills only the left seed. */
+function ShareBeanIcon({ width, fill }: { width: number; fill: Fill }) {
+  const height = width * SHARE_ASPECT;
+  return (
+    <View style={{ width, height }}>
+      <View style={StyleSheet.absoluteFill}>
+        <SvgXml
+          xml={fill === 'empty' ? SHARE_SEEDS.leftEmpty : SHARE_SEEDS.leftFilled}
+          width={width}
+          height={height}
+        />
+      </View>
+      <View style={StyleSheet.absoluteFill}>
+        <SvgXml
+          xml={fill === 'full' ? SHARE_SEEDS.rightFilled : SHARE_SEEDS.rightEmpty}
+          width={width}
+          height={height}
+        />
+      </View>
+    </View>
+  );
+}
+
 export default function SwipeableBeanRating({
   rating,
   onChange,
+  onRelease,
+  variant = 'classic',
   size = 42,
   spacing = 6,
 }: SwipeableBeanRatingProps) {
@@ -76,10 +128,17 @@ export default function SwipeableBeanRating({
     [rowWidth, onChange]
   );
 
+  const handleRelease = useCallback(() => {
+    onRelease?.();
+  }, [onRelease]);
+
   const tapGesture = Gesture.Tap()
     .maxDuration(400)
     .onEnd((event) => {
       runOnJS(applyRatingFromX)(event.x);
+    })
+    .onFinalize(() => {
+      runOnJS(handleRelease)();
     });
 
   const panGesture = Gesture.Pan()
@@ -89,14 +148,24 @@ export default function SwipeableBeanRating({
     })
     .onUpdate((event) => {
       runOnJS(applyRatingFromX)(event.x);
+    })
+    .onFinalize(() => {
+      runOnJS(handleRelease)();
     });
 
   const composed = Gesture.Simultaneous(tapGesture, panGesture);
 
+  const shareBeanWidth =
+    rowWidth > 0 ? (rowWidth - spacing * (BEAN_COUNT - 1)) / BEAN_COUNT : 0;
+
   return (
     <GestureDetector gesture={composed}>
       <View
-        style={[styles.row, { gap: spacing }]}
+        style={[
+          styles.row,
+          variant === 'share' ? styles.rowStretch : styles.rowClassic,
+          { gap: spacing },
+        ]}
         onLayout={handleLayout}
         collapsable={false}
       >
@@ -105,6 +174,11 @@ export default function SwipeableBeanRating({
           let fill: Fill = 'empty';
           if (rating >= beanIndex) fill = 'full';
           else if (rating >= beanIndex - 0.5) fill = 'half';
+          if (variant === 'share') {
+            return shareBeanWidth > 0 ? (
+              <ShareBeanIcon key={beanIndex} width={shareBeanWidth} fill={fill} />
+            ) : null;
+          }
           return <BeanIcon key={beanIndex} size={size} fill={fill} />;
         })}
       </View>
@@ -116,8 +190,14 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  rowClassic: {
     justifyContent: 'space-between',
     paddingVertical: 6,
+  },
+  // Fills its parent's width; the parent decides how wide the bean row is.
+  rowStretch: {
+    width: '100%',
   },
   bean: {
     flexDirection: 'row',
