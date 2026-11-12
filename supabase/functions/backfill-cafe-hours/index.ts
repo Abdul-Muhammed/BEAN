@@ -14,12 +14,19 @@ import {
 // Each call handles up to `limit` cafes and reports how many are left, so it is
 // run in a loop until `remaining` reaches 0. `dryRun: true` only counts.
 //
+// Google applies a per-minute rate limit to Place Details. When a call hits it,
+// the batch stops and the response says `rateLimited: true` with
+// `retryAfterSeconds`; the caller waits that long and calls again. `stalled`
+// is reserved for refusals that waiting won't fix (billing, daily quota, key).
+//
 // Cost: one Place Details request (opening_hours field only, no photos) per
 // cafe, roughly US$17-25 per 1,000 before Google's monthly free usage.
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 300;
-const CONCURRENCY = 5;
+// Gentle by default so a batch rarely trips the per-minute limit.
+const CONCURRENCY = 2;
+const RATE_LIMIT_WAIT_SECONDS = 60;
 const USD_PER_1000 = 20;
 
 serve(async (req) => {
@@ -88,13 +95,20 @@ serve(async (req) => {
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 
     // Refused and errored cafes stay unmarked and are retried by the next call.
-    // Stop looping when Google refuses, or a call makes no progress at all.
+    // A per-minute rate limit is waited out; any other refusal, or a call that
+    // makes no progress at all, stops the loop.
     const processed = tally.saved + tally.none;
+    const rateLimited =
+      tally.refused > 0 &&
+      Object.keys(statuses).every((s) => s !== 'REQUEST_DENIED' && s !== 'OVER_DAILY_LIMIT') &&
+      /rate.?limit/i.test(messages.OVER_QUERY_LIMIT ?? '');
     return jsonResponse({
       ...tally,
       googleCalls: tally.saved + tally.none + tally.refused + tally.error,
       remaining: Math.max(missing - processed, 0),
-      stalled: tally.refused > 0 || (processed === 0 && tally.error > 0),
+      rateLimited,
+      retryAfterSeconds: rateLimited ? RATE_LIMIT_WAIT_SECONDS : 0,
+      stalled: (tally.refused > 0 && !rateLimited) || (processed === 0 && tally.error > 0),
       statuses,
       messages,
     });
