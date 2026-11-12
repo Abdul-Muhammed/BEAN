@@ -349,3 +349,31 @@ export const SEARCH_16_SVG = `<svg width="16" height="16" viewBox="0 0 16 16" fi
 export function tintIcon(xml: string, color: string): string {
   return xml.replace(/#0F1312/gi, color).replace(/#474747/gi, color);
 }
+
+// Review form (Figma rj73f43oVHWbM7N9VhmVeP, "Log a Visit" 834:15093).
+
+/** Section / date dropdown chevron. Rotate 180° for the open state. */
+export const CHEVRON_DOWN_16_SVG = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M12.6667 6L8 10.6667L3.33333 6" stroke="#0F1312" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+/** Tick inside the black "section filled in" circle. */
+export const CHECK_12_CREAM_SVG = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M3 6L5.12132 8.12132L9.36351 3.87866" stroke="#F9F3ED" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+/** Plus in the dashed "Tap To Upload Image" box. */
+export const PLUS_16_SVG = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M8 0C8.55228 0 9 0.447715 9 1V15C9 15.5523 8.55228 16 8 16C7.44772 16 7 15.5523 7 15V1C7 0.447715 7.44772 0 8 0Z" fill-rule="evenodd" clip-rule="evenodd" fill="#474747"/>
+<path d="M0 8C0 7.44772 0.447715 7 1 7H15C15.5523 7 16 7.44772 16 8C16 8.55228 15.5523 9 15 9H1C0.447715 9 0 8.55228 0 8Z" fill-rule="evenodd" clip-rule="evenodd" fill="#474747"/>
+</svg>`;
+
+/** Rating row favourite, active. */
+export const HEART_40_FILLED_SVG = `<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M20 12.8238C16.6667 4.99973 5 5.83306 5 15.8331C5 25.8332 20 34.1668 20 34.1668C20 34.1668 35 25.8332 35 15.8331C35 5.83306 23.3333 4.99973 20 12.8238Z" fill="#D1495B" stroke="#D1495B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+/** Rating row favourite, empty (outline of the same heart). */
+export const HEART_40_SVG = `<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M20 12.8238C16.6667 4.99973 5 5.83306 5 15.8331C5 25.8332 20 34.1668 20 34.1668C20 34.1668 35 25.8332 35 15.8331C35 5.83306 23.3333 4.99973 20 12.8238Z" stroke="#0F1312" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;

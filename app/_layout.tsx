@@ -21,6 +21,7 @@ import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { UserProfileProvider, useUserProfile } from '@/hooks/useUserProfile';
 import { LocationProvider } from '@/hooks/useLocation';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -200,6 +201,9 @@ export default function RootLayout() {
         }}
       >
       <GestureHandlerRootView style={{ flex: 1 }}>
+        {/* Off by default so screens using KeyboardAvoidingView keep the stock
+            keyboard behaviour; ReviewForm switches it on while mounted. */}
+        <KeyboardProvider enabled={false}>
         <BottomSheetModalProvider>
         <AuthProvider>
           <UserProfileProvider>
@@ -224,6 +228,7 @@ export default function RootLayout() {
           </UserProfileProvider>
         </AuthProvider>
         </BottomSheetModalProvider>
+        </KeyboardProvider>
       </GestureHandlerRootView>
       </PersistQueryClientProvider>
     </ErrorBoundary>
