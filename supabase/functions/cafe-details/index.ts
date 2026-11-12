@@ -166,6 +166,8 @@ serve(async (req) => {
         types: Array.isArray(details.types) ? details.types : null,
         ...(photos[0] ? { thumbnail_url: photos[0] } : {}),
         details_fetched_at: new Date().toISOString(),
+        // This Details call included opening_hours, so the hours are current.
+        hours_fetched_at: new Date().toISOString(),
         details_expires_at: expiresAt.toISOString(),
         updated_at: new Date().toISOString(),
       },

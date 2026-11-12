@@ -1,5 +1,6 @@
 import { CafeHours } from '../data/mockData';
 import { supabase } from '../lib/supabase';
+import { isOpenNow, todayHoursLabel } from '../lib/openingHours';
 
 // All Google Places access now goes through Supabase Edge Functions, which own
 // the server-side Google key and treat the Postgres `cafes` table + Storage as
@@ -131,64 +132,19 @@ export async function getPlaceDetails(placeId: string): Promise<any | null> {
   }
 }
 
-// Parse opening hours from Google Places API response
+// Parse opening hours from a Google Places opening_hours object. Open/closed is
+// worked out in New Zealand time and handles split days, overnight hours and
+// 24/7 cafes (see lib/openingHours.ts, which mirrors public.cafe_open_now).
 export function parseOpeningHours(openingHours: any): CafeHours | null {
-  if (!openingHours || !openingHours.periods) {
-    return null;
-  }
+  const periods = openingHours?.periods;
+  const openNow = isOpenNow(periods);
+  if (openNow === null) return null;
 
-  const now = new Date();
-  const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-  const currentTime = now.getHours() * 100 + now.getMinutes(); // e.g., 1530 for 3:30pm
-
-  // Find today's hours
-  const todayPeriod = openingHours.periods.find((period: any) => {
-    // Google uses 0 = Sunday, 1 = Monday, etc.
-    return period.open && period.open.day === currentDay;
-  });
-
-  if (!todayPeriod || !todayPeriod.open) {
-    return {
-      openNow: false,
-      currentHours: 'Closed'
-    };
-  }
-
-  const openTime = parseInt(todayPeriod.open.time); // e.g., 1530
-  let closeTime: number | null = null;
-
-  // Check if there's a close time for today
-  if (todayPeriod.close && todayPeriod.close.day === currentDay) {
-    closeTime = parseInt(todayPeriod.close.time);
-  } else {
-    // Check if it closes tomorrow (e.g., open until 2am)
-    const tomorrowPeriod = openingHours.periods.find((period: any) => {
-      return period.close && period.close.day === (currentDay + 1) % 7;
-    });
-    if (tomorrowPeriod && tomorrowPeriod.close) {
-      closeTime = parseInt(tomorrowPeriod.close.time);
-    }
-  }
-
-  const isOpenNow = closeTime ? (currentTime >= openTime && currentTime < closeTime) : false;
-
-  // Format time strings (e.g., 1530 -> "3:30pm")
-  const formatTime = (time: number): string => {
-    const hours = Math.floor(time / 100);
-    const minutes = time % 100;
-    const period = hours >= 12 ? 'pm' : 'am';
-    const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
-    return `${displayHours}:${minutes.toString().padStart(2, '0')}${period}`;
-  };
-
-  const currentHoursString = closeTime
-    ? `${isOpenNow ? 'Open Now' : 'Closed'} ${formatTime(openTime)} - ${formatTime(closeTime)}`
-    : `${isOpenNow ? 'Open Now' : 'Closed'} ${formatTime(openTime)}`;
-
+  const today = todayHoursLabel(periods);
   return {
-    openNow: isOpenNow,
-    currentHours: currentHoursString,
-    weeklyHours: openingHours.periods
+    openNow,
+    currentHours: `${openNow ? 'Open Now' : 'Closed'}${today ? ` ${today}` : ''}`,
+    weeklyHours: periods,
   };
 }
 
@@ -210,7 +166,8 @@ export function convertPlaceToCafe(place: any): any {
     id: place.place_id || place.id,
     name: place.name,
     location: place.formatted_address || place.vicinity || 'Unknown location',
-    rating: place.rating || 4.0,
+    // Unrated cafes stay at 0 so they never count as Top Rated.
+    rating: typeof place.rating === 'number' ? place.rating : 0,
     image: photoUrl,
     description: `A popular cafe located at ${place.formatted_address || place.vicinity || 'this area'}. ${place.rating ? `Rated ${place.rating} stars by Google users.` : ''}`,
     reviews: [],
