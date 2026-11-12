@@ -41,6 +41,13 @@ const DEFAULT_LATITUDE_DELTA = 0.0422;
 const DEFAULT_LONGITUDE_DELTA = 0.0211;
 const FOCUS_LATITUDE_DELTA = 0.012;
 const FOCUS_LONGITUDE_DELTA = 0.006;
+const TOP_RATED_MIN = 4.5;
+
+/** The rating floor the server applies: Top Rated and the min-rating slider combined. */
+function serverMinRating(f: Filters): number | null {
+  const floor = Math.max(f.topRated ? TOP_RATED_MIN : 0, f.minRating);
+  return floor > 0 ? floor : null;
+}
 
 function regionAround(coords: { latitude: number; longitude: number }): Region {
   return {
@@ -116,7 +123,12 @@ export default function DiscoverScreen() {
   }, []);
 
   const { pins, list, total, isLoading, isFetching, error, hasNextPage, fetchNextPage, isFetchingNextPage } =
-    useViewportCafes({ region: settledRegion, attributes: filters.categories });
+    useViewportCafes({
+      region: settledRegion,
+      attributes: filters.categories,
+      openNow: filters.openNow,
+      minRating: serverMinRating(filters),
+    });
 
   const handleEnableLocation = useCallback(async () => {
     setIsRequestingLocation(true);
@@ -146,18 +158,14 @@ export default function DiscoverScreen() {
 
   const distanceFor = useCallback((cafe: Cafe) => distanceLabelFor(coords, cafe), [coords]);
 
-  // Client-side filters. Categories are applied by the server (AND across
-  // the selection) for both pins and list; this checks them again only for the
-  // sheet's live count over an uncommitted draft.
-  const matchesFilters = useCallback(
-    (cafe: { id: string; rating: number | null; hours?: Cafe['hours'] }, f: Filters) => {
-      const rating = cafe.rating ?? 0;
-      if (f.openNow && cafe.hours?.openNow !== true) return false;
-      if (f.topRated && rating < 4.5) return false;
-      if (f.saved && !isBookmarked(cafe.id)) return false;
-      if (f.liked && !isFavorited(cafe.id)) return false;
-      if (f.alreadyRated && !reviewedCafeIds.has(cafe.id)) return false;
-      if (f.minRating > 0 && rating < f.minRating) return false;
+  // Categories, Open Now and the rating floor are applied by the server, so the
+  // map, the list pages and the total agree. Only the per-user filters (saved,
+  // liked, already rated) are applied here.
+  const matchesUserFilters = useCallback(
+    (id: string, f: Filters) => {
+      if (f.saved && !isBookmarked(id)) return false;
+      if (f.liked && !isFavorited(id)) return false;
+      if (f.alreadyRated && !reviewedCafeIds.has(id)) return false;
       return true;
     },
     [isBookmarked, isFavorited, reviewedCafeIds]
@@ -167,27 +175,32 @@ export default function DiscoverScreen() {
   // Cafe objects; re-shaping would give every memoized card a new `cafe` prop.
   const shapedCafes = useMemo(() => list.map(cardToCafe), [list]);
   const listCafes = useMemo(
-    () => shapedCafes.filter((cafe) => matchesFilters(cafe, filters)),
-    [shapedCafes, matchesFilters, filters]
+    () => shapedCafes.filter((cafe) => matchesUserFilters(cafe.id, filters)),
+    [shapedCafes, matchesUserFilters, filters]
   );
 
   const visiblePins = useMemo(
-    () =>
-      pins.filter((pin: MapPin) =>
-        matchesFilters({ id: pin.place_id, rating: pin.rating }, filters)
-      ),
-    [pins, matchesFilters, filters]
+    () => pins.filter((pin: MapPin) => matchesUserFilters(pin.place_id, filters)),
+    [pins, matchesUserFilters, filters]
   );
 
+  // Live count for the sheet's uncommitted draft. Exact only when the draft
+  // asks the server for the same thing as what's on screen: then it is the
+  // server total, or (with per-user filters) a count over the loaded cards once
+  // every page is in. Otherwise null, and the button shows no number rather
+  // than a wrong one.
   const countFor = useCallback(
-    (f: Filters) =>
-      list.filter((card) => {
-        if (!matchesFilters({ id: card.place_id, rating: card.rating }, f)) return false;
-        if (f.categories.length === 0) return true;
-        const ids = new Set(card.attributes.map((a) => a.attribute));
-        return f.categories.every((id) => ids.has(id));
-      }).length,
-    [list, matchesFilters]
+    (f: Filters): number | null => {
+      const sameServerQuery =
+        f.openNow === filters.openNow &&
+        serverMinRating(f) === serverMinRating(filters) &&
+        f.categories.join(',') === filters.categories.join(',');
+      if (!sameServerQuery) return null;
+      if (!f.saved && !f.liked && !f.alreadyRated) return total;
+      if (hasNextPage) return null;
+      return list.filter((card) => matchesUserFilters(card.place_id, f)).length;
+    },
+    [filters, total, hasNextPage, list, matchesUserFilters]
   );
 
   // When exactly one of Saved/Liked is filtered, style by that filter so the
@@ -224,6 +237,7 @@ export default function DiscoverScreen() {
               longitude: pin.longitude,
               thumbnail_url: null,
               distance_meters: null,
+              open_now: pin.open_now,
               attributes: [],
             })
           );

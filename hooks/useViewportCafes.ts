@@ -41,8 +41,13 @@ interface StoredViewport {
   page: BboxPage;
 }
 
-function queryKeyFor(bboxKey: string, attributes: string[]) {
-  return ['cafes-bbox', bboxKey, attributes.join(',')] as const;
+function queryKeyFor(
+  bboxKey: string,
+  attributes: string[],
+  openNow: boolean,
+  minRating: number | null
+) {
+  return ['cafes-bbox', bboxKey, attributes.join(','), openNow, minRating] as const;
 }
 
 // The last viewport the user saw, read once per app launch. Seeding the query
@@ -72,10 +77,16 @@ const EMPTY_LIST: CafeCard[] = [];
 export function useViewportCafes({
   region,
   attributes,
+  openNow = false,
+  minRating = null,
   enabled = true,
 }: {
   region: ViewportRegion | null;
   attributes: string[];
+  /** Server-side: drop cafes known to be closed right now. */
+  openNow?: boolean;
+  /** Server-side: drop cafes rated below this, and unrated ones. */
+  minRating?: number | null;
   enabled?: boolean;
 }) {
   const queryClient = useQueryClient();
@@ -83,14 +94,18 @@ export function useViewportCafes({
   const bbox = useMemo(() => (region ? snapBbox(bboxFromRegion(region)) : null), [region]);
   const bboxKey = bbox ? `${bbox.swLat},${bbox.swLng},${bbox.neLat},${bbox.neLng}` : '';
   const attrKey = attributes.join(',');
+  const rating = minRating && minRating > 0 ? minRating : null;
+  // Any server-side filter. The stored cold-start viewport and the Google
+  // backfill only apply to the unfiltered view.
+  const filtered = !!attrKey || openNow || rating !== null;
   const queryKey = useMemo(
-    () => queryKeyFor(bboxKey, attrKey ? attrKey.split(',') : []),
-    [bboxKey, attrKey]
+    () => queryKeyFor(bboxKey, attrKey ? attrKey.split(',') : [], openNow, rating),
+    [bboxKey, attrKey, openNow, rating]
   );
 
   // Seed from the stored viewport when it is exactly this one.
   useEffect(() => {
-    if (!bboxKey || attrKey) return;
+    if (!bboxKey || filtered) return;
     let cancelled = false;
     readStoredViewport().then((stored) => {
       if (cancelled || !stored || stored.key !== bboxKey) return;
@@ -106,7 +121,7 @@ export function useViewportCafes({
     return () => {
       cancelled = true;
     };
-  }, [bboxKey, attrKey, queryClient, queryKey]);
+  }, [bboxKey, filtered, queryClient, queryKey]);
 
   const query = useInfiniteQuery({
     queryKey,
@@ -119,6 +134,8 @@ export function useViewportCafes({
         listLimit: LIST_PAGE_SIZE,
         // Further list pages don't need the pins again.
         includePins: pageParam === 0,
+        openNow,
+        minRating: rating,
         signal,
       }),
     getNextPageParam: (last) => last.nextCursor ?? undefined,
@@ -144,17 +161,17 @@ export function useViewportCafes({
 
   // Remember the unfiltered first page for the next cold start.
   useEffect(() => {
-    if (query.isPlaceholderData || !firstPage || attrKey || !bboxKey) return;
+    if (query.isPlaceholderData || !firstPage || filtered || !bboxKey) return;
     const payload: StoredViewport = { key: bboxKey, page: firstPage };
     AsyncStorage.setItem(LAST_VIEWPORT_KEY, JSON.stringify(payload)).catch(() => {});
     storedViewport = Promise.resolve(payload);
-  }, [firstPage, query.isPlaceholderData, attrKey, bboxKey]);
+  }, [firstPage, query.isPlaceholderData, filtered, bboxKey]);
 
   // Background Google backfill for sparse, unfiltered, street-level views. Never
   // awaited by the UI; when it adds cafes the viewport is refetched.
   const backfilledRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (!region || !firstPage || query.isPlaceholderData || attrKey) return;
+    if (!region || !firstPage || query.isPlaceholderData || filtered) return;
     if (firstPage.pins.length >= BACKFILL_MIN_PINS) return;
     if (zoomForLongitudeDelta(region.longitudeDelta) < BACKFILL_MIN_ZOOM) return;
     if (backfilledRef.current.has(bboxKey)) return;
@@ -179,7 +196,7 @@ export function useViewportCafes({
         }
       })
       .catch(() => {});
-  }, [region, firstPage, query.isPlaceholderData, attrKey, bboxKey, queryClient, queryKey]);
+  }, [region, firstPage, query.isPlaceholderData, filtered, bboxKey, queryClient, queryKey]);
 
   return {
     pins,

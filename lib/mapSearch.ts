@@ -20,6 +20,8 @@ export interface MapPin {
   latitude: number;
   longitude: number;
   rating: number | null;
+  /** Open right now (NZ time); null when hours are unknown. */
+  open_now: boolean | null;
   pin_tier: PinTier;
 }
 
@@ -32,6 +34,8 @@ export interface CafeCard {
   longitude: number | null;
   thumbnail_url: string | null;
   distance_meters: number | null;
+  /** Open right now (NZ time) as of when it was fetched; null when unknown. */
+  open_now: boolean | null;
   attributes: { attribute: string; votes: number }[];
 }
 
@@ -128,6 +132,10 @@ function toNumber(value: unknown): number | null {
   return null;
 }
 
+function toOpenNow(value: unknown): boolean | null {
+  return typeof value === 'boolean' ? value : null;
+}
+
 function parseCard(raw: any): CafeCard {
   return {
     place_id: raw.place_id,
@@ -138,6 +146,7 @@ function parseCard(raw: any): CafeCard {
     longitude: toNumber(raw.longitude),
     thumbnail_url: raw.thumbnail_url ?? null,
     distance_meters: toNumber(raw.distance_meters),
+    open_now: toOpenNow(raw.open_now),
     attributes: Array.isArray(raw.attributes) ? raw.attributes : [],
   };
 }
@@ -149,10 +158,22 @@ export async function fetchCafesInBbox(
     cursor?: number;
     listLimit?: number;
     includePins?: boolean;
+    /** Drop cafes known to be closed right now (unknown hours stay). */
+    openNow?: boolean;
+    /** Drop cafes rated below this, and unrated cafes. */
+    minRating?: number | null;
     signal?: AbortSignal;
   } = {}
 ): Promise<BboxPage> {
-  const { attributes = [], cursor = 0, listLimit = 20, includePins = true, signal } = options;
+  const {
+    attributes = [],
+    cursor = 0,
+    listLimit = 20,
+    includePins = true,
+    openNow = false,
+    minRating = null,
+    signal,
+  } = options;
 
   let request = supabase.rpc('cafes_in_bbox', {
     p_sw_lat: bbox.swLat,
@@ -164,6 +185,8 @@ export async function fetchCafesInBbox(
     p_list_limit: listLimit,
     p_known_ids: knownIds(),
     p_include_pins: includePins,
+    p_open_now: openNow,
+    p_min_rating: minRating && minRating > 0 ? minRating : null,
   });
   if (signal) request = request.abortSignal(signal);
 
@@ -178,6 +201,7 @@ export async function fetchCafesInBbox(
       latitude: toNumber(p.latitude),
       longitude: toNumber(p.longitude),
       rating: toNumber(p.rating),
+      open_now: toOpenNow(p.open_now),
       pin_tier: p.pin_tier === 'full' ? 'full' : 'mini',
     }))
     .filter(
@@ -187,8 +211,18 @@ export async function fetchCafesInBbox(
 
   const rawList: any[] = Array.isArray(payload.list) ? payload.list : [];
   rememberCards(rawList.filter((c) => !c.known).map(parseCard));
+  // Known cards come back as an id plus open_now, which changes over time, so
+  // refresh just that field on the stored card.
   const list = rawList
-    .map((c) => cardStore.get(c.place_id))
+    .map((c) => {
+      const stored = cardStore.get(c.place_id);
+      if (!stored || !c.known) return stored;
+      const openNow = toOpenNow(c.open_now);
+      if (stored.open_now === openNow) return stored;
+      const updated = { ...stored, open_now: openNow };
+      cardStore.set(updated.place_id, updated);
+      return updated;
+    })
     .filter((c): c is CafeCard => !!c && isNzPlace(c));
 
   return {
@@ -243,6 +277,11 @@ export function cardToCafe(card: CafeCard): Cafe {
     photos: [image],
     latitude: card.latitude ?? undefined,
     longitude: card.longitude ?? undefined,
+    // Only open/closed is known here; the cafe screen fills in the times.
+    hours:
+      typeof card.open_now === 'boolean'
+        ? { openNow: card.open_now, currentHours: card.open_now ? 'Open Now' : 'Closed' }
+        : undefined,
   };
 }
 

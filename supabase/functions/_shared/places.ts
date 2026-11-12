@@ -242,6 +242,8 @@ export async function upsertCafeFromPlace(
   const { error } = await supabase.from('cafes').upsert(row, { onConflict: 'place_id' });
   if (error) {
     console.warn('cafes upsert failed:', error.message);
+  } else {
+    fetchMissingHours(supabase, [placeId]);
   }
 
   return thumbnailUrl;
@@ -258,6 +260,91 @@ export function runInBackground(work: Promise<unknown>): void {
   if (runtime && typeof runtime.waitUntil === 'function') {
     runtime.waitUntil(guarded);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Opening hours
+// ---------------------------------------------------------------------------
+
+// Most cafes fetched for hours in one background pass, so a single cold-area
+// request can't fan out into an unbounded Google bill.
+const MAX_HOURS_PER_PASS = 40;
+const HOURS_CONCURRENCY = 5;
+
+export type HoursFetchResult = 'saved' | 'none' | 'error';
+
+// Ask Google Place Details for opening_hours only (no photos, no other
+// fields) and store it with hours_fetched_at. A cafe Google lists without
+// hours is still marked fetched, so it is never billed again; transient
+// failures leave it unmarked so a later pass retries.
+export async function fetchHoursOnly(
+  supabase: SupabaseClient,
+  placeId: string
+): Promise<HoursFetchResult> {
+  if (!placeId || !GOOGLE_PLACES_API_KEY) return 'error';
+  try {
+    const res = await fetch(
+      `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}` +
+        `&fields=opening_hours&key=${GOOGLE_PLACES_API_KEY}`
+    );
+    const data = await res.json();
+    if (data.status !== 'OK' && data.status !== 'NOT_FOUND') {
+      console.warn(`Hours fetch for ${placeId} failed: ${data.status}`);
+      return 'error';
+    }
+    const hours = data.status === 'OK' ? data.result?.opening_hours ?? null : null;
+    const { error } = await supabase
+      .from('cafes')
+      .update({
+        // Keep periods (what open-now is computed from) and the display text;
+        // drop Google's open_now snapshot, which is stale as soon as stored.
+        opening_hours: hours
+          ? { periods: hours.periods ?? [], weekday_text: hours.weekday_text ?? [] }
+          : null,
+        hours_fetched_at: new Date().toISOString(),
+      })
+      .eq('place_id', placeId);
+    if (error) {
+      console.warn(`Hours save for ${placeId} failed:`, error.message);
+      return 'error';
+    }
+    return hours ? 'saved' : 'none';
+  } catch (error) {
+    console.warn(
+      `Hours fetch for ${placeId} errored:`,
+      error instanceof Error ? error.message : String(error)
+    );
+    return 'error';
+  }
+}
+
+// Fetch hours, in the background, for whichever of these cafes have never
+// had them fetched. Cafes already fetched cost nothing.
+export function fetchMissingHours(supabase: SupabaseClient, placeIds: string[]): void {
+  const ids = Array.from(new Set(placeIds.filter(Boolean)));
+  if (ids.length === 0) return;
+
+  runInBackground(
+    (async () => {
+      const { data, error } = await supabase
+        .from('cafes')
+        .select('place_id')
+        .in('place_id', ids)
+        .is('hours_fetched_at', null)
+        .limit(MAX_HOURS_PER_PASS);
+      if (error) {
+        console.warn('Missing-hours lookup failed:', error.message);
+        return;
+      }
+      const queue = (data ?? []).map((row: { place_id: string }) => row.place_id);
+      const worker = async () => {
+        for (let id = queue.shift(); id; id = queue.shift()) {
+          await fetchHoursOnly(supabase, id);
+        }
+      };
+      await Promise.all(Array.from({ length: HOURS_CONCURRENCY }, worker));
+    })()
+  );
 }
 
 // Upsert many Google "basic" results into `cafes` in one statement, then cache
@@ -289,6 +376,12 @@ export async function upsertCafesFromPlaces(
     console.warn('cafes batch upsert failed:', error.message);
     return;
   }
+
+  // Newly found cafes get their opening hours once, so Open Now covers them.
+  fetchMissingHours(
+    supabase,
+    rows.map((row) => row.place_id)
+  );
 
   const withPhotos = places
     .slice(0, thumbnailCount)

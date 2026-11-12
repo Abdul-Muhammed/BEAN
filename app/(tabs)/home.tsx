@@ -39,6 +39,7 @@ import {
   type CafeAttribute,
 } from '../../lib/cafeAttributes';
 import { getUnreadFollowCount } from '../../lib/follows';
+import { getOpenStatus } from '../../lib/openStatus';
 import { getNotificationsLastSeen } from '../../lib/notifications';
 import { approximateDistanceMeters, distanceLabelFor } from '../../lib/geo';
 import {
@@ -67,6 +68,17 @@ const NOTIFICATIONS_CHECK_INTERVAL_MS = 30_000;
 
 /** How many cards a section shows before deferring to Discover. */
 const SECTION_CARD_LIMIT = 3;
+
+/** Google rating a cafe needs for the Top Rated chip. */
+const TOP_RATED_MIN = 4.5;
+
+// Open/closed changes through the day, so re-check it on focus once it is
+// older than this.
+const OPEN_STATUS_MAX_AGE_MS = 5 * 60 * 1000;
+
+// How many cafes each preference section asks the server for. More than it
+// shows, so a section still fills when Open Now or Top Rated drops some.
+const SECTION_FETCH_LIMIT = 10;
 
 interface CafeSection {
   /** cafe_categories id, or "near-me" for the leading section. */
@@ -109,6 +121,9 @@ export default function HomeScreen() {
     new Map()
   );
   const [attributeRows, setAttributeRows] = useState<AttributeCafeRow[]>([]);
+  // Live open/closed (NZ time) for every cafe on screen, from the server.
+  // Missing or null means the hours are unknown.
+  const [openStatus, setOpenStatus] = useState<Map<string, boolean | null>>(new Map());
   const filtersSheetRef = useRef<FiltersBottomSheetHandle>(null);
   // Coords of the last successful nearby load, so a re-focus that didn't move
   // the user doesn't trigger a redundant network round-trip.
@@ -236,22 +251,28 @@ export default function HomeScreen() {
     ? profile!.preferences
     : [];
 
-  // Attributes for every cafe currently in context, in one query. Refreshed
-  // when the set of cafes changes so a newly reviewed cafe picks up its chips.
-  const cafeIdsKey = cafes.map((c) => c.id).join(',');
+  // Attributes for every cafe Home can show (context cafes and preference
+  // section rows), in one query, so chips render and the category filter works
+  // in every section. Refreshed when that set changes.
+  const cafeIdsKey = useMemo(
+    () =>
+      Array.from(new Set([...cafes.map((c) => c.id), ...attributeRows.map((r) => r.place_id)]))
+        .sort()
+        .join(','),
+    [cafes, attributeRows]
+  );
   useEffect(() => {
     let cancelled = false;
-    if (cafes.length === 0) {
+    if (!cafeIdsKey) {
       setCafeAttributes(new Map());
       return;
     }
-    getAttributesForCafes(cafes.map((c) => c.id)).then((map) => {
+    getAttributesForCafes(cafeIdsKey.split(',')).then((map) => {
       if (!cancelled) setCafeAttributes(map);
     });
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cafeIdsKey]);
 
   // One round trip for every preference section, ordered nearest-first with no
@@ -266,7 +287,7 @@ export default function HomeScreen() {
     getCafesByAttributes(preferenceIds, {
       latitude: coords?.latitude,
       longitude: coords?.longitude,
-      limitPer: SECTION_CARD_LIMIT,
+      limitPer: SECTION_FETCH_LIMIT,
     }).then((rows) => {
       if (!cancelled) setAttributeRows(rows);
     });
@@ -275,6 +296,30 @@ export default function HomeScreen() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preferenceKey, coords?.latitude, coords?.longitude]);
+
+  // Open/closed for the same set of cafes. Refetched when that set changes,
+  // and on focus once it is stale, so a cafe that has closed since doesn't
+  // pass Open Now. Ids no longer on screen can linger in the map harmlessly.
+  const openStatusFetchedAtRef = useRef(0);
+  const loadOpenStatus = useCallback(() => {
+    if (!cafeIdsKey) return undefined;
+    let cancelled = false;
+    getOpenStatus(cafeIdsKey.split(',')).then((map) => {
+      if (cancelled) return;
+      openStatusFetchedAtRef.current = Date.now();
+      setOpenStatus(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [cafeIdsKey]);
+  useEffect(() => loadOpenStatus(), [loadOpenStatus]);
+  useFocusEffect(
+    useCallback(() => {
+      if (Date.now() - openStatusFetchedAtRef.current < OPEN_STATUS_MAX_AGE_MS) return;
+      return loadOpenStatus();
+    }, [loadOpenStatus])
+  );
 
   const categoryById = useMemo(() => {
     const map = new Map<string, CafeCategory>();
@@ -289,8 +334,12 @@ export default function HomeScreen() {
   // committed set with identical logic. Mirrors the Discover screen.
   const matchesFilters = useCallback(
     (cafe: Cafe, f: Filters) => {
-      if (f.openNow && cafe.hours?.openNow !== true) return false;
-      if (f.topRated && cafe.rating < 4.5) return false;
+      // Open Now hides only cafes known to be closed; unknown hours stay.
+      if (f.openNow) {
+        const open = openStatus.has(cafe.id) ? openStatus.get(cafe.id) : cafe.hours?.openNow;
+        if (open === false) return false;
+      }
+      if (f.topRated && !(cafe.rating >= TOP_RATED_MIN)) return false;
       if (f.saved && !isBookmarked(cafe.id)) return false;
       if (f.liked && !isFavorited(cafe.id)) return false;
       if (f.minRating > 0 && cafe.rating < f.minRating) return false;
@@ -300,7 +349,7 @@ export default function HomeScreen() {
       }
       return true;
     },
-    [cafeAttributes, isBookmarked, isFavorited]
+    [cafeAttributes, isBookmarked, isFavorited, openStatus]
   );
 
   const countFor = useCallback(
@@ -335,9 +384,11 @@ export default function HomeScreen() {
       byAttribute.set(row.attribute, list);
     });
 
+    // The quick filters apply to every section, not just Near Me. A section
+    // left with no matches is hidden.
     preferenceIds.forEach((id) => {
-      const matches = byAttribute.get(id);
-      if (!matches || matches.length === 0) return;
+      const matches = (byAttribute.get(id) ?? []).filter((cafe) => matchesFilters(cafe, filters));
+      if (matches.length === 0) return;
       list.push({
         id,
         title: categoryById.get(id)?.label ?? id,
@@ -349,7 +400,7 @@ export default function HomeScreen() {
     // preferenceIds is rebuilt each render from profile.preferences; keying the
     // memo on the joined ids keeps it from invalidating on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attributeRows, categoryById, isFallback, nearMe, preferenceIds.join(',')]);
+  }, [attributeRows, categoryById, filters, isFallback, matchesFilters, nearMe, preferenceIds.join(',')]);
 
   const toggleQuickFilter = useCallback(
     (key: 'openNow' | 'topRated') => setFilters((prev) => ({ ...prev, [key]: !prev[key] })),

@@ -33,8 +33,11 @@ export interface FiltersBottomSheetHandle {
 interface FiltersBottomSheetProps {
   committed: Filters;
   onApply: (filters: Filters) => void;
-  /** Live count of matching cafes for a given draft (over the nearby list set). */
-  countFor: (filters: Filters) => number;
+  /**
+   * Live count of matching cafes for a given draft, or null when the screen
+   * can't know it without asking the server (the button then omits the number).
+   */
+  countFor: (filters: Filters) => number | null;
 }
 
 const FiltersBottomSheet = forwardRef<
@@ -215,7 +218,7 @@ const FiltersBottomSheet = forwardRef<
             activeOpacity={0.9}
           >
             <Text style={styles.showButtonText}>
-              {count === 1 ? 'Show 1 Cafe' : `Show ${count} Cafes`}
+              {count === null ? 'Show Cafes' : count === 1 ? 'Show 1 Cafe' : `Show ${count} Cafes`}
             </Text>
           </TouchableOpacity>
         </View>
