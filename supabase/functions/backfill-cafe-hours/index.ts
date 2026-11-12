@@ -69,22 +69,34 @@ serve(async (req) => {
     if (error) throw new Error(error.message);
 
     const queue = (data ?? []).map((row: { place_id: string }) => row.place_id);
-    const tally = { saved: 0, none: 0, error: 0 };
+    const tally = { saved: 0, none: 0, refused: 0, error: 0 };
+    // How often Google answered with each status, plus one example message per
+    // non-OK status, so a failing run says why.
+    const statuses: Record<string, number> = {};
+    const messages: Record<string, string> = {};
     const worker = async () => {
       for (let id = queue.shift(); id; id = queue.shift()) {
-        tally[await fetchHoursOnly(supabase, id)] += 1;
+        const { result, status, message } = await fetchHoursOnly(supabase, id);
+        tally[result] += 1;
+        statuses[status] = (statuses[status] ?? 0) + 1;
+        if (message && status !== 'OK' && !messages[status]) messages[status] = message;
+        // Google is refusing the key/project: every further call would fail
+        // the same way, so stop this batch.
+        if (result === 'refused') queue.length = 0;
       }
     };
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 
-    // Errors stay unmarked and are retried by the next call; stop looping if a
-    // call makes no progress at all (e.g. quota exceeded).
+    // Refused and errored cafes stay unmarked and are retried by the next call.
+    // Stop looping when Google refuses, or a call makes no progress at all.
     const processed = tally.saved + tally.none;
     return jsonResponse({
       ...tally,
-      googleCalls: tally.saved + tally.none + tally.error,
+      googleCalls: tally.saved + tally.none + tally.refused + tally.error,
       remaining: Math.max(missing - processed, 0),
-      stalled: processed === 0 && tally.error > 0,
+      stalled: tally.refused > 0 || (processed === 0 && tally.error > 0),
+      statuses,
+      messages,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unexpected backfill error';

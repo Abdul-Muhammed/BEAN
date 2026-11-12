@@ -271,28 +271,57 @@ export function runInBackground(work: Promise<unknown>): void {
 const MAX_HOURS_PER_PASS = 40;
 const HOURS_CONCURRENCY = 5;
 
-export type HoursFetchResult = 'saved' | 'none' | 'error';
+export interface HoursFetchResult {
+  /**
+   * saved    hours stored
+   * none     Google has no hours (or no such place); marked fetched, never retried
+   * refused  Google refused the request (quota, billing, key); retry later
+   * error    transient failure; retry later
+   */
+  result: 'saved' | 'none' | 'refused' | 'error';
+  /** Google's status, e.g. OK, OVER_QUERY_LIMIT, REQUEST_DENIED; or a local reason. */
+  status: string;
+  /** Google's error_message, when it sent one. */
+  message?: string;
+}
+
+// Statuses that mean Google is refusing this key/project rather than this
+// cafe. Every further request would fail the same way, so callers stop.
+const REFUSED_STATUSES = new Set(['OVER_QUERY_LIMIT', 'REQUEST_DENIED', 'OVER_DAILY_LIMIT']);
+// Statuses that are about this place_id and will never succeed: mark the cafe
+// fetched (no hours) so it can't block later passes.
+const PERMANENT_STATUSES = new Set(['NOT_FOUND', 'INVALID_REQUEST', 'ZERO_RESULTS']);
 
 // Ask Google Place Details for opening_hours only (no photos, no other
 // fields) and store it with hours_fetched_at. A cafe Google lists without
-// hours is still marked fetched, so it is never billed again; transient
-// failures leave it unmarked so a later pass retries.
+// hours, or doesn't know, is still marked fetched, so it is never billed
+// again; refused and transient failures leave it unmarked so a later pass
+// retries.
 export async function fetchHoursOnly(
   supabase: SupabaseClient,
   placeId: string
 ): Promise<HoursFetchResult> {
-  if (!placeId || !GOOGLE_PLACES_API_KEY) return 'error';
+  if (!placeId) return { result: 'error', status: 'NO_PLACE_ID' };
+  if (!GOOGLE_PLACES_API_KEY) return { result: 'refused', status: 'NO_API_KEY' };
   try {
     const res = await fetch(
       `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}` +
         `&fields=opening_hours&key=${GOOGLE_PLACES_API_KEY}`
     );
-    const data = await res.json();
-    if (data.status !== 'OK' && data.status !== 'NOT_FOUND') {
-      console.warn(`Hours fetch for ${placeId} failed: ${data.status}`);
-      return 'error';
+    const data = await res.json().catch(() => ({ status: `HTTP_${res.status}` }));
+    const status: string = typeof data?.status === 'string' ? data.status : `HTTP_${res.status}`;
+    const message: string | undefined = data?.error_message || undefined;
+
+    if (REFUSED_STATUSES.has(status)) {
+      console.warn(`Hours fetch refused (${status}): ${message ?? ''}`);
+      return { result: 'refused', status, message };
     }
-    const hours = data.status === 'OK' ? data.result?.opening_hours ?? null : null;
+    if (status !== 'OK' && !PERMANENT_STATUSES.has(status)) {
+      console.warn(`Hours fetch for ${placeId} failed: ${status} ${message ?? ''}`);
+      return { result: 'error', status, message };
+    }
+
+    const hours = status === 'OK' ? data.result?.opening_hours ?? null : null;
     const { error } = await supabase
       .from('cafes')
       .update({
@@ -306,15 +335,13 @@ export async function fetchHoursOnly(
       .eq('place_id', placeId);
     if (error) {
       console.warn(`Hours save for ${placeId} failed:`, error.message);
-      return 'error';
+      return { result: 'error', status: 'DB_WRITE_FAILED', message: error.message };
     }
-    return hours ? 'saved' : 'none';
+    return { result: hours ? 'saved' : 'none', status, message };
   } catch (error) {
-    console.warn(
-      `Hours fetch for ${placeId} errored:`,
-      error instanceof Error ? error.message : String(error)
-    );
-    return 'error';
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`Hours fetch for ${placeId} errored:`, message);
+    return { result: 'error', status: 'FETCH_FAILED', message };
   }
 }
 
@@ -339,7 +366,9 @@ export function fetchMissingHours(supabase: SupabaseClient, placeIds: string[]):
       const queue = (data ?? []).map((row: { place_id: string }) => row.place_id);
       const worker = async () => {
         for (let id = queue.shift(); id; id = queue.shift()) {
-          await fetchHoursOnly(supabase, id);
+          const { result } = await fetchHoursOnly(supabase, id);
+          // Google is refusing the key: stop rather than burn more requests.
+          if (result === 'refused') queue.length = 0;
         }
       };
       await Promise.all(Array.from({ length: HOURS_CONCURRENCY }, worker));
