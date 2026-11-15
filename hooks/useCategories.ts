@@ -11,7 +11,7 @@ const EMPTY: CafeCategory[] = [];
  * answers.
  */
 export function useCategories() {
-  const { data } = useQuery({
+  const { data, isError } = useQuery({
     queryKey: ['cafe-categories'],
     queryFn: getCafeCategories,
     staleTime: 60 * 60 * 1000,
@@ -25,5 +25,9 @@ export function useCategories() {
     return map;
   }, [categories]);
 
-  return { categories, categoryById };
+  // True until the catalogue is available, unless the fetch failed (chips then
+  // fall back to raw labels rather than waiting forever).
+  const loading = categories.length === 0 && !isError;
+
+  return { categories, categoryById, loading };
 }

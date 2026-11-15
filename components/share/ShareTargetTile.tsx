@@ -7,7 +7,10 @@ interface ShareTargetTileProps {
   label: string;
   onPress: () => void;
   disabled?: boolean;
-  /** Tiles in the bottom row are fixed-width so the row grids evenly. */
+  /**
+   * Bottom-row tiles split the row evenly (flex: 1) instead of a fixed 84pt
+   * width, which overflowed 375/390pt screens once four tiles sat side by side.
+   */
   fixedWidth?: boolean;
   /** The Instagram mark is full-bleed art; the rest sit on a grey circle. */
   plainIcon?: boolean;
@@ -44,7 +47,9 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   tileFixed: {
-    width: 84,
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 4,
   },
   disabled: {
     opacity: 0.4,

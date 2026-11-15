@@ -1,4 +1,6 @@
 import { supabase } from './supabase';
+import { queryClient } from './queryClient';
+import { getCafeCategories, type CafeCategory } from './cafeCategories';
 import type { Cafe } from '../data/mockData';
 
 /** One attribute a cafe carries, with how many distinct people reported it. */
@@ -22,6 +24,72 @@ export interface AttributeCafeRow {
   distance_meters: number | null;
 }
 
+/** Lowercase with everything but letters and digits removed, so "Study
+ *  friendly", "study_friendly" and "STUDY-FRIENDLY" all compare equal. */
+function slug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Maps any stored attribute string to its category id: an exact id first,
+ * then a case-insensitive label, then a slug of either. Older reviews stored
+ * some attributes by label (e.g. "Study friendly") rather than by id, and those
+ * rendered as a second, iconless chip next to the real one.
+ */
+export function makeAttributeResolver(
+  categories: CafeCategory[]
+): (raw: string) => string | null {
+  const byId = new Set(categories.map((c) => c.id));
+  const byLabel = new Map<string, string>();
+  const bySlug = new Map<string, string>();
+  categories.forEach((c) => {
+    const label = c.label.toLowerCase();
+    if (!byLabel.has(label)) byLabel.set(label, c.id);
+    if (!bySlug.has(slug(c.label))) bySlug.set(slug(c.label), c.id);
+    if (!bySlug.has(slug(c.id))) bySlug.set(slug(c.id), c.id);
+  });
+  return (raw: string) => {
+    if (byId.has(raw)) return raw;
+    return byLabel.get(raw.toLowerCase()) ?? bySlug.get(slug(raw)) ?? null;
+  };
+}
+
+/**
+ * Canonicalises a cafe's attributes against the category catalogue: strings
+ * that name the same category merge into one entry (votes summed), strings
+ * matching no active category are dropped, and the result is most-agreed
+ * first. With an empty catalogue (not loaded yet) the list passes through
+ * unchanged, so chips still render.
+ */
+export function resolveAttributes(
+  list: CafeAttribute[],
+  categories: CafeCategory[],
+  resolver: (raw: string) => string | null = makeAttributeResolver(categories)
+): CafeAttribute[] {
+  if (categories.length === 0) return list;
+  const merged = new Map<string, number>();
+  list.forEach(({ attributeId, votes }) => {
+    const id = resolver(attributeId);
+    if (id) merged.set(id, (merged.get(id) ?? 0) + votes);
+  });
+  return Array.from(merged, ([attributeId, votes]) => ({ attributeId, votes })).sort(
+    (a, b) => b.votes - a.votes
+  );
+}
+
+/** The shared, persisted category catalogue (same cache as useCategories). */
+async function loadCategories(): Promise<CafeCategory[]> {
+  try {
+    return await queryClient.fetchQuery({
+      queryKey: ['cafe-categories'],
+      queryFn: getCafeCategories,
+      staleTime: 60 * 60 * 1000,
+    });
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Attributes for a set of cafes, keyed by cafe id.
  *
@@ -37,10 +105,13 @@ export async function getAttributesForCafes(
   const unique = Array.from(new Set(cafeIds.filter(Boolean)));
   if (unique.length === 0) return byCafe;
 
-  const { data, error } = await supabase
-    .from('cafe_attribute_counts')
-    .select('cafe_id, attribute, votes')
-    .in('cafe_id', unique);
+  const [{ data, error }, categories] = await Promise.all([
+    supabase
+      .from('cafe_attribute_counts')
+      .select('cafe_id, attribute, votes')
+      .in('cafe_id', unique),
+    loadCategories(),
+  ]);
 
   if (error) {
     console.warn('Failed to load cafe attributes:', error.message);
@@ -53,9 +124,13 @@ export async function getAttributesForCafes(
     byCafe.set(row.cafe_id, list);
   });
 
-  // Most-agreed first, so a card showing only two chips shows the two the most
-  // people reported.
-  byCafe.forEach((list) => list.sort((a, b) => b.votes - a.votes));
+  // Merge duplicates of the same category, then most-agreed first, so a card
+  // showing only two chips shows the two the most people reported.
+  const resolver = makeAttributeResolver(categories);
+  byCafe.forEach((list, cafeId) => {
+    const resolved = resolveAttributes(list, categories, resolver);
+    byCafe.set(cafeId, resolved === list ? [...list].sort((a, b) => b.votes - a.votes) : resolved);
+  });
 
   return byCafe;
 }

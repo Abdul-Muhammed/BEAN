@@ -8,7 +8,8 @@ import SettingsSection from '../../components/settings/SettingsSection';
 import ExternalLinkRow from '../../components/settings/ExternalLinkRow';
 import AboutCard from '../../components/settings/AboutCard';
 import FooterActionButton from '../../components/settings/FooterActionButton';
-import { CoffeeBean } from '../../components/BeanRating';
+import { SvgXml } from 'react-native-svg';
+import { INSTAGRAM_SVG } from '@/constants/figmaIcons';
 import { EXTERNAL_LINKS } from '@/constants/links';
 import { colors } from '@/constants/theme';
 
@@ -57,7 +58,7 @@ export default function AboutScreen() {
       <View style={styles.footer}>
         <View style={styles.footerRow}>
           <FooterActionButton
-            icon={<CoffeeBean size={20} />}
+            icon={<SvgXml xml={INSTAGRAM_SVG} width={20} height={20} />}
             label="Instagram"
             onPress={() => open(EXTERNAL_LINKS.instagram)}
           />

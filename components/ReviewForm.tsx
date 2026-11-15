@@ -451,7 +451,8 @@ export default function ReviewForm({
 
   const handleToggleFavorite = () => {
     if (!favoriteCafeId) return;
-    toggleFavorite(favoriteCafeId);
+    // No toast here: its "View" action would invite leaving the log flow.
+    toggleFavorite(favoriteCafeId, { silent: true });
   };
 
   const handleSubmitPress = () => {

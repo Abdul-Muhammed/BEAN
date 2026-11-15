@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   StatusBar,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
@@ -45,6 +46,7 @@ import { approximateDistanceMeters, distanceLabelFor } from '../../lib/geo';
 import {
   AUCKLAND_CBD,
   LOCATION_REFRESH_THRESHOLD_METERS,
+  type Coords,
   useLocation,
 } from '../../hooks/useLocation';
 import type { Cafe } from '../../data/mockData';
@@ -97,7 +99,9 @@ export default function HomeScreen() {
     shouldShowPrimer,
     dismissPrimer,
     requestPermission,
+    refresh: refreshLocation,
   } = useLocation();
+  const [refreshing, setRefreshing] = useState(false);
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   // The post-onboarding tutorial shows once, over Home, before the location
   // primer. tutorialClosed hides it for the rest of the session even if the
@@ -135,17 +139,22 @@ export default function HomeScreen() {
   // refetch even when the coordinates barely moved.
   const lastFetchWasFallbackRef = useRef<boolean | null>(null);
 
-  const loadNearbyCafes = useCallback(async () => {
+  /**
+   * `force` (pull-to-refresh) skips the "barely moved" check, and `at` lets the
+   * caller pass coordinates fresher than this render's `coords`.
+   */
+  const loadNearbyCafes = useCallback(async (opts?: { force?: boolean; at?: Coords | null }) => {
+    const here = opts?.at !== undefined ? opts.at : coords;
     // With no coordinates we still show something useful: the best-rated cafes
     // around the Auckland CBD, which is where this app's users are.
-    const target = coords ?? AUCKLAND_CBD;
-    const usingFallback = coords === null;
+    const target = here ?? AUCKLAND_CBD;
+    const usingFallback = here === null;
 
     // Skip refetching if we already loaded for somewhere close by, unless we
     // just crossed between fallback and real-location mode, which changes how
     // the list is ranked regardless of distance.
     const modeChanged = lastFetchWasFallbackRef.current !== usingFallback;
-    if (lastFetchCoordsRef.current && !modeChanged) {
+    if (!opts?.force && lastFetchCoordsRef.current && !modeChanged) {
       const moved = approximateDistanceMeters(
         lastFetchCoordsRef.current.lat,
         lastFetchCoordsRef.current.lng,
@@ -205,6 +214,26 @@ export default function HomeScreen() {
       loadNearbyCafes();
     }, [loadNearbyCafes])
   );
+
+  // Also re-read GPS on focus (throttled inside useLocation). A new fix
+  // changes `coords`, which re-runs the load above.
+  useFocusEffect(
+    useCallback(() => {
+      refreshLocation();
+    }, [refreshLocation])
+  );
+
+  // Pull-to-refresh: always take a fresh fix and reload Near Me, even if the
+  // user hasn't moved far.
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const fresh = await refreshLocation({ force: true });
+      await loadNearbyCafes({ force: true, at: fresh });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadNearbyCafes, refreshLocation]);
 
   // Refresh the bell's unread state on focus. Returning from /notifications
   // (which stamps last-seen) re-runs this and clears the dot. Throttled so
@@ -560,6 +589,14 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         renderItem={renderSection}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.ink}
+            colors={[colors.ink]}
+          />
+        }
       />
 
       <TutorialSheet visible={showTutorial} onClosed={handleTutorialClosed} />
