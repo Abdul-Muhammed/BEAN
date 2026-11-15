@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  type LayoutChangeEvent,
   Platform,
   StyleSheet,
   Text,
@@ -9,6 +10,11 @@ import {
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { MapPin } from 'lucide-react-native';
+import Animated, {
+  type SharedValue,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { colors, fonts } from '@/constants/theme';
 
 interface LocationGateOverlayProps {
@@ -17,7 +23,14 @@ interface LocationGateOverlayProps {
    *  the user to Settings instead — say so rather than pretending. */
   mustUseSettings?: boolean;
   onEnable: () => void;
+  /**
+   * How many pt of the overlay's bottom are covered by the Discover sheet. The
+   * card centres itself in the visible part above it instead of the full map.
+   */
+  coveredBottom?: SharedValue<number>;
 }
+
+const CARD_MIN_TOP = 16;
 
 /**
  * Covers the map when we have no location. The map underneath still renders
@@ -33,9 +46,28 @@ export default function LocationGateOverlay({
   requesting = false,
   mustUseSettings = false,
   onEnable,
+  coveredBottom,
 }: LocationGateOverlayProps) {
+  const overlayHeight = useSharedValue(0);
+  const cardHeight = useSharedValue(0);
+
+  // Shift up by half the covered strip so the card sits centred in what's
+  // visible, but never past the top of the map.
+  const cardShift = useAnimatedStyle(() => {
+    const covered = coveredBottom ? Math.max(0, coveredBottom.value) : 0;
+    const maxShift = Math.max(0, (overlayHeight.value - cardHeight.value) / 2 - CARD_MIN_TOP);
+    return { transform: [{ translateY: -Math.min(covered / 2, maxShift) }] };
+  });
+
+  const onOverlayLayout = (e: LayoutChangeEvent) => {
+    overlayHeight.value = e.nativeEvent.layout.height;
+  };
+  const onCardLayout = (e: LayoutChangeEvent) => {
+    cardHeight.value = e.nativeEvent.layout.height;
+  };
+
   return (
-    <View style={StyleSheet.absoluteFill}>
+    <View style={StyleSheet.absoluteFill} onLayout={onOverlayLayout}>
       <View style={styles.scrim} />
 
       <BlurView
@@ -44,7 +76,7 @@ export default function LocationGateOverlay({
         experimentalBlurMethod="dimezisBlurView"
         style={[StyleSheet.absoluteFill, styles.center]}
       >
-        <View style={styles.card}>
+        <Animated.View style={[styles.card, cardShift]} onLayout={onCardLayout}>
           <View style={styles.iconCircle}>
             <MapPin size={24} color={colors.ink} />
           </View>
@@ -68,7 +100,7 @@ export default function LocationGateOverlay({
               </Text>
             )}
           </TouchableOpacity>
-        </View>
+        </Animated.View>
       </BlurView>
     </View>
   );

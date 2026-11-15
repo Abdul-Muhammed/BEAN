@@ -6,8 +6,18 @@ import {
   StatusBar,
   TouchableOpacity,
   ActivityIndicator,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  runOnJS,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { Navigation2 } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
@@ -30,7 +40,11 @@ import { distanceLabelFor } from '../../lib/geo';
 import { useViewportCafes, type ViewportRegion } from '../../hooks/useViewportCafes';
 import { useCategories } from '../../hooks/useCategories';
 import { cardAttributes, cardToCafe, getCard, type MapPin } from '../../lib/mapSearch';
-import type { CafeAttribute } from '../../lib/cafeAttributes';
+import {
+  makeAttributeResolver,
+  resolveAttributes,
+  type CafeAttribute,
+} from '../../lib/cafeAttributes';
 import {
   type Filters,
   DEFAULT_FILTERS,
@@ -42,6 +56,14 @@ const DEFAULT_LONGITUDE_DELTA = 0.0211;
 const FOCUS_LATITUDE_DELTA = 0.012;
 const FOCUS_LONGITUDE_DELTA = 0.006;
 const TOP_RATED_MIN = 4.5;
+
+const LOCATE_BUTTON_SIZE = 44;
+/** Gap between the locate button and the sheet's top edge. */
+const LOCATE_BUTTON_GAP = 12;
+/** Past this snap index (between 30% and 80%) the button fades out and stops
+ *  taking taps, since the sheet has taken over the screen. */
+const LOCATE_HIDE_START = 1.2;
+const LOCATE_HIDE_END = 1.6;
 
 /** The rating floor the server applies: Top Rated and the min-rating slider combined. */
 function serverMinRating(f: Filters): number | null {
@@ -68,7 +90,7 @@ export default function DiscoverScreen() {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const filtersActive = useMemo(() => hasAnyFilter(filters), [filters]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const { categoryById } = useCategories();
+  const { categories, categoryById } = useCategories();
 
   const labelForCategory = useCallback(
     (id: string) => categoryById.get(id)?.label,
@@ -147,10 +169,16 @@ export default function DiscoverScreen() {
 
   // Built once per page of results: cardAttributes makes a new array on every
   // call, which would hand each memoized card a fresh prop on every render.
-  const attributesById = useMemo(
-    () => new Map(list.map((card) => [card.place_id, cardAttributes(card)])),
-    [list]
-  );
+  // Duplicates of one category (old label-style strings) merge into one chip.
+  const attributesById = useMemo(() => {
+    const resolver = makeAttributeResolver(categories);
+    return new Map(
+      list.map((card) => [
+        card.place_id,
+        resolveAttributes(cardAttributes(card), categories, resolver),
+      ])
+    );
+  }, [list, categories]);
   const attributesFor = useCallback(
     (cafeId: string): CafeAttribute[] | undefined => attributesById.get(cafeId),
     [attributesById]
@@ -274,6 +302,45 @@ export default function DiscoverScreen() {
 
   const handleMapPress = useCallback(() => setSelectedId(null), []);
 
+  // Sheet geometry, for the overlays that must stay above it. Both the sheet
+  // and the map container measure from the top of the SafeAreaView.
+  const sheetPosition = useSharedValue(0);
+  const sheetIndex = useSharedValue(1);
+  const mapTop = useSharedValue(0);
+  const mapHeight = useSharedValue(0);
+  const [locateEnabled, setLocateEnabled] = useState(true);
+
+  const handleMapLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      mapTop.set(e.nativeEvent.layout.y);
+      mapHeight.set(e.nativeEvent.layout.height);
+    },
+    [mapTop, mapHeight]
+  );
+
+  // How much of the map's bottom the sheet currently covers.
+  const sheetCover = useDerivedValue(() => {
+    if (mapHeight.value === 0 || sheetPosition.value === 0) return 0;
+    return Math.max(0, mapTop.value + mapHeight.value - sheetPosition.value);
+  });
+
+  const locateStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      sheetIndex.value,
+      [LOCATE_HIDE_START, LOCATE_HIDE_END],
+      [1, 0],
+      Extrapolation.CLAMP
+    ),
+    transform: [{ translateY: -sheetCover.value }],
+  }));
+
+  useAnimatedReaction(
+    () => sheetIndex.value < LOCATE_HIDE_END,
+    (enabled, prev) => {
+      if (enabled !== prev) runOnJS(setLocateEnabled)(enabled);
+    }
+  );
+
   const handleLocateMe = useCallback(async () => {
     if (coords) {
       userMovedMapRef.current = false;
@@ -352,7 +419,7 @@ export default function DiscoverScreen() {
         />
       </View>
 
-      <View style={styles.mapContainer}>
+      <View style={styles.mapContainer} onLayout={handleMapLayout}>
         <CafeMap
           ref={mapRef}
           initialRegion={initialRegion}
@@ -370,6 +437,7 @@ export default function DiscoverScreen() {
             requesting={isRequestingLocation}
             mustUseSettings={!canAskAgain}
             onEnable={handleEnableLocation}
+            coveredBottom={sheetCover}
           />
         )}
 
@@ -386,13 +454,25 @@ export default function DiscoverScreen() {
           </View>
         )}
 
-        <TouchableOpacity style={styles.locateButton} onPress={handleLocateMe} activeOpacity={0.85}>
-          <Navigation2
-            size={20}
-            color={colors.primary}
-            fill={status === 'granted' ? colors.primary : 'transparent'}
-          />
-        </TouchableOpacity>
+        {/* Rides just above the sheet's top edge as it moves. */}
+        <Animated.View
+          style={[styles.locateWrap, locateStyle]}
+          pointerEvents={locateEnabled ? 'box-none' : 'none'}
+        >
+          <TouchableOpacity
+            style={styles.locateButton}
+            onPress={handleLocateMe}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Show my location"
+          >
+            <Navigation2
+              size={18}
+              color={colors.ink}
+              fill={status === 'granted' ? colors.ink : 'transparent'}
+            />
+          </TouchableOpacity>
+        </Animated.View>
       </View>
 
       <DiscoverSheet
@@ -410,6 +490,8 @@ export default function DiscoverScreen() {
         onCardPress={handleCardPress}
         onToggleBookmark={toggleCafeBookmark}
         onEndReached={handleEndReached}
+        animatedPosition={sheetPosition}
+        animatedIndex={sheetIndex}
       />
 
       <FiltersBottomSheet
@@ -494,20 +576,22 @@ const styles = StyleSheet.create({
     fontFamily: 'Lato-Regular',
     color: colors.primary,
   },
-  locateButton: {
+  locateWrap: {
     position: 'absolute',
     right: 16,
-    bottom: 24,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    bottom: LOCATE_BUTTON_GAP,
+  },
+  locateButton: {
+    width: LOCATE_BUTTON_SIZE,
+    height: LOCATE_BUTTON_SIZE,
+    borderRadius: LOCATE_BUTTON_SIZE / 2,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 4,
   },
 });

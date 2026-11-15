@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSegments } from 'expo-router';
 import Animated, {
   Easing,
   runOnJS,
@@ -42,9 +43,14 @@ const CHECK_SVG = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" x
 <path d="M2.5 8.5L6 12L13.5 4" stroke="#1E6B3E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
 
-// Height of the bottom tab bar (see app/(tabs)/_layout.tsx). The toast floats
-// just above it so it reads as "above the navbar".
-const TAB_BAR_HEIGHT = 80;
+// Height of the bottom tab bar (styles.tabBar in app/(tabs)/_layout.tsx). Its
+// explicit height and paddingBottom replace react-navigation's safe-area
+// padding, so the bar is exactly this tall from the screen's bottom edge.
+const TAB_BAR_HEIGHT = 64;
+// Gap between the toast and the tab bar, or the home indicator on screens
+// without one.
+const TAB_BAR_GAP = 8;
+const NO_TAB_BAR_GAP = 12;
 const AUTO_HIDE_MS = 6000;
 const HIDDEN_OFFSET = 40;
 
@@ -120,6 +126,12 @@ export function useToast(): ToastContextValue {
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
+  const segments = useSegments() as string[];
+  // Tab screens show the bar, except add-review, which hides it.
+  const hasTabBar = segments[0] === '(tabs)' && segments[1] !== 'add-review';
+  const bottomOffset = hasTabBar
+    ? TAB_BAR_HEIGHT + TAB_BAR_GAP
+    : insets.bottom + NO_TAB_BAR_GAP;
   const [toast, setToast] = useState<ToastOptions | null>(null);
   const translateY = useSharedValue(HIDDEN_OFFSET);
   const opacity = useSharedValue(0);
@@ -188,7 +200,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             pointerEvents="box-none"
             style={[
               styles.wrapper,
-              { bottom: TAB_BAR_HEIGHT + insets.bottom + 8 },
+              { bottom: bottomOffset },
               animatedStyle,
             ]}
           >

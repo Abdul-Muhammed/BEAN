@@ -1,69 +1,86 @@
 import React from 'react';
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { SvgXml } from 'react-native-svg';
+import { CRACKED_BEAN_SVG, CRACKED_BEAN_RATIO } from '@/constants/beans';
 import {
-  BEAN_LEFT_SVG,
-  BEAN_RIGHT_SVG,
-  BEAN_HALF_RATIO,
-  BEAN_EMPTY_OPACITY,
-} from '@/constants/beans';
+  SHARE_BEAN_HEIGHT,
+  SHARE_BEAN_LEFT_D,
+  SHARE_BEAN_RIGHT_D,
+  SHARE_BEAN_WIDTH,
+  shareSeedSvg,
+} from '@/constants/shareIcons';
+import { colors } from '@/constants/theme';
 
 interface BeanRatingProps {
   rating: number;
+  /** Bean height in pt. */
   size?: number;
   interactive?: boolean;
   /** When interactive, allow tapping the left/right half of a bean for 0.5 steps. */
   allowHalf?: boolean;
   onRatingChange?: (rating: number) => void;
-  /** Tint override for contrast on a colored background (e.g. the story sticker). */
+  /** Tint override for the filled seeds (e.g. contrast on a colored background). */
   color?: string;
 }
 
-type Fill = 'empty' | 'half' | 'full';
+export type BeanFill = 'empty' | 'half' | 'full';
 
-function getFill(index: number, rating: number): Fill {
+function getFill(index: number, rating: number): BeanFill {
   if (rating >= index) return 'full';
   if (rating >= index - 0.5) return 'half';
   return 'empty';
 }
 
-interface BeanCellProps {
-  size: number;
-  fill: Fill;
-  /** Optional tint override (e.g. for contrast on a colored background). */
-  color?: string;
-}
+/** Width of the share bean relative to its height. */
+export const SHARE_BEAN_RATIO = SHARE_BEAN_WIDTH / SHARE_BEAN_HEIGHT;
 
-// Recolor the brand-brown bean artwork to an arbitrary tint when needed.
-function tint(xml: string, color?: string) {
-  if (!color) return xml;
-  return xml.replace(/#612B05/g, color).replace(/#8D3F01/g, color);
+const SHARE_SEEDS = {
+  leftFilled: shareSeedSvg(SHARE_BEAN_LEFT_D, colors.beanFill),
+  rightFilled: shareSeedSvg(SHARE_BEAN_RIGHT_D, colors.beanFill),
+  leftEmpty: shareSeedSvg(SHARE_BEAN_LEFT_D, colors.accent),
+  rightEmpty: shareSeedSvg(SHARE_BEAN_RIGHT_D, colors.accent),
+};
+
+function seedXml(side: 'left' | 'right', filled: boolean, color?: string) {
+  if (filled && color) {
+    return shareSeedSvg(side === 'left' ? SHARE_BEAN_LEFT_D : SHARE_BEAN_RIGHT_D, color);
+  }
+  if (side === 'left') return filled ? SHARE_SEEDS.leftFilled : SHARE_SEEDS.leftEmpty;
+  return filled ? SHARE_SEEDS.rightFilled : SHARE_SEEDS.rightEmpty;
 }
 
 /**
- * One whole bean = a left half + a right half. Each half is filled (brand brown)
- * or faded (empty). A `half` fill keeps the left half solid and fades the right,
- * giving a clean 0.5-bean rating.
+ * One share-style bean (the Share Review bean shape): both seeds stacked in one
+ * box, Bean/Fill brown when filled and solid Accent grey when empty. A `half`
+ * fill colours only the left seed. Sized by height so it drops in wherever the
+ * old half-bean artwork was used. Shared with SwipeableBeanRating.
  */
-function BeanCell({ size, fill, color }: BeanCellProps) {
-  const halfWidth = size * BEAN_HALF_RATIO;
-  const leftOpacity = fill === 'empty' ? BEAN_EMPTY_OPACITY : 1;
-  const rightOpacity = fill === 'full' ? 1 : BEAN_EMPTY_OPACITY;
+export function ShareBeanCell({
+  height,
+  fill,
+  color,
+}: {
+  height: number;
+  fill: BeanFill;
+  color?: string;
+}) {
+  const width = height * SHARE_BEAN_RATIO;
   return (
-    <View style={styles.bean}>
-      <View style={{ opacity: leftOpacity }}>
-        <SvgXml xml={tint(BEAN_LEFT_SVG, color)} width={halfWidth} height={size} />
+    <View style={{ width, height }}>
+      <View style={StyleSheet.absoluteFill}>
+        <SvgXml xml={seedXml('left', fill !== 'empty', color)} width={width} height={height} />
       </View>
-      <View style={{ opacity: rightOpacity }}>
-        <SvgXml xml={tint(BEAN_RIGHT_SVG, color)} width={halfWidth} height={size} />
+      <View style={StyleSheet.absoluteFill}>
+        <SvgXml xml={seedXml('right', fill === 'full', color)} width={width} height={height} />
       </View>
     </View>
   );
 }
 
-/** A single whole, fully-filled bean — for compact "X.X" rating displays. */
+/** A single whole, filled bean for compact "X.X" rating displays. */
 export function CoffeeBean({ size = 16, color }: { size?: number; color?: string }) {
-  return <BeanCell size={size} fill="full" color={color} />;
+  const xml = color ? CRACKED_BEAN_SVG.replace(/#612B05/g, color) : CRACKED_BEAN_SVG;
+  return <SvgXml xml={xml} width={size * CRACKED_BEAN_RATIO} height={size} />;
 }
 
 export default function BeanRating({
@@ -90,7 +107,7 @@ export default function BeanRating({
           // half selects X.5 and the right half selects X.
           return (
             <View key={index} style={styles.button}>
-              <BeanCell size={size} fill={fill} color={color} />
+              <ShareBeanCell height={size} fill={fill} color={color} />
               <View style={styles.halfOverlay}>
                 <TouchableOpacity
                   style={styles.halfTouch}
@@ -112,12 +129,12 @@ export default function BeanRating({
               onPress={() => handlePress(index)}
               style={styles.button}
             >
-              <BeanCell size={size} fill={fill} color={color} />
+              <ShareBeanCell height={size} fill={fill} color={color} />
             </TouchableOpacity>
           );
         }
 
-        return <BeanCell key={index} size={size} fill={fill} color={color} />;
+        return <ShareBeanCell key={index} height={size} fill={fill} color={color} />;
       })}
     </View>
   );
@@ -138,9 +155,5 @@ const styles = StyleSheet.create({
   },
   halfTouch: {
     flex: 1,
-  },
-  bean: {
-    flexDirection: 'row',
-    alignItems: 'center',
   },
 });

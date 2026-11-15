@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
+import type { SharedValue } from 'react-native-reanimated';
 import CafeListCard, { EMPTY_ATTRIBUTES } from '../cafe/CafeListCard';
 import type { Cafe } from '../../data/mockData';
 import type { CafeAttribute } from '../../lib/cafeAttributes';
@@ -34,6 +35,10 @@ interface DiscoverSheetProps {
   onCardPress: (cafe: Cafe) => void;
   onToggleBookmark: (cafe: Cafe) => void;
   onEndReached: () => void;
+  /** Sheet top edge (y within the sheet's container), for overlays that ride above it. */
+  animatedPosition?: SharedValue<number>;
+  /** Fractional snap index (0 = 15%, 1 = 30%, 2 = 80%). */
+  animatedIndex?: SharedValue<number>;
 }
 
 // Figma's card stacks are spaced 16pt apart.
@@ -56,6 +61,8 @@ const DiscoverSheet = forwardRef<DiscoverSheetHandle, DiscoverSheetProps>(functi
     onCardPress,
     onToggleBookmark,
     onEndReached,
+    animatedPosition,
+    animatedIndex,
   },
   ref
 ) {
@@ -171,6 +178,8 @@ const DiscoverSheet = forwardRef<DiscoverSheetHandle, DiscoverSheetProps>(functi
       backgroundStyle={styles.background}
       style={styles.sheet}
       enablePanDownToClose={false}
+      animatedPosition={animatedPosition}
+      animatedIndex={animatedIndex}
     >
       <BottomSheetFlatList
         ref={listRef}

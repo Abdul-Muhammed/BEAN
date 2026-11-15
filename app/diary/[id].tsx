@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionSheetIOS,
-  ActivityIndicator,
   Alert,
   FlatList,
   Image,
@@ -31,7 +30,9 @@ import { useToast } from '../../context/ToastContext';
 import ConfirmationModal from '../../components/settings/ConfirmationModal';
 import { useUserProfile } from '../../hooks/useUserProfile';
 import { useLocation } from '../../hooks/useLocation';
-import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
+import { useCategories } from '../../hooks/useCategories';
+import { resolveAttributes } from '../../lib/cafeAttributes';
+import Skeleton from '../../components/ui/Skeleton';
 import { getReviewById } from '../../lib/follows';
 import type { PublicUser } from '../../lib/follows';
 import { approximateDistanceMeters, extractLocation, formatDistance } from '../../lib/geo';
@@ -104,31 +105,19 @@ export default function DiaryEntryScreen() {
   const photos = useMemo(() => review?.photos?.filter(Boolean) ?? [], [review?.photos]);
   const attributes = useMemo(() => review?.attributes?.filter(Boolean) ?? [], [review?.attributes]);
 
-  // Attribute chips carry the same icon the category was picked with. Only
-  // fetched when the review actually has attributes.
-  const [categories, setCategories] = useState<CafeCategory[]>([]);
-  useEffect(() => {
-    if (attributes.length === 0) return;
-    let cancelled = false;
-    getCafeCategories()
-      .then((rows) => {
-        if (!cancelled) setCategories(rows);
-      })
-      .catch(() => {
-        /* Chips fall back to label-only. */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [attributes.length]);
-
-  // reviews.attributes stores category ids; labels are for display only, so a
-  // category can be renamed without orphaning historical reviews.
-  const categoryById = useMemo(() => {
-    const map = new Map<string, CafeCategory>();
-    categories.forEach((category) => map.set(category.id, category));
-    return map;
-  }, [categories]);
+  // Attribute chips carry the same icon the category was picked with. The
+  // catalogue is the shared, persisted one, so it's usually ready instantly.
+  // reviews.attributes stores category ids (older reviews may hold labels,
+  // which resolveAttributes maps onto the same id).
+  const { categories, categoryById, loading: categoriesLoading } = useCategories();
+  const shownAttributes = useMemo(
+    () =>
+      resolveAttributes(
+        attributes.map((attributeId) => ({ attributeId, votes: 0 })),
+        categories
+      ).map((a) => a.attributeId),
+    [attributes, categories]
+  );
 
   const [photoIndex, setPhotoIndex] = useState(0);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
@@ -152,13 +141,7 @@ export default function DiaryEntryScreen() {
   };
 
   if ((loading || fetching) && !review) {
-    return (
-      <SafeAreaView style={styles.centeredContainer}>
-        <StatusBar barStyle="dark-content" />
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Loading diary entry...</Text>
-      </SafeAreaView>
-    );
+    return <DiarySkeleton />;
   }
 
   if (!review) {
@@ -375,15 +358,21 @@ export default function DiaryEntryScreen() {
 
           {attributes.length > 0 && (
             <View style={styles.attributeRow}>
-              {attributes.map((attribute) => (
-                <Tag
-                  key={attribute}
-                  label={categoryById.get(attribute)?.label ?? attribute}
-                  iconXml={categoryById.get(attribute)?.icon_svg_xml}
-                  variant="outlineDark"
-                  dense
-                />
-              ))}
+              {categoriesLoading
+                ? // Placeholder pills until labels and icons arrive, instead of
+                  // flashing the raw lowercase ids.
+                  attributes.map((attribute) => (
+                    <Skeleton key={attribute} width={96} height={30} radius={999} />
+                  ))
+                : shownAttributes.map((attribute) => (
+                    <Tag
+                      key={attribute}
+                      label={categoryById.get(attribute)?.label ?? attribute}
+                      iconXml={categoryById.get(attribute)?.icon_svg_xml}
+                      variant="outlineDark"
+                      dense
+                    />
+                  ))}
             </View>
           )}
         </View>
@@ -410,6 +399,43 @@ export default function DiaryEntryScreen() {
   );
 }
 
+/** Laid out like a diary entry (hero, date strip, cafe card, notes, chips) so
+ *  the content drops in where the placeholders were. */
+function DiarySkeleton() {
+  return (
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" />
+      <Skeleton height={HERO_HEIGHT} radius={0} />
+      <View style={styles.dateStrip}>
+        <Skeleton width={90} height={12} />
+        <View style={styles.dateStripRight}>
+          <Skeleton width={72} height={12} />
+        </View>
+      </View>
+      <View style={styles.container16}>
+        <View style={[styles.cafeCard, styles.skeletonCafeCard]}>
+          <Skeleton width={56} height={56} radius={0} />
+          <View style={[styles.cafeCardText, styles.skeletonCafeText]}>
+            <Skeleton width="60%" height={16} />
+            <Skeleton width="40%" height={12} />
+          </View>
+        </View>
+      </View>
+      <View style={styles.notesSection}>
+        <Skeleton width={70} height={16} />
+        <Skeleton height={12} />
+        <Skeleton height={12} />
+        <Skeleton width="70%" height={12} />
+        <View style={styles.attributeRow}>
+          <Skeleton width={96} height={30} radius={999} />
+          <Skeleton width={120} height={30} radius={999} />
+          <Skeleton width={84} height={30} radius={999} />
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -422,11 +448,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     backgroundColor: colors.background,
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: colors.mutedText,
+  skeletonCafeCard: {
+    alignItems: 'center',
+  },
+  skeletonCafeText: {
+    gap: 8,
+    padding: 8,
   },
   emptyTitle: {
     marginTop: 24,

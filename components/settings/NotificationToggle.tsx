@@ -24,7 +24,7 @@ export default function NotificationToggle({ value, onValueChange }: Notificatio
       <Switch
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ false: '#E5E5EA', true: colors.gold }}
+        trackColor={{ false: '#E5E5EA', true: colors.ink }}
         thumbColor={Platform.OS === 'android' ? '#FFFFFF' : undefined}
         ios_backgroundColor="#E5E5EA"
       />

@@ -10,14 +10,7 @@ import {
   BEAN_HALF_RATIO,
   BEAN_EMPTY_OPACITY,
 } from '@/constants/beans';
-import {
-  SHARE_BEAN_HEIGHT,
-  SHARE_BEAN_LEFT_D,
-  SHARE_BEAN_RIGHT_D,
-  SHARE_BEAN_WIDTH,
-  shareSeedSvg,
-} from '@/constants/shareIcons';
-import { colors } from '@/constants/theme';
+import { ShareBeanCell, SHARE_BEAN_RATIO } from '@/components/BeanRating';
 
 interface SwipeableBeanRatingProps {
   rating: number;
@@ -37,15 +30,6 @@ interface SwipeableBeanRatingProps {
 }
 
 const BEAN_COUNT = 5;
-const SHARE_ASPECT = SHARE_BEAN_HEIGHT / SHARE_BEAN_WIDTH;
-
-const SHARE_SEEDS = {
-  leftFilled: shareSeedSvg(SHARE_BEAN_LEFT_D, colors.beanFill),
-  rightFilled: shareSeedSvg(SHARE_BEAN_RIGHT_D, colors.beanFill),
-  leftEmpty: shareSeedSvg(SHARE_BEAN_LEFT_D, colors.accent),
-  rightEmpty: shareSeedSvg(SHARE_BEAN_RIGHT_D, colors.accent),
-};
-
 function clampToHalfStep(raw: number) {
   const stepped = Math.round(raw * 2) / 2;
   if (stepped < 0.5) return 0.5;
@@ -66,30 +50,6 @@ function BeanIcon({ size, fill }: { size: number; fill: Fill }) {
       </View>
       <View style={{ opacity: rightOpacity }}>
         <SvgXml xml={BEAN_RIGHT_SVG} width={halfWidth} height={size} />
-      </View>
-    </View>
-  );
-}
-
-/** Both seeds stacked in one box, as ShareBean does on the story card. A half
- *  rating fills only the left seed. */
-function ShareBeanIcon({ width, fill }: { width: number; fill: Fill }) {
-  const height = width * SHARE_ASPECT;
-  return (
-    <View style={{ width, height }}>
-      <View style={StyleSheet.absoluteFill}>
-        <SvgXml
-          xml={fill === 'empty' ? SHARE_SEEDS.leftEmpty : SHARE_SEEDS.leftFilled}
-          width={width}
-          height={height}
-        />
-      </View>
-      <View style={StyleSheet.absoluteFill}>
-        <SvgXml
-          xml={fill === 'full' ? SHARE_SEEDS.rightFilled : SHARE_SEEDS.rightEmpty}
-          width={width}
-          height={height}
-        />
       </View>
     </View>
   );
@@ -176,7 +136,11 @@ export default function SwipeableBeanRating({
           else if (rating >= beanIndex - 0.5) fill = 'half';
           if (variant === 'share') {
             return shareBeanWidth > 0 ? (
-              <ShareBeanIcon key={beanIndex} width={shareBeanWidth} fill={fill} />
+              <ShareBeanCell
+                key={beanIndex}
+                height={shareBeanWidth / SHARE_BEAN_RATIO}
+                fill={fill}
+              />
             ) : null;
           }
           return <BeanIcon key={beanIndex} size={size} fill={fill} />;

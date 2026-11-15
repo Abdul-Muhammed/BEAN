@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Linking } from 'react-native';
+import { AppState, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 
@@ -28,6 +28,14 @@ export const AUCKLAND_CBD: Coords = { latitude: -36.8485, longitude: 174.7633 };
 /** Only re-fetch (and re-persist) once the user has moved past this, so a
  *  screen focus that didn't move them costs nothing. */
 export const LOCATION_REFRESH_THRESHOLD_METERS = 250;
+
+/** Background re-reads (foreground, tab focus) are skipped if the last fix is
+ *  newer than this, so flipping between apps or tabs doesn't hammer GPS. */
+const AUTO_REFRESH_MIN_INTERVAL_MS = 2 * 60 * 1000;
+
+/** Smaller moves than this keep the previous fix, so GPS jitter doesn't hand
+ *  every screen a "new" location to react to. */
+const COORDS_JITTER_METERS = 50;
 
 /** Per-device, not per-user: permission is a property of the install. */
 const PRIMER_SEEN_KEY = '@bean/location_primer_seen';
@@ -56,6 +64,12 @@ interface LocationContextValue {
   /** Shows the OS prompt (or opens Settings when it can no longer be shown).
    *  Resolves true when permission ends up granted. */
   requestPermission: () => Promise<boolean>;
+  /**
+   * Re-reads permission and, when granted, the device's position. Throttled
+   * unless `force` is set (pull-to-refresh). Resolves with the coordinates to
+   * use now: the fresh fix, else the current ones.
+   */
+  refresh: (opts?: { force?: boolean }) => Promise<Coords | null>;
 }
 
 const LocationContext = createContext<LocationContextValue | undefined>(undefined);
@@ -85,6 +99,10 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   // the user has actually moved.
   const lastPersistedRef = useRef<Coords | null>(null);
   const fetchingRef = useRef(false);
+  // When the last successful fix landed, for throttling automatic refreshes.
+  const lastCaptureAtRef = useRef(0);
+  // Mirrors deviceCoords for the jitter check without re-creating callbacks.
+  const deviceCoordsRef = useRef<Coords | null>(null);
 
   const profileCoords = useMemo<Coords | null>(() => {
     const lat = profile?.location_latitude;
@@ -130,7 +148,20 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
       };
-      setDeviceCoords(next);
+      lastCaptureAtRef.current = Date.now();
+      const previous = deviceCoordsRef.current;
+      const jitterOnly =
+        previous !== null &&
+        approximateDistanceMeters(
+          previous.latitude,
+          previous.longitude,
+          next.latitude,
+          next.longitude
+        ) < COORDS_JITTER_METERS;
+      if (!jitterOnly) {
+        deviceCoordsRef.current = next;
+        setDeviceCoords(next);
+      }
 
       // Persist so a cold start (or a screen that renders before GPS resolves)
       // has a sensible centre. Skipped while signed out, and while the user
@@ -234,6 +265,44 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
 
   // Live GPS wins; the saved profile fix covers the window before it resolves.
   const coords = deviceCoords ?? profileCoords;
+  const coordsRef = useRef(coords);
+  useEffect(() => {
+    coordsRef.current = coords;
+  }, [coords]);
+
+  const refresh = useCallback(
+    async (opts?: { force?: boolean }): Promise<Coords | null> => {
+      const force = opts?.force ?? false;
+      try {
+        // Permission may have changed in Settings while we were away.
+        const permission = await Location.getForegroundPermissionsAsync();
+        setCanAskAgain(permission.canAskAgain !== false);
+        if (!permission.granted) {
+          setStatus(permission.canAskAgain === false ? 'denied' : 'undetermined');
+          return coordsRef.current;
+        }
+        setStatus('granted');
+      } catch {
+        return coordsRef.current;
+      }
+
+      const stale = Date.now() - lastCaptureAtRef.current >= AUTO_REFRESH_MIN_INTERVAL_MS;
+      if (!force && !stale) return coordsRef.current;
+
+      const fresh = await captureCoords();
+      return fresh ?? coordsRef.current;
+    },
+    [captureCoords]
+  );
+
+  // Re-read location whenever the app comes back to the foreground, so moving
+  // somewhere new with the app backgrounded updates Near Me without a restart.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') refresh();
+    });
+    return () => sub.remove();
+  }, [refresh]);
 
   const value = useMemo<LocationContextValue>(
     () => ({
@@ -247,8 +316,9 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
         status === 'undetermined' && primerSeen === false && coords === null,
       dismissPrimer,
       requestPermission,
+      refresh,
     }),
-    [status, coords, canAskAgain, primerSeen, dismissPrimer, requestPermission]
+    [status, coords, canAskAgain, primerSeen, dismissPrimer, requestPermission, refresh]
   );
 
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;

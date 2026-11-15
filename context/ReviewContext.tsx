@@ -65,7 +65,8 @@ interface ReviewContextType {
    *  user hasn't opened), so the bookmark row still gets a name and image. */
   toggleBookmark: (cafeId: string, cafe?: Cafe) => Promise<void>;
   isBookmarked: (cafeId: string) => boolean;
-  toggleFavorite: (cafeId: string) => Promise<void>;
+  /** `silent` skips the "favorited" toast (e.g. mid log-flow, where its View action would pull the user away). */
+  toggleFavorite: (cafeId: string, opts?: { silent?: boolean }) => Promise<void>;
   isFavorited: (cafeId: string) => boolean;
   loading: boolean;
 }
@@ -371,7 +372,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
   );
 
   const toggleFavorite = useCallback(
-    async (cafeId: string) => {
+    async (cafeId: string, opts?: { silent?: boolean }) => {
       if (!userId) {
         console.warn('Cannot favorite while signed out');
         return;
@@ -397,12 +398,14 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
           console.warn('Failed to remove favorite:', error.message);
         }
       } else {
-        showToast({
-          variant: 'favorite',
-          message: 'Cafe has been favorited!',
-          actionLabel: 'View',
-          onAction: () => router.push(`/cafe/${cafeId}`),
-        });
+        if (!opts?.silent) {
+          showToast({
+            variant: 'favorite',
+            message: 'Cafe has been favorited!',
+            actionLabel: 'View',
+            onAction: () => router.push(`/cafe/${cafeId}`),
+          });
+        }
         setFavoritedCafeIds((prev) => [...prev, cafeId]);
         setCafes((prevCafes) =>
           prevCafes.map((c) => {

@@ -6,7 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import {
   BottomSheetModal,
   BottomSheetBackdrop,
@@ -137,11 +137,7 @@ const FiltersBottomSheet = forwardRef<
         >
           {/* Recommended quick-filters */}
           <Text style={styles.sectionTitle}>Recommended</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.quickRow}
-          >
+          <View style={styles.categoriesWrap}>
             {QUICK_FILTERS.map(({ key, label }) => (
               <FilterChip
                 key={key}
@@ -150,16 +146,18 @@ const FiltersBottomSheet = forwardRef<
                 onPress={() => toggleQuick(key)}
               />
             ))}
-          </ScrollView>
+          </View>
 
           {/* Minimum rating */}
           <Text style={styles.sectionTitle}>Minimum Rating</Text>
           <View style={styles.ratingRow}>
-            <SwipeableBeanRating
-              rating={draft.minRating}
-              size={42}
-              onChange={handleRating}
-            />
+            <View style={styles.ratingBeans}>
+              <SwipeableBeanRating
+                rating={draft.minRating}
+                variant="share"
+                onChange={handleRating}
+              />
+            </View>
             <TouchableOpacity
               onPress={clearRating}
               disabled={draft.minRating === 0}
@@ -269,14 +267,16 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 12,
   },
-  quickRow: {
-    gap: 8,
-    paddingRight: 20,
-  },
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  // The share variant stretches to its parent; cap it so the beans stay
+  // roughly the size the classic 42pt artwork was.
+  ratingBeans: {
+    flex: 1,
+    maxWidth: 240,
   },
   ratingLabel: {
     fontSize: 15,
