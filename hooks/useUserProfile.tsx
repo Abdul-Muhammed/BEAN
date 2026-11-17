@@ -27,6 +27,8 @@ export interface UserProfile {
   onboarding_completed: boolean;
   /** False until the post-onboarding tutorial sheet is finished or skipped. */
   tutorial_completed: boolean;
+  /** False until the first-review "Share it to your Story" sheet has been seen. */
+  share_prompt_seen: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -11,11 +11,12 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SvgXml } from 'react-native-svg';
 
 import LocationPrimerSheet from '@/components/LocationPrimerSheet';
 import TutorialSheet from '@/components/TutorialSheet';
+import ShareStorySheet from '@/components/ShareStorySheet';
 import Tag from '@/components/ui/Tag';
 import SectionHeader from '@/components/profile/SectionHeader';
 import CafeListCard, { EMPTY_ATTRIBUTES } from '@/components/cafe/CafeListCard';
@@ -111,6 +112,17 @@ export default function HomeScreen() {
     profile?.onboarding_completed === true &&
     profile.tutorial_completed === false &&
     !tutorialClosed;
+  // Add Review routes here with shareReviewId after a user's first-ever review,
+  // to offer sharing it as a Story. Shown once: share_prompt_seen is set on close,
+  // and sharePromptClosed covers the session if that write fails.
+  const { shareReviewId: shareReviewParam } = useLocalSearchParams<{ shareReviewId?: string }>();
+  const shareReviewId = Array.isArray(shareReviewParam) ? shareReviewParam[0] : shareReviewParam;
+  const [sharePromptClosed, setSharePromptClosed] = useState(false);
+  const showSharePrompt =
+    !!shareReviewId &&
+    profile?.share_prompt_seen === false &&
+    !sharePromptClosed &&
+    !showTutorial;
   const [categories, setCategories] = useState<CafeCategory[]>([]);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [isLoadingNearby, setIsLoadingNearby] = useState(false);
@@ -204,6 +216,21 @@ export default function HomeScreen() {
       await refetchProfile();
     } catch (err) {
       console.error('Failed to mark tutorial completed:', err);
+    }
+  }, [refetchProfile]);
+
+  const handleShareStory = useCallback(() => {
+    if (shareReviewId) router.push(`/share-review/${shareReviewId}` as any);
+  }, [shareReviewId]);
+
+  const handleSharePromptClosed = useCallback(async () => {
+    setSharePromptClosed(true);
+    router.setParams({ shareReviewId: undefined });
+    try {
+      await updateProfile({ sharePromptSeen: true });
+      await refetchProfile();
+    } catch (err) {
+      console.error('Failed to mark share prompt seen:', err);
     }
   }, [refetchProfile]);
 
@@ -601,8 +628,14 @@ export default function HomeScreen() {
 
       <TutorialSheet visible={showTutorial} onClosed={handleTutorialClosed} />
 
+      <ShareStorySheet
+        visible={showSharePrompt}
+        onShare={handleShareStory}
+        onClosed={handleSharePromptClosed}
+      />
+
       <LocationPrimerSheet
-        visible={shouldShowPrimer && !showTutorial}
+        visible={shouldShowPrimer && !showTutorial && !showSharePrompt}
         requesting={isRequestingLocation}
         onEnable={handleEnableLocation}
         onDismiss={dismissPrimer}
