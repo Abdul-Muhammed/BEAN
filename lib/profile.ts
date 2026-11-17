@@ -15,6 +15,8 @@ export interface UpdateProfileParams {
   onboardingCompleted?: boolean;
   /** Set once the post-onboarding tutorial sheet is finished or skipped. */
   tutorialCompleted?: boolean;
+  /** Set once the first-review "Share it to your Story" sheet has been seen. */
+  sharePromptSeen?: boolean;
 }
 
 /**
@@ -75,6 +77,7 @@ export async function updateProfile(params: UpdateProfileParams) {
     topCafes,
     onboardingCompleted,
     tutorialCompleted,
+    sharePromptSeen,
   } = params;
 
   const {
@@ -113,6 +116,7 @@ export async function updateProfile(params: UpdateProfileParams) {
   if (topCafes !== undefined) updateData.top_cafes = topCafes || [];
   if (onboardingCompleted !== undefined) updateData.onboarding_completed = onboardingCompleted;
   if (tutorialCompleted !== undefined) updateData.tutorial_completed = tutorialCompleted;
+  if (sharePromptSeen !== undefined) updateData.share_prompt_seen = sharePromptSeen;
 
   const { data, error } = await supabase
     .from('profiles')

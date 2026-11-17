@@ -4,11 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useReviews } from '../../context/ReviewContext';
 import { useToast } from '../../context/ToastContext';
+import { useUserProfile } from '../../hooks/useUserProfile';
 import { colors } from '@/constants/theme';
 import ReviewForm, { type ReviewFormValues } from '@/components/ReviewForm';
 
 export default function AddReviewScreen() {
-  const { addReview } = useReviews();
+  const { addReview, userReviews, loading: reviewsLoading } = useReviews();
+  const { profile } = useUserProfile();
   const { showToast } = useToast();
   const params = useLocalSearchParams();
   const [selectedCafe, setSelectedCafe] = useState<any>(null);
@@ -58,6 +60,12 @@ export default function AddReviewScreen() {
       return;
     }
 
+    // Decided before the insert, since addReview adds to userReviews optimistically.
+    // A first-ever review swaps the toast for the "Share it to your Story" sheet
+    // on Home.
+    const isFirstReview =
+      !reviewsLoading && userReviews.length === 0 && profile?.share_prompt_seen === false;
+
     setSubmitting(true);
     try {
       const reviewId = await addReview({
@@ -75,6 +83,12 @@ export default function AddReviewScreen() {
 
       setSelectedCafe(null);
       setFormKey((k) => k + 1);
+
+      // A temp_ id means the insert didn't persist, so there's nothing to share.
+      if (isFirstReview && reviewId && !reviewId.startsWith('temp_')) {
+        router.push({ pathname: '/(tabs)/home', params: { shareReviewId: reviewId } });
+        return;
+      }
 
       router.push('/(tabs)/home');
       showToast({
