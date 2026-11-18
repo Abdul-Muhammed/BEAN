@@ -33,9 +33,22 @@ export const STORE_LINKS = {
  * redirects — into the app if it's installed, to the store if it isn't.
  */
 export function reviewLinkUrl(reviewId: string): string {
+  return `${functionsBase()}/review-link/${reviewId}`;
+}
+
+/**
+ * Public, shareable URL for a user's profile, served by the `profile-link`
+ * Edge Function. Same reasoning as `reviewLinkUrl`: it opens the app at
+ * user/[id] when installed and falls back to the store otherwise.
+ */
+export function profileLinkUrl(userId: string): string {
+  return `${functionsBase()}/profile-link/${userId}`;
+}
+
+function functionsBase(): string {
   const base =
     process.env.EXPO_PUBLIC_SUPABASE_URL ||
     (Constants.expoConfig?.extra as { supabaseUrl?: string } | undefined)?.supabaseUrl ||
     '';
-  return `${base.replace(/\/+$/, '')}/functions/v1/review-link/${reviewId}`;
+  return `${base.replace(/\/+$/, '')}/functions/v1`;
 }

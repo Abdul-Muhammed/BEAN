@@ -50,7 +50,7 @@ export default function EditReviewScreen() {
       .map((uri) => ({ uri }));
     return {
       rating: review.rating,
-      orderedItem: review.orderedItem ?? '',
+      orderedItems: review.orderedItems ?? [],
       notes: review.text ?? '',
       attributes: review.attributes ?? [],
       photos,
@@ -101,7 +101,7 @@ export default function EditReviewScreen() {
         cafeId: review.cafeId,
         rating: values.rating,
         text: values.notes,
-        orderedItem: values.orderedItem || undefined,
+        orderedItems: values.orderedItems,
         attributes: values.attributes,
         // Keep already-uploaded photos (no base64); upload the freshly added ones.
         photos: values.photos.filter((p) => !p.base64).map((p) => p.uri),

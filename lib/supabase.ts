@@ -129,6 +129,7 @@ export type Database = {
           rating: number;
           text: string | null;
           ordered_item: string | null;
+          ordered_items: string[];
           attributes: string[] | null;
           photos: string[] | null;
           created_at: string;
@@ -143,6 +144,7 @@ export type Database = {
           rating: number;
           text?: string | null;
           ordered_item?: string | null;
+          ordered_items?: string[];
           attributes?: string[] | null;
           photos?: string[] | null;
           created_at?: string;
@@ -157,6 +159,7 @@ export type Database = {
           rating?: number;
           text?: string | null;
           ordered_item?: string | null;
+          ordered_items?: string[];
           attributes?: string[] | null;
           photos?: string[] | null;
           created_at?: string;

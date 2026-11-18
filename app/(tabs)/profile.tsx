@@ -6,7 +6,6 @@ import {
   ScrollView,
   StatusBar,
   ActivityIndicator,
-  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -14,7 +13,11 @@ import { useAuth } from '../../context/AuthContext';
 import { useReviews } from '../../context/ReviewContext';
 import { useFollows } from '../../context/FollowContext';
 import { useUserProfile } from '../../hooks/useUserProfile';
-import ProfileTabs, { ProfileTab } from '../../components/ProfileTabs';
+import ProfileTabs, { PROFILE_TABS, ProfileTab } from '../../components/ProfileTabs';
+import { GestureDetector } from 'react-native-gesture-handler';
+import Animated from 'react-native-reanimated';
+import { useTabSwipe } from '../../hooks/useTabSwipe';
+import { useTabScrollReset } from '../../hooks/useTabScrollReset';
 import BeanLogo from '../../components/BeanLogo';
 import TopAppBar from '../../components/ui/TopAppBar';
 import ProfileHero from '../../components/profile/ProfileHero';
@@ -24,7 +27,8 @@ import PreferencesSection from '../../components/profile/PreferencesSection';
 import RatingsSection from '../../components/profile/RatingsSection';
 import RecentActivitySection from '../../components/profile/RecentActivitySection';
 import DiaryList from '../../components/profile/DiaryList';
-import { MORE_HORIZONTAL_SVG, SETTINGS_SVG } from '@/constants/figmaIcons';
+import ShareProfileSheet from '../../components/profile/ShareProfileSheet';
+import { SETTINGS_SVG, SHARE_SVG } from '@/constants/figmaIcons';
 import { colors, spacing, type } from '@/constants/theme';
 
 const MONTH_SHORT = [
@@ -46,6 +50,8 @@ export default function ProfileScreen() {
   const { profile, isLoading: isProfileLoading } = useUserProfile();
   const { followersCount, followingCount } = useFollows();
   const [activeTab, setActiveTab] = useState<ProfileTab>('overview');
+  const tabSwipe = useTabSwipe(PROFILE_TABS, activeTab, setActiveTab);
+  const { scrollRef, scrollProps, onHeroLayout } = useTabScrollReset(activeTab);
 
   const averageRating = useMemo(() => {
     if (userReviews.length === 0) return 0;
@@ -90,13 +96,7 @@ export default function ProfileScreen() {
     ? (profile!.top_cafes as string[])
     : [];
 
-  const handleShareProfile = async () => {
-    try {
-      await Share.share({ message: `Check out ${username} on Bean` });
-    } catch {
-      // User dismissed the share sheet — nothing to do.
-    }
-  };
+  const [shareOpen, setShareOpen] = useState(false);
 
   const goToDiaryEntry = (id: string) =>
     router.push({ pathname: '/diary/[id]', params: { id } });
@@ -177,8 +177,8 @@ export default function ProfileScreen() {
         leadingXml={SETTINGS_SVG}
         onPressLeading={() => router.push('/settings')}
         leadingLabel="Settings"
-        trailingXml={MORE_HORIZONTAL_SVG}
-        onPressTrailing={handleShareProfile}
+        trailingXml={SHARE_SVG}
+        onPressTrailing={() => setShareOpen(true)}
         trailingLabel="Share profile"
       />
 
@@ -187,8 +187,10 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         stickyHeaderIndices={[1]}
+        ref={scrollRef}
+        {...scrollProps}
       >
-        <View style={styles.heroBlock}>
+        <View style={styles.heroBlock} onLayout={onHeroLayout}>
           {isProfileLoading ? (
             <ActivityIndicator size="large" color={colors.ink} style={styles.loader} />
           ) : (
@@ -210,8 +212,22 @@ export default function ProfileScreen() {
 
         <ProfileTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
-        {activeTab === 'overview' ? renderOverview() : renderDiary()}
+        <GestureDetector gesture={tabSwipe.gesture}>
+          <Animated.View key={activeTab} entering={tabSwipe.entering}>
+            {activeTab === 'overview' ? renderOverview() : renderDiary()}
+          </Animated.View>
+        </GestureDetector>
       </ScrollView>
+
+      {user?.id ? (
+        <ShareProfileSheet
+          visible={shareOpen}
+          onClose={() => setShareOpen(false)}
+          userId={user.id}
+          username={username.replace(/^@/, '')}
+          isOwnProfile
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

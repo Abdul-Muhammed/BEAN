@@ -244,38 +244,36 @@ export default function DiscoverScreen() {
     [filters.saved, filters.liked, isBookmarked, isFavorited]
   );
 
-  // First tap on a pin selects it and brings its card into view; a second tap
-  // opens the cafe. A pin whose card isn't in the loaded list opens directly.
+  // Tapping a pin opens the cafe straight away. It also stays highlighted and
+  // its card is scrolled into view, so coming back lands on the same spot.
   const handlePinPress = useCallback(
     (placeId: string) => {
-      const inList = listCafes.some((c) => c.id === placeId);
-      if (selectedId === placeId || !inList) {
-        const card = getCard(placeId);
-        const pin = pins.find((p) => p.place_id === placeId);
-        if (card) {
-          openCafe(cardToCafe(card));
-        } else if (pin) {
-          openCafe(
-            cardToCafe({
-              place_id: pin.place_id,
-              name: pin.name,
-              formatted_address: null,
-              rating: pin.rating,
-              latitude: pin.latitude,
-              longitude: pin.longitude,
-              thumbnail_url: null,
-              distance_meters: null,
-              open_now: pin.open_now,
-              attributes: [],
-            })
-          );
-        }
-        return;
-      }
       setSelectedId(placeId);
-      sheetRef.current?.revealCafe(placeId);
+      if (listCafes.some((c) => c.id === placeId)) {
+        sheetRef.current?.revealCafe(placeId);
+      }
+      const card = getCard(placeId);
+      const pin = pins.find((p) => p.place_id === placeId);
+      if (card) {
+        openCafe(cardToCafe(card));
+      } else if (pin) {
+        openCafe(
+          cardToCafe({
+            place_id: pin.place_id,
+            name: pin.name,
+            formatted_address: null,
+            rating: pin.rating,
+            latitude: pin.latitude,
+            longitude: pin.longitude,
+            thumbnail_url: null,
+            distance_meters: null,
+            open_now: pin.open_now,
+            attributes: [],
+          })
+        );
+      }
     },
-    [listCafes, selectedId, pins, openCafe]
+    [listCafes, pins, openCafe]
   );
 
   // Tapping a card opens the cafe and leaves its pin highlighted and centred,

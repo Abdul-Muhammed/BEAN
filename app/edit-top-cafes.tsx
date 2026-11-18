@@ -31,6 +31,8 @@ import TopAppBar from '../components/ui/TopAppBar';
 import {
   indexByCafe,
   MAX_TOP_CAFES,
+  resolveTopCafes,
+  useUnreviewedTopCafes,
   type TopCafe,
 } from '../components/profile/TopCafesSection';
 import { useReviews } from '../context/ReviewContext';
@@ -151,7 +153,7 @@ function TopCafeRow({
             <SvgXml xml={MINUS_CIRCLE_SVG} width={16} height={16} />
           </TouchableOpacity>
         }
-        footer={<BeanRating rating={cafe.rating} size={12} />}
+        footer={<BeanRating rating={cafe.rating ?? 0} size={12} />}
       />
       <GestureDetector gesture={pan}>
         <View
@@ -189,7 +191,7 @@ function CandidateRow({
           {cafe.cafeName}
         </Text>
         <View style={styles.candidateRating}>
-          <BeanRating rating={cafe.rating} size={12} />
+          <BeanRating rating={cafe.rating ?? 0} size={12} />
         </View>
       </View>
       <Button
@@ -216,6 +218,13 @@ export default function EditTopCafesScreen() {
     [profile?.top_cafes]
   );
 
+  // Picks the user hasn't reviewed (added from search) are described by the
+  // cafes table rather than a review, so look those up before seeding.
+  const { cafes: unreviewed, loading: unreviewedLoading } = useUnreviewedTopCafes(
+    userReviews,
+    initialIds
+  );
+
   const [picked, setPicked] = useState<TopCafe[]>([]);
   const [query, setQuery] = useState('');
   const [remoteResults, setRemoteResults] = useState<TopCafe[]>([]);
@@ -236,21 +245,20 @@ export default function EditTopCafesScreen() {
   const seededRef = useRef(false);
   useEffect(() => {
     if (seededRef.current || !profile) return;
-    if (initialIds.length > 0 && visited.size === 0) return;
+    if (unreviewedLoading) return;
+    // A pick neither the reviews nor the cafes lookup can describe most likely
+    // means the reviews haven't arrived yet, so hold off until they do.
+    const unresolved = initialIds.some((id) => !visited.has(id) && !unreviewed.has(id));
+    if (unresolved && visited.size === 0) return;
 
     seededRef.current = true;
-    setPicked(
-      initialIds
-        .map((id) => visited.get(id))
-        .filter((c): c is TopCafe => !!c)
-        .slice(0, MAX_TOP_CAFES)
-    );
-  }, [initialIds, profile, visited]);
+    setPicked(resolveTopCafes(userReviews, initialIds, unreviewed));
+  }, [initialIds, profile, visited, userReviews, unreviewed, unreviewedLoading]);
 
   const pickedIds = useMemo(() => new Set(picked.map((c) => c.cafeId)), [picked]);
 
   const localCandidates = useMemo(() => {
-    const all = Array.from(visited.values()).sort((a, b) => b.rating - a.rating);
+    const all = Array.from(visited.values()).sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
     const q = query.trim().toLowerCase();
     if (!q) return all;
     return all.filter((c) => c.cafeName.toLowerCase().includes(q));

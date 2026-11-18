@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { UserReview } from '../data/mockData';
+import { orderedItemsFromRow } from '../utils/orderedItems';
 
 /** Minimal public-facing profile shape used by list rows and the user profile screen. */
 export interface PublicUser {
@@ -256,7 +257,7 @@ export async function getUserReviews(userId: string): Promise<UserReview[]> {
     cafeImage: row.cafe_image || '',
     rating: typeof row.rating === 'string' ? parseFloat(row.rating) : row.rating,
     text: row.text || '',
-    orderedItem: row.ordered_item || undefined,
+    orderedItems: orderedItemsFromRow(row),
     date: formatReviewDate(row.visit_date || row.created_at),
     visitDate: row.visit_date || undefined,
     attributes: row.attributes || undefined,
@@ -294,7 +295,7 @@ export async function getReviewById(reviewId: string): Promise<ReviewWithAuthor 
     cafeImage: row.cafe_image || '',
     rating: typeof row.rating === 'string' ? parseFloat(row.rating) : row.rating,
     text: row.text || '',
-    orderedItem: row.ordered_item || undefined,
+    orderedItems: orderedItemsFromRow(row),
     date: formatReviewDate(row.visit_date || row.created_at),
     visitDate: row.visit_date || undefined,
     attributes: row.attributes || undefined,

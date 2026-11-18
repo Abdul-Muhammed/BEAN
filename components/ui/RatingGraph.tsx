@@ -6,7 +6,7 @@ import { colors, spacing } from '@/constants/theme';
 interface RatingGraphProps {
   /** Every rating being summarised, 0.5-5. */
   ratings: number[];
-  /** Overrides the mean when the caller already knows it. */
+  /** Accepted for existing callers; the bars are plain counts and don't use it. */
   averageRating?: number;
   style?: StyleProp<ViewStyle>;
 }
@@ -16,57 +16,45 @@ const MAX_BAR_HEIGHT = 48;
 const MIN_BAR_HEIGHT = 2;
 
 /**
- * The distribution strip from the Figma frames: a 1-bean spread, ten bars, and
- * a 5-bean spread, reading left to right as worst to best.
- *
- * The bar heights keep the gaussian shaping the previous RatingHistogram used.
- * With only a handful of reviews a literal histogram is mostly empty columns,
- * so the curve is centred on the mean and widened by the observed spread. It is
- * an impression of the distribution rather than a count per bucket.
+ * Counts ratings into ten half-bean buckets: index 0 is 0.5, index 9 is 5.0.
+ * Ratings outside 0.5-5 are ignored.
  */
-export default function RatingGraph({ ratings, averageRating, style }: RatingGraphProps) {
-  const heights = useMemo(() => {
-    const valid = ratings.filter((r) => r >= 0.5 && r <= 5);
+export function bucketRatings(ratings: number[]): number[] {
+  const counts = new Array<number>(NUM_BARS).fill(0);
+  for (const r of ratings) {
+    if (!(r >= 0.5 && r <= 5)) continue;
+    const i = Math.round(r * 2) - 1;
+    counts[Math.min(NUM_BARS - 1, Math.max(0, i))] += 1;
+  }
+  return counts;
+}
 
-    let mean = 0;
-    if (typeof averageRating === 'number' && averageRating > 0) {
-      mean = averageRating;
-    } else if (valid.length > 0) {
-      mean = valid.reduce((a, b) => a + b, 0) / valid.length;
-    }
-
-    let stdDev = 0.85;
-    if (valid.length >= 3) {
-      const variance =
-        valid.reduce((acc, r) => acc + Math.pow(r - mean, 2), 0) / valid.length;
-      stdDev = Math.max(0.55, Math.min(1.4, Math.sqrt(variance) || 0.85));
-    }
-
-    const center = mean > 0 ? mean : 3;
-    const raw: number[] = [];
-    for (let i = 0; i < NUM_BARS; i++) {
-      const x = 1 + (i / (NUM_BARS - 1)) * 4;
-      raw.push(Math.exp(-0.5 * Math.pow((x - center) / stdDev, 2)));
-    }
-
-    const max = Math.max(...raw, 0.0001);
-    return raw.map((h) => h / max);
-  }, [ratings, averageRating]);
-
-  const empty = ratings.length === 0;
+/**
+ * The distribution strip from the Figma frames: a 1-bean marker, ten bars, and
+ * a 5-bean marker, reading left to right as worst to best.
+ *
+ * Each bar is one rating value (0.5, 1.0 ... 5.0) and its height is how many
+ * times that exact rating was given, scaled so the most common rating fills the
+ * full height. A rating nobody gave shows as a thin stub so every slot stays
+ * visible.
+ */
+export default function RatingGraph({ ratings, style }: RatingGraphProps) {
+  const counts = useMemo(() => bucketRatings(ratings), [ratings]);
+  const maxCount = Math.max(...counts);
 
   return (
     <View style={[styles.row, style]}>
       {/* One bean marks the low end and five the high end, as the frame draws
           them. A 5-bean row with one filled would read as a rating, not a scale. */}
       <CoffeeBean size={12} />
-      {heights.map((h, i) => (
+      {counts.map((count, i) => (
         <View
           key={i}
           style={[
             styles.bar,
-            { height: Math.max(MIN_BAR_HEIGHT, h * MAX_BAR_HEIGHT) },
-            empty && styles.barEmpty,
+            count > 0
+              ? { height: Math.max(MIN_BAR_HEIGHT, (count / maxCount) * MAX_BAR_HEIGHT) }
+              : styles.barEmpty,
           ]}
         />
       ))}
@@ -87,6 +75,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.ink,
   },
   barEmpty: {
+    height: MIN_BAR_HEIGHT,
     backgroundColor: colors.accent,
   },
 });
