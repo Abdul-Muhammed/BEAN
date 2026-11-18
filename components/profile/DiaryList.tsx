@@ -57,7 +57,7 @@ export function DiaryRow({
       </Text>
 
       <View style={styles.ratingRow}>
-        <BeanRating rating={review.rating} size={12} />
+        <BeanRating rating={review.rating} size={12} hideEmpty />
         {isFav && <SvgXml xml={HEART_12_FILLED_SVG} width={12} height={12} />}
       </View>
     </TouchableOpacity>

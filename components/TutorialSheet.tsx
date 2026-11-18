@@ -5,7 +5,6 @@ import {
   Platform,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
   type ImageSourcePropType,
 } from 'react-native';
@@ -20,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SvgXml } from 'react-native-svg';
 
 import { colors, fonts, type } from '@/constants/theme';
+import Button from '@/components/ui/Button';
 import { TUTORIAL_EAN_SVG, TUTORIAL_LOGO_SVG } from '@/constants/tutorialIcons';
 import { triggerSaveHaptic } from '@/lib/haptics';
 
@@ -48,7 +48,7 @@ const STEPS: TutorialStep[] = [
   {
     title: 'Find your next favorite cafe.',
     body: 'Browse nearby spots and explore details like atmosphere, Wi-Fi, food, and what the community is saying.',
-    illustration: require('@/assets/images/tutorial/discover-illustration.webp'),
+    illustration: require('@/assets/images/tutorial/discover-illustration.png'),
   },
   {
     title: 'Keep a simple coffee diary.',
@@ -206,18 +206,16 @@ export default function TutorialSheet({ visible, onClosed }: TutorialSheetProps)
 
           <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, 16) + BOTTOM_EXTRA }]}>
             {isLastStep ? (
-              <TouchableOpacity style={styles.primaryButton} onPress={close} activeOpacity={0.85}>
-                <Text style={styles.primaryText}>Start Exploring Bean</Text>
-                <Image source={HAND_ICON} style={styles.handIcon} />
-              </TouchableOpacity>
+              <Button
+                label="Start Exploring Bean"
+                onPress={close}
+                trailing={<Image source={HAND_ICON} style={styles.handIcon} />}
+                style={styles.primaryButton}
+              />
             ) : (
               <>
-                <TouchableOpacity style={styles.skipButton} onPress={close} activeOpacity={0.7}>
-                  <Text style={styles.skipText}>Skip Tutorial</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.primaryButton} onPress={handleNext} activeOpacity={0.85}>
-                  <Text style={styles.primaryText}>Next</Text>
-                </TouchableOpacity>
+                <Button label="Skip Tutorial" variant="secondary" onPress={close} />
+                <Button label="Next" onPress={handleNext} style={styles.primaryButton} />
               </>
             )}
           </View>
@@ -316,34 +314,8 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingTop: 16,
   },
-  skipButton: {
-    backgroundColor: colors.cream,
-    borderWidth: 1,
-    borderColor: colors.ink,
-    borderRadius: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  skipText: {
-    ...type.title1,
-    color: colors.ink,
-  },
   primaryButton: {
     flex: 1,
-    flexDirection: 'row',
-    backgroundColor: colors.ink,
-    borderRadius: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  primaryText: {
-    ...type.title1,
-    color: colors.background,
   },
   handIcon: {
     width: 15,

@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import { colors } from '@/constants/theme';
+import Button from '@/components/ui/Button';
 import { isUsernameAvailable, validateUsername, USERNAME_MAX_LENGTH } from '../../lib/profile';
 import { useAuth } from '../../context/AuthContext';
 
@@ -155,21 +156,12 @@ export default function UsernameScreen() {
               <Text style={helperStyle}>{helperText}</Text>
             </View>
 
-            <TouchableOpacity
-              style={[
-                styles.nextButton,
-                !canProceed && styles.nextButtonDisabled
-              ]}
+            <Button
+              label="Next"
               onPress={handleNext}
               disabled={!canProceed}
-            >
-              <Text style={[
-                styles.nextButtonText,
-                !canProceed && styles.nextButtonTextDisabled
-              ]}>
-                Next
-              </Text>
-            </TouchableOpacity>
+              style={styles.nextButton}
+            />
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -254,21 +246,6 @@ const styles = StyleSheet.create({
     color: '#D1495B',
   },
   nextButton: {
-    backgroundColor: '#1C1C1E',
-    borderRadius: 12,
-    paddingVertical: 18,
-    alignItems: 'center',
     marginBottom: 40,
-  },
-  nextButtonDisabled: {
-    backgroundColor: '#E5E5EA',
-  },
-  nextButtonText: {
-    fontSize: 16,
-    fontFamily: 'Lato-Bold',
-    color: '#FFFFFF',
-  },
-  nextButtonTextDisabled: {
-    color: '#8E8E93',
   },
 });

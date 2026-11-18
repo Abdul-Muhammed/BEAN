@@ -298,7 +298,7 @@ export default function DiaryEntryScreen() {
         <View style={styles.dateStrip}>
           <Text style={styles.dateText}>{review.date}</Text>
           <View style={styles.dateStripRight}>
-            <BeanRating rating={review.rating} size={12} />
+            <BeanRating rating={review.rating} size={12} hideEmpty />
             {isFav && <SvgXml xml={HEART_12_FILLED_SVG} width={12} height={12} />}
           </View>
         </View>

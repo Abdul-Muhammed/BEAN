@@ -3,14 +3,13 @@ import {
   ActivityIndicator,
   Animated,
   Platform,
-  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import type { ViewInstance } from 'react-native';
+import type { LayoutChangeEvent, ViewInstance } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Copy, Download, Link2, Share as ShareIcon } from 'lucide-react-native';
@@ -37,8 +36,10 @@ import { INSTAGRAM_STORY_SVG } from '@/constants/shareIcons';
 import { colors } from '@/constants/theme';
 import { UserReview } from '../../data/mockData';
 
-const PREVIEW_WIDTH = 229.5;
-const PREVIEW_HEIGHT = PREVIEW_WIDTH / STORY_ASPECT_RATIO;
+/** The preview's design size; it shrinks below this on short screens so the
+ *  share tiles stay above the fold. */
+const PREVIEW_MAX_WIDTH = 229.5;
+const PREVIEW_MAX_HEIGHT = PREVIEW_MAX_WIDTH / STORY_ASPECT_RATIO;
 const EXPORT_HEIGHT = STORY_EXPORT_WIDTH / STORY_ASPECT_RATIO;
 
 const VARIANTS: StoryCardVariant[] = ['filled', 'transparent', 'compact', 'simple'];
@@ -283,6 +284,13 @@ export default function ShareReviewScreen() {
     });
   }, [current, natives, showToast]);
 
+  // Height the preview may take, measured from the flexible area above the
+  // pinned share panel. Null until the first layout pass.
+  const [previewSpace, setPreviewSpace] = useState<number | null>(null);
+  const handlePreviewLayout = useCallback((e: LayoutChangeEvent) => {
+    setPreviewSpace(e.nativeEvent.layout.height);
+  }, []);
+
   if (!review) {
     return (
       <SafeAreaView style={styles.centered} edges={['top', 'bottom']}>
@@ -302,6 +310,10 @@ export default function ShareReviewScreen() {
   // instead of a spinner that would never resolve.
   const busy = !unavailable && !current;
 
+  const previewHeight =
+    previewSpace == null ? 0 : Math.max(0, Math.min(PREVIEW_MAX_HEIGHT, previewSpace));
+  const previewWidth = previewHeight * STORY_ASPECT_RATIO;
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <StatusBar barStyle="dark-content" />
@@ -320,82 +332,89 @@ export default function ShareReviewScreen() {
         <View style={styles.topBarButton} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.previewSection}>
-          <View style={styles.previewFrame}>
-            <AlphaCheckerboard width={PREVIEW_WIDTH} height={PREVIEW_HEIGHT} />
-            {VARIANTS.map((v) => (
-              <Animated.View key={v} style={[styles.previewLayer, { opacity: fades[v] }]}>
-                <ReviewStoryCard review={review} width={PREVIEW_WIDTH} variant={v} />
-              </Animated.View>
-            ))}
-          </View>
-          <TemplateToggle value={variant} onChange={handleVariantChange} />
+      <View style={styles.previewSection}>
+        <View style={styles.previewSpace} onLayout={handlePreviewLayout}>
+          {previewHeight > 0 && (
+            <View style={[styles.previewFrame, { width: previewWidth, height: previewHeight }]}>
+              <AlphaCheckerboard width={previewWidth} height={previewHeight} />
+              {VARIANTS.map((v) => (
+                <Animated.View key={v} style={[styles.previewLayer, { opacity: fades[v] }]}>
+                  <ReviewStoryCard review={review} width={previewWidth} variant={v} />
+                </Animated.View>
+              ))}
+            </View>
+          )}
         </View>
+        <TemplateToggle value={variant} onChange={handleVariantChange} />
+      </View>
 
-        <View style={styles.shareSection}>
-          <Text style={styles.sectionTitle}>Share To</Text>
+      <View style={styles.shareSection}>
+        <Text style={styles.sectionTitle}>Share To</Text>
 
-          {busy ? (
+        {unavailable && (
+          <View style={styles.notice}>
+            <Text style={styles.noticeText}>
+              Rebuild the dev client to enable sharing — missing{' '}
+              {missingModules.join(', ')}.
+            </Text>
+          </View>
+        )}
+
+        {/* The tiles always take their space (hidden while the image is being
+            prepared) so the panel's height, and therefore the preview size,
+            never jumps when they appear. */}
+        <View>
+          <View style={busy && styles.hidden} pointerEvents={busy ? 'none' : 'auto'}>
+            <View style={styles.primaryRow}>
+              <ShareTargetTile
+                icon={<SvgXml xml={INSTAGRAM_STORY_SVG} width={48} height={48} />}
+                label={'Instagram\nStory'}
+                onPress={handleInstagram}
+                disabled={unavailable}
+                plainIcon
+              />
+            </View>
+
+            <View style={styles.tileRow}>
+              <ShareTargetTile
+                icon={<Copy size={18} color={colors.ink} />}
+                label="Copy To Clipboard"
+                onPress={handleCopyImage}
+                disabled={unavailable}
+                fixedWidth
+              />
+              <ShareTargetTile
+                icon={<Download size={18} color={colors.ink} />}
+                label="Save"
+                onPress={handleSave}
+                disabled={unavailable}
+                fixedWidth
+              />
+              <ShareTargetTile
+                icon={<Link2 size={24} color={colors.ink} />}
+                label="Copy Link"
+                onPress={handleCopyLink}
+                disabled={unavailable}
+                fixedWidth
+              />
+              <ShareTargetTile
+                icon={<ShareIcon size={24} color={colors.ink} />}
+                label="More"
+                onPress={handleMore}
+                disabled={unavailable}
+                fixedWidth
+              />
+            </View>
+          </View>
+
+          {busy && (
             <View style={styles.busy}>
               <ActivityIndicator color={colors.ink} />
               <Text style={styles.busyText}>Preparing your image...</Text>
             </View>
-          ) : (
-            <View>
-              {unavailable && (
-                <View style={styles.notice}>
-                  <Text style={styles.noticeText}>
-                    Rebuild the dev client to enable sharing — missing{' '}
-                    {missingModules.join(', ')}.
-                  </Text>
-                </View>
-              )}
-
-              <View style={styles.primaryRow}>
-                <ShareTargetTile
-                  icon={<SvgXml xml={INSTAGRAM_STORY_SVG} width={48} height={48} />}
-                  label={'Instagram\nStory'}
-                  onPress={handleInstagram}
-                  disabled={unavailable}
-                  plainIcon
-                />
-              </View>
-
-              <View style={styles.tileRow}>
-                <ShareTargetTile
-                  icon={<Copy size={18} color={colors.ink} />}
-                  label="Copy To Clipboard"
-                  onPress={handleCopyImage}
-                  disabled={unavailable}
-                  fixedWidth
-                />
-                <ShareTargetTile
-                  icon={<Download size={18} color={colors.ink} />}
-                  label="Save"
-                  onPress={handleSave}
-                  disabled={unavailable}
-                  fixedWidth
-                />
-                <ShareTargetTile
-                  icon={<Link2 size={24} color={colors.ink} />}
-                  label="Copy Link"
-                  onPress={handleCopyLink}
-                  disabled={unavailable}
-                  fixedWidth
-                />
-                <ShareTargetTile
-                  icon={<ShareIcon size={24} color={colors.ink} />}
-                  label="More"
-                  onPress={handleMore}
-                  disabled={unavailable}
-                  fixedWidth
-                />
-              </View>
-            </View>
           )}
         </View>
-      </ScrollView>
+      </View>
 
       {/* Off-screen full-resolution copies, one per template — these are what
           actually get exported. */}
@@ -464,18 +483,22 @@ const styles = StyleSheet.create({
     color: colors.ink,
     textAlign: 'center',
   },
-  scrollContent: {
-    paddingBottom: 24,
-  },
   previewSection: {
+    flex: 1,
+    minHeight: 0,
     alignItems: 'center',
     gap: 16,
     paddingVertical: 16,
     backgroundColor: colors.cream,
   },
+  previewSpace: {
+    flex: 1,
+    minHeight: 0,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   previewFrame: {
-    width: PREVIEW_WIDTH,
-    height: PREVIEW_HEIGHT,
     overflow: 'hidden',
   },
   previewLayer: {
@@ -513,10 +536,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+  hidden: {
+    opacity: 0,
+  },
   busy: {
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 12,
-    paddingVertical: 48,
   },
   busyText: {
     fontFamily: 'Lato-Regular',
