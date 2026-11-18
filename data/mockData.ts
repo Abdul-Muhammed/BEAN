@@ -30,7 +30,8 @@ export interface Review {
   userImage: string;
   rating: number;
   text: string;
-  orderedItem?: string;
+  /** What the reviewer ordered, one entry per item. */
+  orderedItems?: string[];
   date: string;
   attributes?: string[];
   photos?: string[];
@@ -46,7 +47,8 @@ export interface UserReview {
   date: string;
   visitDate?: string;
   text: string;
-  orderedItem?: string;
+  /** What the reviewer ordered, one entry per item. */
+  orderedItems?: string[];
   attributes?: string[];
   photos?: string[];
 }

@@ -14,7 +14,7 @@ import { useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import { colors } from '@/constants/theme';
-import { isUsernameAvailable } from '../../lib/profile';
+import { isUsernameAvailable, validateUsername, USERNAME_MAX_LENGTH } from '../../lib/profile';
 import { useAuth } from '../../context/AuthContext';
 
 type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken' | 'error';
@@ -39,8 +39,10 @@ export default function UsernameScreen() {
   // Guards against a slow earlier request resolving after a newer one.
   const requestIdRef = useRef(0);
 
-  const trimmed = username.trim();
-  const tooShort = trimmed.length < 4;
+  const { value: trimmed, error: formatError } = validateUsername(username);
+  // Nothing typed yet reads as a hint, not an error.
+  const isEmpty = trimmed.length === 0;
+  const invalid = formatError !== null;
 
   // Debounced, case-insensitive availability check. The user is signed in by
   // this point (onboarding follows sign-up), so the authenticated-read RLS on
@@ -49,7 +51,7 @@ export default function UsernameScreen() {
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    if (tooShort) {
+    if (invalid) {
       setStatus('idle');
       return;
     }
@@ -70,9 +72,9 @@ export default function UsernameScreen() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [trimmed, tooShort, user?.id]);
+  }, [trimmed, invalid, user?.id]);
 
-  const canProceed = !tooShort && status !== 'checking' && status !== 'taken';
+  const canProceed = !invalid && status !== 'checking' && status !== 'taken';
 
   const helperText =
     status === 'checking'
@@ -83,12 +85,14 @@ export default function UsernameScreen() {
           ? 'That username is already taken.'
           : status === 'error'
             ? "Couldn't check availability — you can still continue."
-            : 'Must be at least 4 characters.';
+            : isEmpty
+              ? 'Letters, numbers, full stops and underscores. At least 4 characters.'
+              : formatError;
 
   const helperStyle = [
     styles.helperText,
     status === 'available' && styles.helperAvailable,
-    status === 'taken' && styles.helperTaken,
+    (status === 'taken' || (invalid && !isEmpty)) && styles.helperTaken,
   ];
 
   const handleNext = () => {
@@ -136,17 +140,17 @@ export default function UsernameScreen() {
 
           <View style={styles.form}>
             <Text style={styles.title}>Choose A User Name</Text>
-            
+
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.input}
                 placeholder="e.g. humzajpeg"
                 placeholderTextColor="#8E8E93"
                 value={username}
-                onChangeText={setUsername}
+                onChangeText={(text) => setUsername(text.toLowerCase())}
                 autoCapitalize="none"
                 autoCorrect={false}
-                maxLength={20}
+                maxLength={USERNAME_MAX_LENGTH}
               />
               <Text style={helperStyle}>{helperText}</Text>
             </View>
@@ -205,16 +209,16 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 20,
-    justifyContent: 'space-between',
   },
   logoContainer: {
     alignItems: 'center',
-    marginTop: 40,
+    marginTop: 24,
+    marginBottom: 32,
   },
+  // Stacks below the logo rather than overlapping it; a negative top margin
+  // here used to pull the title up under the logo on shorter screens.
   form: {
     flex: 1,
-    justifyContent: 'center',
-    marginTop: -100,
   },
   title: {
     fontSize: 24,

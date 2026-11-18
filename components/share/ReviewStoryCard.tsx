@@ -16,6 +16,7 @@ import {
 } from '@/constants/shareIcons';
 import { colors } from '@/constants/theme';
 import { UserReview } from '../../data/mockData';
+import { formatOrderedItems } from '../../utils/orderedItems';
 
 /**
  * The shareable story sticker for a review. It comes in four templates from
@@ -48,7 +49,7 @@ export type StoryCardVariant = 'filled' | 'transparent' | 'compact' | 'simple';
 const TEXT_COLOR = '#FFFFFF';
 
 interface ReviewStoryCardProps {
-  review: Pick<UserReview, 'cafeName' | 'rating' | 'orderedItem' | 'visitDate' | 'date'>;
+  review: Pick<UserReview, 'cafeName' | 'rating' | 'orderedItems' | 'visitDate' | 'date'>;
   /** Rendered width in px. Everything else scales off this. */
   width: number;
   variant?: StoryCardVariant;
@@ -218,10 +219,10 @@ function CenteredCard({ review, s, variant }: { review: Review; s: number; varia
         <Text style={[styles.text, textStyle(24, 'Lato-Regular', s)]}>Café</Text>
       </View>
 
-      {!!review.orderedItem && (
+      {!!review.orderedItems?.length && (
         <View style={[styles.block, { gap: 16 * s }]}>
           <Text style={[styles.text, textStyle(32, 'Lato-Regular', s), { maxWidth: 960 * s }]} numberOfLines={2}>
-            {review.orderedItem}
+            {formatOrderedItems(review.orderedItems)}
           </Text>
           <Text style={[styles.text, textStyle(24, 'Lato-Regular', s)]}>Order</Text>
         </View>
@@ -273,11 +274,11 @@ function CompactCard({ review, s }: { review: Review; s: number }) {
         </Text>
       </View>
 
-      {!!review.orderedItem && (
+      {!!review.orderedItems?.length && (
         <View style={[styles.block, { gap: 12.558 * s }]}>
           <Text style={[styles.text, label]}>Order</Text>
           <Text style={[styles.text, value, { maxWidth: 846 * s }]} numberOfLines={2}>
-            {review.orderedItem}
+            {formatOrderedItems(review.orderedItems)}
           </Text>
         </View>
       )}

@@ -72,7 +72,7 @@ export default function AddReviewScreen() {
         cafeId: selectedCafe.id,
         rating: values.rating,
         text: values.notes,
-        orderedItem: values.orderedItem || undefined,
+        orderedItems: values.orderedItems,
         attributes: values.attributes,
         photos: values.photos.map((photo) => photo.uri),
         photoUploads: values.photos

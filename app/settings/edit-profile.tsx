@@ -17,7 +17,12 @@ import SettingsHeader from '../../components/settings/SettingsHeader';
 import ProfileAvatarEditor from '../../components/settings/ProfileAvatarEditor';
 import { useAuth } from '../../context/AuthContext';
 import { useUserProfile } from '../../hooks/useUserProfile';
-import { updateProfile, isUsernameAvailable } from '../../lib/profile';
+import {
+  updateProfile,
+  isUsernameAvailable,
+  validateUsername,
+  USERNAME_MAX_LENGTH,
+} from '../../lib/profile';
 import { uploadAvatar } from '../../lib/storage';
 import { useToast } from '../../context/ToastContext';
 import { colors } from '@/constants/theme';
@@ -25,11 +30,6 @@ import { colors } from '@/constants/theme';
 const BIO_LIMIT = 150;
 
 type UsernameStatus = 'unchanged' | 'idle' | 'checking' | 'available' | 'taken' | 'invalid';
-
-function normalizeUsername(raw: string): string {
-  // lowercase, strip spaces and anything not a-z0-9._
-  return raw.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9._]/g, '');
-}
 
 export default function EditProfileScreen() {
   const router = useRouter();
@@ -58,13 +58,15 @@ export default function EditProfileScreen() {
     setBio(profile.bio ?? '');
   }, [profile, currentUsername]);
 
+  const { error: usernameError } = validateUsername(username);
+
   // Debounced username availability check.
   useEffect(() => {
     if (username === currentUsername) {
       setUsernameStatus('unchanged');
       return;
     }
-    if (username.length < 4) {
+    if (usernameError) {
       setUsernameStatus('invalid');
       return;
     }
@@ -79,7 +81,7 @@ export default function EditProfileScreen() {
       }
     }, 450);
     return () => clearTimeout(handle);
-  }, [username, currentUsername, user?.id]);
+  }, [username, usernameError, currentUsername, user?.id]);
 
   const canSave =
     !saving &&
@@ -125,7 +127,7 @@ export default function EditProfileScreen() {
   const usernameHint = (() => {
     switch (usernameStatus) {
       case 'invalid':
-        return { text: 'At least 4 characters, lowercase, no spaces', color: '#8E8E93' };
+        return { text: usernameError ?? '', color: colors.danger };
       case 'checking':
         return { text: 'Checking availability…', color: '#8E8E93' };
       case 'available':
@@ -179,11 +181,12 @@ export default function EditProfileScreen() {
             <TextInput
               style={styles.usernameInput}
               value={username}
-              onChangeText={(t) => setUsername(normalizeUsername(t))}
+              onChangeText={(t) => setUsername(t.toLowerCase())}
               placeholder="username"
               placeholderTextColor="#B0B0B5"
               autoCapitalize="none"
               autoCorrect={false}
+              maxLength={USERNAME_MAX_LENGTH}
             />
             {usernameStatus === 'checking' ? <ActivityIndicator size="small" /> : null}
           </View>

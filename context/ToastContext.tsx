@@ -112,6 +112,12 @@ export interface ToastOptions {
 interface ToastContextValue {
   showToast: (options: ToastOptions) => void;
   hideToast: () => void;
+  /**
+   * Lets a screen with its own bottom bar (e.g. the cafe page's Add Review
+   * footer) lift the toast clear of it. The value is the distance from the
+   * screen's bottom edge; pass null to go back to the default placement.
+   */
+  setBottomOffset: (offset: number | null) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | undefined>(undefined);
@@ -129,9 +135,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const segments = useSegments() as string[];
   // Tab screens show the bar, except add-review, which hides it.
   const hasTabBar = segments[0] === '(tabs)' && segments[1] !== 'add-review';
-  const bottomOffset = hasTabBar
-    ? TAB_BAR_HEIGHT + TAB_BAR_GAP
-    : insets.bottom + NO_TAB_BAR_GAP;
+  const [offsetOverride, setOffsetOverride] = useState<number | null>(null);
+  const bottomOffset =
+    offsetOverride ??
+    (hasTabBar ? TAB_BAR_HEIGHT + TAB_BAR_GAP : insets.bottom + NO_TAB_BAR_GAP);
   const [toast, setToast] = useState<ToastOptions | null>(null);
   const translateY = useSharedValue(HIDDEN_OFFSET);
   const opacity = useSharedValue(0);
@@ -188,7 +195,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, [hideToast, toast]);
 
   // Stable value so showing/hiding a toast never re-renders every consumer.
-  const value = useMemo(() => ({ showToast, hideToast }), [showToast, hideToast]);
+  const value = useMemo(
+    () => ({ showToast, hideToast, setBottomOffset: setOffsetOverride }),
+    [showToast, hideToast]
+  );
 
   return (
     <ToastContext.Provider value={value}>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,8 +11,8 @@ import {
   Share,
   Dimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SvgXml } from 'react-native-svg';
 
 import ReviewCard from '../../components/ReviewCard';
@@ -26,6 +26,7 @@ import StatTiles from '../../components/ui/StatTiles';
 import Tag from '../../components/ui/Tag';
 import SectionHeader from '../../components/profile/SectionHeader';
 import { useReviews } from '../../context/ReviewContext';
+import { useToast } from '../../context/ToastContext';
 import { useUserProfile } from '../../hooks/useUserProfile';
 import { getCafeCategories, type CafeCategory } from '../../lib/cafeCategories';
 import { getAttributesForCafes, type CafeAttribute } from '../../lib/cafeAttributes';
@@ -60,6 +61,9 @@ function isPlaceholderImage(uri: string | undefined | null): boolean {
 function hasRealPhotos(photos: string[] | undefined | null): boolean {
   return Array.isArray(photos) && photos.some((p) => !isPlaceholderImage(p));
 }
+
+const FOOTER_PADDING = spacing.md;
+const TOAST_GAP = 8;
 
 export default function CafeDetailScreen() {
   const { id } = useLocalSearchParams();
@@ -203,6 +207,22 @@ export default function CafeDetailScreen() {
   const preferredIds = useMemo(
     () => new Set(Array.isArray(profile?.preferences) ? profile!.preferences : []),
     [profile?.preferences]
+  );
+
+  // Keep the saved/favorited toast 8px above the Add Review button instead of
+  // on top of it. The footer sits on the bottom safe area, and its top padding
+  // is space above the button, so the button's top edge is
+  // insets.bottom + footerHeight - FOOTER_PADDING from the screen bottom.
+  const insets = useSafeAreaInsets();
+  const { setBottomOffset } = useToast();
+  const [footerHeight, setFooterHeight] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      if (footerHeight > 0) {
+        setBottomOffset(insets.bottom + footerHeight - FOOTER_PADDING + TOAST_GAP);
+      }
+      return () => setBottomOffset(null);
+    }, [footerHeight, insets.bottom, setBottomOffset])
   );
 
   if (isLoading) {
@@ -430,7 +450,10 @@ export default function CafeDetailScreen() {
 
       {/* The frame's footer is a single Add Review button. Saving already has a
           home in the bookmark beside the cafe name, so it is not repeated here. */}
-      <View style={styles.footer}>
+      <View
+        style={styles.footer}
+        onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}
+      >
         <Button
           label="Add Review"
           iconXml={PLUS_CIRCLE_LIGHT_SVG}
@@ -574,7 +597,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   footer: {
-    padding: spacing.md,
+    padding: FOOTER_PADDING,
     backgroundColor: colors.background,
   },
 });

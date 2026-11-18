@@ -185,6 +185,13 @@ export const MORE_HORIZONTAL_SVG = `<svg width="24" height="24" viewBox="0 0 24 
 </g>
 </svg>`;
 
+/** Share (box with an up arrow), drawn to match the 24px stroke icons above. */
+export const SHARE_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M12 15V3" stroke="#0F1312" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M8 7L12 3L16 7" stroke="#0F1312" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M8 10H7C5.89543 10 5 10.8954 5 12V19C5 20.1046 5.89543 21 7 21H17C18.1046 21 19 20.1046 19 19V12C19 10.8954 18.1046 10 17 10H16" stroke="#0F1312" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
 /** Edit affordance */
 export const PENCIL_SVG = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
 <g id="Edit Icon">

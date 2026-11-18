@@ -6,11 +6,14 @@ import {
   ScrollView,
   StatusBar,
   ActivityIndicator,
-  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import ProfileTabs, { ProfileTab } from '../../components/ProfileTabs';
+import ProfileTabs, { PROFILE_TABS, ProfileTab } from '../../components/ProfileTabs';
+import { GestureDetector } from 'react-native-gesture-handler';
+import Animated from 'react-native-reanimated';
+import { useTabSwipe } from '../../hooks/useTabSwipe';
+import { useTabScrollReset } from '../../hooks/useTabScrollReset';
 import TopAppBar from '../../components/ui/TopAppBar';
 import ProfileHero from '../../components/profile/ProfileHero';
 import FollowButton from '../../components/social/FollowButton';
@@ -19,6 +22,7 @@ import PreferencesSection from '../../components/profile/PreferencesSection';
 import RatingsSection from '../../components/profile/RatingsSection';
 import RecentActivitySection from '../../components/profile/RecentActivitySection';
 import DiaryList from '../../components/profile/DiaryList';
+import ShareProfileSheet from '../../components/profile/ShareProfileSheet';
 import {
   getPublicProfile,
   getPublicCafeCounts,
@@ -28,7 +32,7 @@ import {
   type PublicCafeCounts,
 } from '../../lib/follows';
 import { UserReview } from '../../data/mockData';
-import { ARROW_LEFT_SVG, MORE_HORIZONTAL_SVG } from '@/constants/figmaIcons';
+import { ARROW_LEFT_SVG, SHARE_SVG } from '@/constants/figmaIcons';
 import { colors, spacing, type } from '@/constants/theme';
 
 const MONTH_SHORT = [
@@ -58,6 +62,8 @@ export default function UserProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [activeTab, setActiveTab] = useState<ProfileTab>('overview');
+  const tabSwipe = useTabSwipe(PROFILE_TABS, activeTab, setActiveTab);
+  const { scrollRef, scrollProps, onHeroLayout } = useTabScrollReset(activeTab);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,13 +125,7 @@ export default function UserProfileScreen() {
     ? (profile.top_cafes as string[])
     : [];
 
-  const handleShareProfile = async () => {
-    try {
-      await Share.share({ message: `Check out ${username} on Bean` });
-    } catch {
-      // User dismissed the share sheet.
-    }
-  };
+  const [shareOpen, setShareOpen] = useState(false);
 
   // Other people's reviews open as reviews, not as the cafe. Favourites are
   // private, so nothing here can be shown as favourited.
@@ -199,8 +199,8 @@ export default function UserProfileScreen() {
         leadingXml={ARROW_LEFT_SVG}
         onPressLeading={() => router.back()}
         leadingLabel="Go back"
-        trailingXml={MORE_HORIZONTAL_SVG}
-        onPressTrailing={handleShareProfile}
+        trailingXml={SHARE_SVG}
+        onPressTrailing={() => setShareOpen(true)}
         trailingLabel="Share this profile"
       />
 
@@ -216,8 +216,10 @@ export default function UserProfileScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
           stickyHeaderIndices={[1]}
+          ref={scrollRef}
+          {...scrollProps}
         >
-          <View style={styles.heroBlock}>
+          <View style={styles.heroBlock} onLayout={onHeroLayout}>
             <ProfileHero
               username={username}
               fullName={fullName}
@@ -238,9 +240,22 @@ export default function UserProfileScreen() {
 
           <ProfileTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
-          {activeTab === 'overview' ? renderOverview() : renderDiary()}
+          <GestureDetector gesture={tabSwipe.gesture}>
+            <Animated.View key={activeTab} entering={tabSwipe.entering}>
+              {activeTab === 'overview' ? renderOverview() : renderDiary()}
+            </Animated.View>
+          </GestureDetector>
         </ScrollView>
       )}
+
+      {id ? (
+        <ShareProfileSheet
+          visible={shareOpen}
+          onClose={() => setShareOpen(false)}
+          userId={id}
+          username={profile?.username ?? ''}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

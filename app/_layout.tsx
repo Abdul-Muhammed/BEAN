@@ -98,6 +98,7 @@ const AUTH_ONLY_GROUPS = [
   '(onboarding)',
   'diary',
   'share-review',
+  'user',
   'edit-top-cafes',
   'edit-preferences',
 ];
@@ -123,9 +124,9 @@ function AuthGate() {
       // Welcome screen (root index) and the (auth) group are valid signed-out
       // destinations. Anything else means a stale authenticated stack — bounce.
       if (AUTH_ONLY_GROUPS.includes(group)) {
-        // A shared review link is a legitimate arrival point, not a stale
-        // stack, so remember it and return the visitor there after they sign in.
-        if (group === 'diary' || group === 'share-review') {
+        // A shared review or profile link is a legitimate arrival point, not a
+        // stale stack, so remember it and return the visitor there after they sign in.
+        if (group === 'diary' || group === 'share-review' || group === 'user') {
           AsyncStorage.setItem(PENDING_DEEP_LINK_KEY, pathname).catch(() => {});
         }
         router.replace('/(auth)/sign-in');

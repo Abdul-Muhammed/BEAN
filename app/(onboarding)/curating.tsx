@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import OnboardingLoadingAnimation from '../../components/OnboardingLoadingAnimation';
 import { useUserProfile } from '../../hooks/useUserProfile';
-import { updateProfile } from '../../lib/profile';
+import { updateProfile, validateUsername } from '../../lib/profile';
 import { colors } from '@/constants/theme';
 
 /**
@@ -51,9 +51,9 @@ export default function CuratingScreen() {
     setError(null);
     writeDoneRef.current = false;
 
-    const trimmedUsername = (username ?? '').trim();
-    if (!trimmedUsername || trimmedUsername.length < 4) {
-      setError('Your username needs to be at least 4 characters.');
+    const { value: trimmedUsername, error: usernameError } = validateUsername(username ?? '');
+    if (usernameError) {
+      setError(usernameError);
       return;
     }
 

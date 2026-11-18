@@ -19,6 +19,39 @@ export interface UpdateProfileParams {
   sharePromptSeen?: boolean;
 }
 
+export const USERNAME_MIN_LENGTH = 4;
+export const USERNAME_MAX_LENGTH = 20;
+const USERNAME_ALLOWED = /^[a-z0-9._]+$/;
+
+export const USERNAME_CHARS_ERROR =
+  'Usernames can only use letters, numbers, full stops (.) and underscores (_).';
+
+export interface UsernameValidation {
+  /** Trimmed, lowercased handle — what gets checked and saved. */
+  value: string;
+  /** Why the handle can't be used, or null when its format is fine. */
+  error: string | null;
+}
+
+/**
+ * The one username rule shared by onboarding and edit profile: lowercase
+ * letters, numbers, full stops and underscores, 4-20 characters. Anything else
+ * may be typed, but comes back with an error so the caller can block saving.
+ */
+export function validateUsername(raw: string): UsernameValidation {
+  const value = raw.trim().toLowerCase();
+  if (value.length > 0 && !USERNAME_ALLOWED.test(value)) {
+    return { value, error: USERNAME_CHARS_ERROR };
+  }
+  if (value.length < USERNAME_MIN_LENGTH) {
+    return { value, error: `Must be at least ${USERNAME_MIN_LENGTH} characters.` };
+  }
+  if (value.length > USERNAME_MAX_LENGTH) {
+    return { value, error: `Must be ${USERNAME_MAX_LENGTH} characters or fewer.` };
+  }
+  return { value, error: null };
+}
+
 /**
  * Checks whether a username is free to claim (case-insensitive). Returns true
  * when no other profile already holds it. `excludeUserId` lets a user keep their

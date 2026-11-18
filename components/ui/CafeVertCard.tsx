@@ -9,7 +9,8 @@ import { colors, radius, spacing, type } from '@/constants/theme';
 interface CafeVertCardProps {
   name: string;
   imageUri?: string | null;
-  rating: number;
+  /** Omit or pass null to hide the bean spread (e.g. a cafe not yet reviewed). */
+  rating?: number | null;
   /** Shows the heart beside the bean spread. */
   favorited?: boolean;
   onPress?: () => void;
@@ -49,7 +50,7 @@ export default function CafeVertCard({
           {name}
         </Text>
         <View style={styles.ratingRow}>
-          <BeanRating rating={rating} size={12} />
+          {rating != null && <BeanRating rating={rating} size={12} />}
           {favorited && <SvgXml xml={HEART_12_FILLED_SVG} width={12} height={12} />}
         </View>
       </View>

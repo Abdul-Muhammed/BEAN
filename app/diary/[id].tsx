@@ -341,11 +341,13 @@ export default function DiaryEntryScreen() {
             </View>
           </TouchableOpacity>
 
-          {!!review.orderedItem && (
+          {!!review.orderedItems?.length && (
             <View style={styles.orderRow}>
-              <View style={styles.orderChip}>
-                <Text style={styles.orderChipText}>{review.orderedItem}</Text>
-              </View>
+              {review.orderedItems.map((item) => (
+                <View key={item} style={styles.orderChip}>
+                  <Text style={styles.orderChipText}>{item}</Text>
+                </View>
+              ))}
             </View>
           )}
         </View>
@@ -607,7 +609,9 @@ const styles = StyleSheet.create({
   },
   orderRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'flex-start',
+    gap: spacing.xs,
   },
   orderChip: {
     paddingHorizontal: spacing.sm,

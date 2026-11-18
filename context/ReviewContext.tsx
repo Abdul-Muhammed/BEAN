@@ -7,12 +7,13 @@ import { Cafe, UserReview, Review } from '../data/mockData';
 import { supabase } from '../lib/supabase';
 import { uploadReviewPhotos, deleteReviewPhotos } from '../lib/storage';
 import { triggerSaveHaptic } from '../lib/haptics';
+import { orderedItemsColumns, orderedItemsFromRow } from '../utils/orderedItems';
 
 interface AddReviewInput {
   cafeId: string;
   rating: number;
   text: string;
-  orderedItem?: string;
+  orderedItems?: string[];
   attributes?: string[];
   photos?: string[];
   // Base64-encoded image data (aligned with `photos`) used to upload the
@@ -27,7 +28,7 @@ interface UpdateReviewInput {
   cafeId: string;
   rating: number;
   text: string;
-  orderedItem?: string;
+  orderedItems?: string[];
   attributes?: string[];
   // Existing photo URLs to keep (already in Storage).
   photos?: string[];
@@ -186,7 +187,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
             cafeImage: row.cafe_image || '',
             rating: typeof row.rating === 'string' ? parseFloat(row.rating) : row.rating,
             text: row.text || '',
-            orderedItem: row.ordered_item || undefined,
+            orderedItems: orderedItemsFromRow(row),
             date: formatReviewDate(row.visit_date || row.created_at),
             visitDate: row.visit_date || undefined,
             attributes: row.attributes || undefined,
@@ -290,6 +291,37 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
     bookmarkedIdsRef.current = bookmarkedCafeIds;
   }, [cafes, bookmarkedCafeIds]);
 
+  // Drops a cafe from "Cafes I Want To Try" with no haptic or toast. Used by
+  // toggleBookmark, and by addReview once a visit to a saved cafe is logged.
+  const removeBookmark = useCallback(
+    async (cafeId: string) => {
+      if (!userId) return;
+      setBookmarkedCafeIds((prev) => prev.filter((id) => id !== cafeId));
+      let removed: StoredBookmark | undefined;
+      setStoredBookmarks((prev) => {
+        if (!(cafeId in prev)) return prev;
+        removed = prev[cafeId];
+        const next = { ...prev };
+        delete next[cafeId];
+        return next;
+      });
+      const { error } = await supabase
+        .from('bookmarks')
+        .delete()
+        .eq('user_id', userId)
+        .eq('cafe_id', cafeId);
+      if (error) {
+        console.warn('Failed to remove bookmark:', error.message);
+        setBookmarkedCafeIds((prev) => (prev.includes(cafeId) ? prev : [...prev, cafeId]));
+        if (removed) {
+          const restored = removed;
+          setStoredBookmarks((prev) => ({ ...prev, [cafeId]: restored }));
+        }
+      }
+    },
+    [userId]
+  );
+
   const toggleBookmark = useCallback(
     async (cafeId: string, fallbackCafe?: Cafe) => {
       if (!userId) {
@@ -301,21 +333,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
       const isCurrentlyBookmarked = bookmarkedIdsRef.current.includes(cafeId);
 
       if (isCurrentlyBookmarked) {
-        setBookmarkedCafeIds((prev) => prev.filter((id) => id !== cafeId));
-        setStoredBookmarks((prev) => {
-          const next = { ...prev };
-          delete next[cafeId];
-          return next;
-        });
-        const { error } = await supabase
-          .from('bookmarks')
-          .delete()
-          .eq('user_id', userId)
-          .eq('cafe_id', cafeId);
-        if (error) {
-          console.warn('Failed to remove bookmark:', error.message);
-          setBookmarkedCafeIds((prev) => (prev.includes(cafeId) ? prev : [...prev, cafeId]));
-        }
+        await removeBookmark(cafeId);
       } else {
         if (!cafe) {
           console.warn('Cannot bookmark unknown cafe', cafeId);
@@ -325,7 +343,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
           variant: 'saved',
           message: 'Cafe has been saved!',
           actionLabel: 'View',
-          onAction: () => router.push(`/cafe/${cafeId}`),
+          onAction: () => router.push({ pathname: '/list/[id]', params: { id: 'bookmarks' } }),
         });
         setBookmarkedCafeIds((prev) => [...prev, cafeId]);
         setStoredBookmarks((prev) => ({
@@ -362,7 +380,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [userId, showToast]
+    [userId, showToast, removeBookmark]
   );
 
   const bookmarkedIdSet = useMemo(() => new Set(bookmarkedCafeIds), [bookmarkedCafeIds]);
@@ -403,7 +421,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
             variant: 'favorite',
             message: 'Cafe has been favorited!',
             actionLabel: 'View',
-            onAction: () => router.push(`/cafe/${cafeId}`),
+            onAction: () => router.push({ pathname: '/list/[id]', params: { id: 'favorites' } }),
           });
         }
         setFavoritedCafeIds((prev) => [...prev, cafeId]);
@@ -447,7 +465,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
           userImage: displayImage,
           rating: review.rating,
           text: review.text,
-          orderedItem: review.orderedItem,
+          orderedItems: review.orderedItems,
           date: review.date,
           attributes: review.attributes,
           photos: review.photos,
@@ -534,7 +552,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
       cafeId,
       rating,
       text,
-      orderedItem,
+      orderedItems,
       attributes,
       photos,
       photoUploads,
@@ -562,7 +580,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         userImage: displayImage,
         rating,
         text,
-        orderedItem,
+        orderedItems,
         date: optimisticDisplayDate,
         attributes,
         photos,
@@ -578,7 +596,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         date: optimisticDisplayDate,
         visitDate: visitDateString || undefined,
         text,
-        orderedItem,
+        orderedItems,
         attributes,
         photos,
       };
@@ -623,7 +641,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
           cafe_image: cafe.image || null,
           rating,
           text,
-          ordered_item: orderedItem || null,
+          ...orderedItemsColumns(orderedItems),
           attributes: attributes || [],
           photos: photosForInsert,
           visit_date: visitDateString,
@@ -703,10 +721,16 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
           })
         );
 
+        // Logging a visit means the cafe has been tried, so it leaves
+        // "Cafes I Want To Try". Only after the insert succeeds, and silently.
+        if (bookmarkedIdsRef.current.includes(cafeId)) {
+          removeBookmark(cafeId);
+        }
+
         return data.id;
       }
     },
-    [cafes, userId, user]
+    [cafes, userId, user, removeBookmark]
   );
 
   const updateReview = useCallback(
@@ -715,7 +739,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
       cafeId,
       rating,
       text,
-      orderedItem,
+      orderedItems,
       attributes,
       photos,
       photoUploads,
@@ -745,7 +769,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
         .update({
           rating,
           text,
-          ordered_item: orderedItem || null,
+          ...orderedItemsColumns(orderedItems),
           attributes: attributes || [],
           photos: finalPhotos,
           visit_date: visitDateString,
@@ -773,7 +797,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
                 ...r,
                 rating: persistedRating,
                 text: data.text ?? text,
-                orderedItem: data.ordered_item ?? (orderedItem || undefined),
+                orderedItems: orderedItemsFromRow(data),
                 attributes: data.attributes ?? attributes,
                 photos: data.photos ?? finalPhotos,
                 visitDate: persistedVisitDate,
@@ -793,7 +817,7 @@ export function ReviewProvider({ children }: { children: ReactNode }) {
                   ...rv,
                   rating: persistedRating,
                   text: data.text ?? text,
-                  orderedItem: data.ordered_item ?? (orderedItem || undefined),
+                  orderedItems: orderedItemsFromRow(data),
                   attributes: data.attributes ?? attributes,
                   photos: data.photos ?? finalPhotos,
                   date: persistedDisplayDate,

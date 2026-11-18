@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { Review } from '../data/mockData';
 import BeanRating from './BeanRating';
+import { formatOrderedItems } from '../utils/orderedItems';
 import { colors } from '@/constants/theme';
 
 interface ReviewCardProps {
@@ -27,10 +28,10 @@ export default function ReviewCard({ review }: ReviewCardProps) {
         </View>
         <Text style={styles.date}>{review.date}</Text>
       </View>
-      {review.orderedItem ? (
+      {review.orderedItems?.length ? (
         <Text style={styles.orderedItem}>
           <Text style={styles.orderedLabel}>Ordered: </Text>
-          {review.orderedItem}
+          {formatOrderedItems(review.orderedItems)}
         </Text>
       ) : null}
       {review.text ? <Text style={styles.reviewText}>{review.text}</Text> : null}

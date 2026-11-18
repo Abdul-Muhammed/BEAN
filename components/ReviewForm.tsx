@@ -40,6 +40,7 @@ import {
 } from '@/constants/figmaIcons';
 import SwipeableBeanRating from '@/components/SwipeableBeanRating';
 import Tag from '@/components/ui/Tag';
+import { MAX_ORDER_ITEMS } from '../utils/orderedItems';
 
 /**
  * The Log a Visit form shared by Add Review and Edit Review.
@@ -61,7 +62,7 @@ export interface ReviewPhoto {
 
 export interface ReviewFormValues {
   rating: number;
-  orderedItem: string;
+  orderedItems: string[];
   notes: string;
   attributes: string[];
   photos: ReviewPhoto[];
@@ -101,7 +102,7 @@ const ORDER_ITEMS = [
   'Hot Chocolate',
 ];
 
-const MAX_LIKES = 3;
+const MAX_LIKES = 5;
 const MAX_PHOTOS = 5;
 /** How long the big rating lingers after the finger lifts before collapsing. */
 const RATING_COLLAPSE_DELAY_MS = 600;
@@ -252,15 +253,24 @@ export default function ReviewForm({
 }: ReviewFormProps) {
   const { toggleFavorite, isFavorited } = useReviews();
 
-  const initialOrdered = initialValues?.orderedItem ?? '';
+  // Saved items that match a chip pre-select it; the first one that doesn't is
+  // the typed "Other".
+  const initialOrdered = (initialValues?.orderedItems ?? []).filter(Boolean);
+  const initialOther = initialOrdered.find((item) => !ORDER_ITEMS.includes(item)) ?? '';
   const [rating, setRating] = useState(initialValues?.rating ?? 0);
   const [ratingMode, setRatingMode] = useState<'big' | 'compact'>(
     initialValues?.rating ? 'compact' : 'big'
   );
-  const [orderedItem, setOrderedItem] = useState(initialOrdered);
-  const [otherSelected, setOtherSelected] = useState(
-    initialOrdered.trim().length > 0 && !ORDER_ITEMS.includes(initialOrdered)
+  const [selectedOrders, setSelectedOrders] = useState<string[]>(
+    initialOrdered.filter((item) => ORDER_ITEMS.includes(item)).slice(0, MAX_ORDER_ITEMS)
   );
+  const [otherText, setOtherText] = useState(initialOther);
+  const [otherSelected, setOtherSelected] = useState(initialOther.length > 0);
+  // "Other" holds one slot from the moment it's switched on, so the counter
+  // and cap don't jump when its text is typed.
+  const orderCount = selectedOrders.length + (otherSelected ? 1 : 0);
+  const orderAtCap = orderCount >= MAX_ORDER_ITEMS;
+  const hasOrder = selectedOrders.length > 0 || (otherSelected && otherText.trim().length > 0);
   const [notes, setNotes] = useState(initialValues?.notes ?? '');
   const [selectedAttributes, setSelectedAttributes] = useState<string[]>(
     initialValues?.attributes ?? []
@@ -276,10 +286,10 @@ export default function ReviewForm({
   // The gesture callbacks fire onChange and onRelease in the same frame, so the
   // release handler reads the rating from a ref rather than stale state.
   const ratingRef = useRef(rating);
-  const orderedRef = useRef(orderedItem);
+  const hasOrderRef = useRef(hasOrder);
   useEffect(() => {
-    orderedRef.current = orderedItem;
-  }, [orderedItem]);
+    hasOrderRef.current = hasOrder;
+  }, [hasOrder]);
   const collapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearCollapseTimer = () => {
@@ -338,22 +348,25 @@ export default function ReviewForm({
     collapseTimer.current = setTimeout(() => {
       collapseTimer.current = null;
       setRatingMode('compact');
-      if (orderedRef.current.trim().length === 0) setActiveStep('order');
+      if (!hasOrderRef.current) setActiveStep('order');
     }, RATING_COLLAPSE_DELAY_MS);
   };
 
-  const selectOrderItem = (item: string) => {
-    setOtherSelected(false);
-    setOrderedItem((current) => (current === item ? '' : item));
+  const toggleOrderItem = (item: string) => {
+    setShowDatePicker(false);
+    if (selectedOrders.includes(item)) {
+      setSelectedOrders(selectedOrders.filter((i) => i !== item));
+    } else if (!orderAtCap) {
+      setSelectedOrders([...selectedOrders, item]);
+    }
   };
 
   const toggleOther = () => {
     if (otherSelected) {
       setOtherSelected(false);
-      setOrderedItem('');
-    } else {
+      setOtherText('');
+    } else if (!orderAtCap) {
       setOtherSelected(true);
-      if (ORDER_ITEMS.includes(orderedItem)) setOrderedItem('');
     }
   };
 
@@ -459,7 +472,7 @@ export default function ReviewForm({
     if (!canSubmit) return;
     onSubmit({
       rating,
-      orderedItem: orderedItem.trim(),
+      orderedItems: [...selectedOrders, otherSelected ? otherText.trim() : ''].filter(Boolean),
       notes: notes.trim(),
       attributes: selectedAttributes,
       photos,
@@ -567,38 +580,48 @@ export default function ReviewForm({
           <>
             <Section
               title="What Did You Order?"
-              done={orderedItem.trim().length > 0}
+              done={hasOrder}
               open={activeStep === 'order'}
               onToggle={() => toggleStep('order')}
             >
+              <Text style={styles.counter}>
+                {orderCount}/{MAX_ORDER_ITEMS}
+              </Text>
               <View style={styles.chips}>
-                {ORDER_ITEMS.map((item) => (
+                {ORDER_ITEMS.map((item) => {
+                  const isSelected = selectedOrders.includes(item);
+                  const isDisabled = !isSelected && orderAtCap;
+                  return (
+                    <View key={item} style={isDisabled && styles.disabled}>
+                      <Tag
+                        label={item}
+                        dense
+                        variant={isSelected ? 'filled' : 'outlineDark'}
+                        onPress={isDisabled ? undefined : () => toggleOrderItem(item)}
+                      />
+                    </View>
+                  );
+                })}
+                <View style={!otherSelected && orderAtCap && styles.disabled}>
                   <Tag
-                    key={item}
-                    label={item}
+                    label="Other"
                     dense
-                    variant={!otherSelected && orderedItem === item ? 'filled' : 'outlineDark'}
-                    onPress={() => selectOrderItem(item)}
+                    variant={otherSelected ? 'filled' : 'outlineDark'}
+                    onPress={!otherSelected && orderAtCap ? undefined : toggleOther}
                   />
-                ))}
-                <Tag
-                  label="Other"
-                  dense
-                  variant={otherSelected ? 'filled' : 'outlineDark'}
-                  onPress={toggleOther}
-                />
+                </View>
               </View>
               {otherSelected && (
                 <TextInput
                   style={styles.otherInput}
                   placeholder="Tell us what you ordered!"
                   placeholderTextColor={HINT_GREY}
-                  value={orderedItem}
-                  onChangeText={setOrderedItem}
+                  value={otherText}
+                  onChangeText={setOtherText}
                   onFocus={() => setShowDatePicker(false)}
                   returnKeyType="done"
                   submitBehavior="blurAndSubmit"
-                  autoFocus={!orderedItem}
+                  autoFocus={!otherText}
                 />
               )}
             </Section>
