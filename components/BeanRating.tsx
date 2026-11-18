@@ -21,6 +21,9 @@ interface BeanRatingProps {
   onRatingChange?: (rating: number) => void;
   /** Tint override for the filled seeds (e.g. contrast on a colored background). */
   color?: string;
+  /** Display-only: show just the earned beans (2.5 renders two full beans and
+   *  one left seed) with no grey placeholders. Ignored when interactive. */
+  hideEmpty?: boolean;
 }
 
 export type BeanFill = 'empty' | 'half' | 'full';
@@ -59,20 +62,29 @@ export function ShareBeanCell({
   height,
   fill,
   color,
+  hideEmpty = false,
 }: {
   height: number;
   fill: BeanFill;
   color?: string;
+  /** Skip unfilled seeds instead of drawing them grey. */
+  hideEmpty?: boolean;
 }) {
   const width = height * SHARE_BEAN_RATIO;
+  const showLeft = fill !== 'empty' || !hideEmpty;
+  const showRight = fill === 'full' || !hideEmpty;
   return (
     <View style={{ width, height }}>
-      <View style={StyleSheet.absoluteFill}>
-        <SvgXml xml={seedXml('left', fill !== 'empty', color)} width={width} height={height} />
-      </View>
-      <View style={StyleSheet.absoluteFill}>
-        <SvgXml xml={seedXml('right', fill === 'full', color)} width={width} height={height} />
-      </View>
+      {showLeft && (
+        <View style={StyleSheet.absoluteFill}>
+          <SvgXml xml={seedXml('left', fill !== 'empty', color)} width={width} height={height} />
+        </View>
+      )}
+      {showRight && (
+        <View style={StyleSheet.absoluteFill}>
+          <SvgXml xml={seedXml('right', fill === 'full', color)} width={width} height={height} />
+        </View>
+      )}
     </View>
   );
 }
@@ -90,6 +102,7 @@ export default function BeanRating({
   allowHalf = false,
   onRatingChange,
   color,
+  hideEmpty = false,
 }: BeanRatingProps) {
   const handlePress = (value: number) => {
     if (interactive && onRatingChange) {
@@ -101,6 +114,11 @@ export default function BeanRating({
     <View style={styles.container}>
       {[1, 2, 3, 4, 5].map((index) => {
         const fill = getFill(index, rating);
+
+        if (!interactive && hideEmpty) {
+          if (fill === 'empty') return null;
+          return <ShareBeanCell key={index} height={size} fill={fill} color={color} hideEmpty />;
+        }
 
         if (interactive && allowHalf) {
           // Two invisible touch halves overlay the bean so tapping the left

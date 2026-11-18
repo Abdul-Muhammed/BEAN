@@ -13,7 +13,9 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { SvgXml } from 'react-native-svg';
 import { type CafeCategory, getCafeCategories } from '../../lib/cafeCategories';
-import { colors } from '@/constants/theme';
+import { colors, spacing } from '@/constants/theme';
+import Tag from '@/components/ui/Tag';
+import Button from '@/components/ui/Button';
 
 const beanLogoSvg = `<svg width="48" height="81" viewBox="0 0 48 81" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M25.6136 68.523C19.0159 70.9613 11.8444 72.1805 4.09929 72.1805C2.665 54.3953 1.01555 25.5303 0.441833 0C8.47384 1.004 4.70884 8.49815 11.7368 12.3707C18.9083 16.2433 36.5859 23.0561 40.8888 28.5064C45.335 33.8133 47.5582 39.2636 47.5582 44.8573C47.5582 50.0207 45.5502 54.6822 41.5342 58.8416C37.5182 62.8576 32.2113 66.0847 25.6136 68.523Z" fill="#0F1312"/>
@@ -127,43 +129,25 @@ export default function PreferencesScreen() {
               ) : categoryError ? (
                 <View style={styles.categoryStateContainer}>
                   <Text style={styles.categoryStateText}>{categoryError}</Text>
-                  <TouchableOpacity style={styles.retryButton} onPress={loadCategories}>
-                    <Text style={styles.retryButtonText}>Retry</Text>
-                  </TouchableOpacity>
+                  <Button
+                    label="Retry"
+                    variant="secondary"
+                    onPress={loadCategories}
+                    style={styles.retryButton}
+                  />
                 </View>
               ) : categories.length === 0 ? (
                 <Text style={styles.categoryStateText}>No cafe categories are available.</Text>
               ) : (
-                categories.map((category) => {
-                  const isSelected = selectedCategories.includes(category.id);
-
-                  return (
-                    <TouchableOpacity
-                      key={category.id}
-                      style={[
-                        styles.categoryPill,
-                        isSelected && styles.categoryPillSelected
-                      ]}
-                      onPress={() => toggleCategory(category.id)}
-                    >
-                      <View style={styles.categoryIconContainer}>
-                        <SvgXml
-                          xml={category.icon_svg_xml}
-                          width={16}
-                          height={16}
-                        />
-                      </View>
-                      <Text
-                        style={[
-                          styles.categoryText,
-                          isSelected && styles.categoryTextSelected
-                        ]}
-                      >
-                        {category.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })
+                categories.map((category) => (
+                  <Tag
+                    key={category.id}
+                    label={category.label}
+                    iconXml={category.icon_svg_xml}
+                    variant={selectedCategories.includes(category.id) ? 'filled' : 'outline'}
+                    onPress={() => toggleCategory(category.id)}
+                  />
+                ))
               )}
             </View>
           </View>
@@ -171,23 +155,18 @@ export default function PreferencesScreen() {
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={styles.backFooterButton}
+        <Button
+          label="Back"
+          variant="secondary"
           onPress={handleBackPress}
-        >
-          <Text style={styles.backFooterButtonText}>Back</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.continueButton,
-            (isLoadingCategories || !!categoryError || categories.length === 0) && styles.continueButtonDisabled
-          ]}
+          style={styles.backFooterButton}
+        />
+        <Button
+          label="Continue"
           onPress={handleContinue}
           disabled={isLoadingCategories || !!categoryError || categories.length === 0}
-        >
-          <Text style={styles.continueButtonText}>Continue</Text>
-        </TouchableOpacity>
+          style={styles.continueButton}
+        />
       </View>
     </SafeAreaView>
   );
@@ -248,37 +227,7 @@ const styles = StyleSheet.create({
   categoriesContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-  },
-  categoryPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#F2F2F7',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
-  },
-  categoryPillSelected: {
-    backgroundColor: '#1C1C1E',
-    borderColor: '#1C1C1E',
-  },
-  categoryIconContainer: {
-    width: 20,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  categoryText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Regular',
-    color: '#1C1C1E',
-  },
-  categoryTextSelected: {
-    color: '#FFFFFF',
-    fontFamily: 'Lato-Bold',
+    gap: spacing.sm,
   },
   categoryStateContainer: {
     gap: 12,
@@ -291,15 +240,6 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     alignSelf: 'flex-start',
-    backgroundColor: '#1C1C1E',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  retryButtonText: {
-    fontSize: 14,
-    fontFamily: 'Lato-Bold',
-    color: '#FFFFFF',
   },
   footer: {
     flexDirection: 'row',
@@ -313,31 +253,8 @@ const styles = StyleSheet.create({
   },
   backFooterButton: {
     flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    paddingVertical: 18,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
-  },
-  backFooterButtonText: {
-    fontSize: 16,
-    fontFamily: 'Lato-Regular',
-    color: '#1C1C1E',
   },
   continueButton: {
     flex: 2,
-    backgroundColor: '#1C1C1E',
-    borderRadius: 12,
-    paddingVertical: 18,
-    alignItems: 'center',
-  },
-  continueButtonDisabled: {
-    backgroundColor: '#E5E5EA',
-  },
-  continueButtonText: {
-    fontSize: 16,
-    fontFamily: 'Lato-Bold',
-    color: '#FFFFFF',
   },
 });

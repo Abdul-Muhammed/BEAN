@@ -13,6 +13,7 @@ import OnboardingLoadingAnimation from '../../components/OnboardingLoadingAnimat
 import { useUserProfile } from '../../hooks/useUserProfile';
 import { updateProfile, validateUsername } from '../../lib/profile';
 import { colors } from '@/constants/theme';
+import Button from '@/components/ui/Button';
 
 /**
  * Terminal onboarding step. Everything the user entered has travelled this far
@@ -133,9 +134,7 @@ export default function CuratingScreen() {
             <Text style={styles.subtitle}>{error}</Text>
 
             <View style={styles.actions}>
-              <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
-                <Text style={styles.retryButtonText}>Retry</Text>
-              </TouchableOpacity>
+              <Button label="Retry" onPress={handleRetry} style={styles.retryButton} />
               <TouchableOpacity onPress={handleGoBack} hitSlop={8}>
                 <Text style={styles.backLink}>Go back</Text>
               </TouchableOpacity>
@@ -188,15 +187,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   retryButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
     paddingHorizontal: 40,
-  },
-  retryButtonText: {
-    fontSize: 16,
-    fontFamily: 'Lato-Bold',
-    color: colors.surface,
   },
   backLink: {
     fontSize: 15,

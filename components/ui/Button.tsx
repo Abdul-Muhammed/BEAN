@@ -18,6 +18,8 @@ interface ButtonProps {
   /** Raw SVG markup for a leading icon. */
   iconXml?: string | null;
   iconSize?: number;
+  /** Optional node rendered after the label (e.g. an image icon). */
+  trailing?: React.ReactNode;
   disabled?: boolean;
   loading?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -30,6 +32,7 @@ export default function Button({
   variant = 'primary',
   iconXml,
   iconSize = 18,
+  trailing,
   disabled = false,
   loading = false,
   style,
@@ -59,6 +62,7 @@ export default function Button({
           <Text style={[styles.label, secondary ? styles.labelSecondary : styles.labelPrimary]}>
             {label}
           </Text>
+          {trailing}
         </>
       )}
     </TouchableOpacity>
